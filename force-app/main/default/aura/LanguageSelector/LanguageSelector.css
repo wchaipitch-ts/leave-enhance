@@ -1,0 +1,11 @@
+.THIS .slds-select_container .slds-select {
+    margin-bottom: 20px;
+    width: 110px;
+    height: auto;
+}
+.THIS .slds-select_container:before {
+    border-bottom: 0px solid currentColor;
+}
+.THIS .slds-select_container:after {
+    padding-bottom: 19px;
+}

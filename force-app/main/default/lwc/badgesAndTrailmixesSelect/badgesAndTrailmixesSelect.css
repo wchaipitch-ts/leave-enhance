@@ -1,0 +1,15 @@
+.slds-box {
+    background: rgb(243, 242, 242);
+}
+
+.content {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+c-badges-and-trailmixes-card {
+    min-width: 200px;
+    max-width: 200px;
+    flex: 1;
+}

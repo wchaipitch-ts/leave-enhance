@@ -1,0 +1,53 @@
+<template>
+    <div>
+        <template for:each={certUsers} for:item="certUser">
+            <lightning-accordion key={certUser} allow-multiple-sections-open>
+                <lightning-accordion-section class="slds-p-around_xxx-small" name={certUser.user} label={certUser.user}>
+                    <p class="slds-text-body_regular slds-p-bottom_x-small">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Title:
+                        {certUser.title}</p>
+                    <div class="slds-p-horizontal_small">
+                        <table class="slds-table slds-table_cell-buffer slds-table_bordered" style="width:100%"
+                            aria-labelledby="element-with-table-label other-element-with-table-label">
+                            <thead>
+                                <tr class="slds-line-height_reset">
+                                    <th scope="col">
+                                        <div class="slds-truncate" title="Certification Name">Cert. Name</div>
+                                    </th>
+                                    <th scope="col">
+                                        <div class="slds-truncate" title="Certification Icon">Cert. Icon</div>
+                                    </th>
+                                    <th scope="col">
+                                        <div class="slds-truncate" title="Certification Category">Cert. Category</div>
+                                    </th>
+                                    <th scope="col">
+                                        <div class="slds-truncate" title="Date of Passing">Date of Passing</div>
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template for:each={certUser.certs} for:item="cert">
+                                    <tr class="slds-hint-parent" key={cert.certName}>
+                                        <td data-lable="Certification Name">
+                                            <div class="slds-truncate" title={cert.certName}>{cert.certName}</div>
+                                        </td>
+                                        <td data-lable="Certification Icon">
+                                            <div class="slds-truncate" title={cert.certIcon}><img
+                                                    style="width:52px;height:52px;" src={cert.certIcon}></div>
+                                        </td>
+                                        <td data-lable="Certification Category">
+                                            <div class="slds-truncate" title={cert.certCat}>{cert.certCat}</div>
+                                        </td>
+                                        <td data-lable="Date of Passing">
+                                            <div class="slds-truncate" title={cert.dateOfPassing}>{cert.dateOfPassing}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </lightning-accordion-section>
+            </lightning-accordion>
+        </template>
+    </div>
+</template>

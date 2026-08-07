@@ -1,0 +1,108 @@
+<template>
+    <lightning-card title="Timestamp" icon-name="standard:shift">
+        <!-- TSJP Raman Modification Start - Timesheet Screen Transition Button -->
+        <template if:true={currentPageUrl}>
+            <a class="slds-button slds-button-neutral" href="/lightning/n/Timesheet" slot="actions">
+                <lightning-icon icon-name="utility:new_window" size="xx-small"></lightning-icon>
+                <span class="slds-m-left_x-small">Open TimeSheet</span>
+            </a>
+        </template>
+        <!-- TSJP Raman Modification End - Timesheet Screen Transition Button -->
+
+        <template if:false={loaded}>
+            <lightning-spinner alternative-text="Loading"></lightning-spinner>
+        </template>
+        <div class="slds-card__body slds-card__body_inner">
+            <div class="date-text slds-p-around_small slds-align_absolute-center">
+                {todayString} ({weekString})
+            </div>
+            <!--<lightning-layout class="x-large slds-align_absolute-center">-->
+            <lightning-layout class="slds-show_large slds-align_absolute-center">
+                <lightning-layout-item size="1"></lightning-layout-item>
+                <lightning-layout-item size="3" padding="around-medium">
+                    <template lwc:if={stampedIn}>
+                        <button class="button button-in-gray">IN</button>
+                    </template>
+                    <template lwc:else>
+                        <button class="button button-in" onclick={setTimeStampIn} data-id="in">IN</button>
+                    </template>
+                </lightning-layout-item>
+
+                <lightning-layout-item size="4" >
+                    <div class="time-grid">
+                        <div>
+                            <span class="time-text">{hours}</span>
+                        </div>
+                        <div>
+                            <span class="time-text blink_me">{dotString}</span>
+                        </div>
+                        <div>
+                            <span class="time-text">{minutes}</span>
+                        </div>
+                    </div>
+                </lightning-layout-item>
+
+                <lightning-layout-item size="3" padding="around-medium">
+                    <template lwc:if={stampedOut}>
+                        <button class="button button-out-gray">OUT</button>
+                    </template>
+                    <template lwc:else>
+                        <button class="button button-out" onclick={setTimeStampOut} data-id="out">OUT</button>
+                    </template>
+                </lightning-layout-item>
+                <lightning-layout-item size="1"></lightning-layout-item>
+            </lightning-layout>
+        </div>
+
+        <!-- TSJP Raman Modification Start - To Display TimeIn・TimeOut in Home Screen　-->
+        <template if:true={currentPageUrl}>
+            <div style="display: flex; justify-content: center; align-items: center;"> 
+                <template if:true={stampedIn}>
+                    IN : <span>{timeIn}</span> &nbsp; &nbsp; &nbsp;
+                </template>
+                <template if:true={stampedOut}>
+                    OUT : <span>{timeOut}</span> &nbsp; &nbsp; &nbsp;
+                </template>
+            </div>
+        </template>
+        <!-- TSJP Raman Modification End - To Display TimeIn・TimeOut in Home Screen　-->
+    </lightning-card>
+
+    <template if:true={isShowModal}>
+        <section role="dialog" tabindex="-1" aria-labelledby="modal-heading-01" aria-modal="true" aria-describedby="modal-content-id-1" class="slds-modal slds-fade-in-open">
+        <div class="slds-modal__container">
+            <!-- modal header start -->
+            <header class="slds-modal__header">
+                <button class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse" title="Close" onclick={hideModalBox}>
+                    <lightning-icon icon-name="utility:close"
+                    alternative-text="close"
+                    variant="inverse"
+                    size="small" ></lightning-icon>
+                    <span class="slds-assistive-text">Close</span>
+                </button>
+                <h2 id="modal-heading-01" class="slds-text-heading_medium slds-hyphenate">{modalHeader}</h2>
+            </header>
+        
+            <!-- modal body start -->
+            <div class="slds-modal__content slds-p-around_medium" id="modal-content-id-1">
+                    <p>
+                        <lightning-textarea 
+                            label={remarkType} 
+                            value={descriptionValue} 
+                            required='true'
+                            onchange={handleDescriptionChange}>
+                        </lightning-textarea>
+                    </p>
+            </div>
+
+            <!-- modal footer start-->
+            <footer class="slds-modal__footer">
+                <button class="slds-button slds-button_neutral" onclick={hideModalBox}>Cancel</button>
+                <lightning-button onclick={onSave} variant="brand" label="Save" title="Save Timestamp" class="slds-m-left_x-small"></lightning-button>
+            </footer>
+        
+        </div>
+        </section>
+        <div class="slds-backdrop slds-backdrop_open"></div>
+    </template>
+</template>

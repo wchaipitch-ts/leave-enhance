@@ -1,0 +1,43 @@
+<template>
+    <div class="slds-grid slds-wrap slds-p-around_medium slds-m-around_medium">
+        <!-- Heading and Address -->
+        <div class="slds-col slds-size_1-of-1 slds-m-bottom_medium">
+            <h1 class="slds-text-heading_large slds-m-bottom_x-small">
+                TerraSky Thailand Office Access
+            </h1>
+            <p class="slds-text-body_regular">
+                622 Emporium Tower, 9/5-8 Floor, Room No. 91,96, Sukhumvit Road,<br />
+                Klongton, Klongtoey, Bangkok 10110
+            </p>
+        </div>
+
+        <!-- Left Column: Images -->
+        <div class="slds-col slds-size_1-of-1 slds-large-size_6-of-12 slds-p-around_x-small">
+            <lightning-carousel class="slds-m-bottom_small">
+                <lightning-carousel-image src="/sfsites/c/resource/contactus1" header="Emporium Tower Lobby"
+                    description="ขึ้นบันไดเลื่อนไปที่แผนกต้อนรับชั้น 2 คุณต้องแสดงบัตรประชาชน หรือหนังสือเดินทาง"
+                    alternative-text="Emporium Tower Lobby">
+                </lightning-carousel-image>
+                <lightning-carousel-image src="/sfsites/c/resource/contactus2" header="Office Entrance"
+                    description="ขึ้นลิฟท์มาที่ชั้น 9 หลังติดต่อแผนกต้อนรับ กรุณาติดต่อแผนกต้อนรับชั้น 9 เมื่อเดินทางมาถึง"
+                    alternative-text="Office Entrance">
+                </lightning-carousel-image>
+            </lightning-carousel>
+        </div>
+
+        <!-- Right Column: Map and Additional Notes -->
+        <div class="slds-col slds-size_1-of-1 slds-large-size_6-of-12 slds-p-around_small">
+            <div class="slds-m-bottom_small">
+                <lightning-map map-markers={mapMarkers} zoom-level={zoomLevel} onmarkerselect={handleMarkerSelect}
+                    markers-title="TerraSky Thailand Office">
+                </lightning-map>
+            </div>
+            <p class="slds-text-body_regular">
+                <strong>***หมายเหตุ***</strong><br />
+                หากคุณหาทางเข้าไม่พบ หรือสับสน ให้มองหาโรงแรม Emporium Suite เพราะทางเข้าอยู่ติดกับโรงเเรมนี้
+                หรือร้านกาแฟ Starbuck<br />
+                เเละเมื่อขึ้นบันไดเลื่อนมาที่ชั้น 2 แล้ว ทางซ้ายมือคือ Shop Cartier ทางขวามือคือ Shop Tiffany &amp; Co
+            </p>
+        </div>
+    </div>
+</template>

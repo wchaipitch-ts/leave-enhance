@@ -1,0 +1,121 @@
+.THIS .ARL {
+    border-radius: 4px;
+    background: #eee;
+    border: 1px solid #ddd;
+}
+.THIS .ARL .headerDiv {
+    padding: 18px;
+    background-color: #F3F2F2;
+}
+.THIS .ARL .up-font {
+    font-size: 16px;
+    font-weight: 700;
+}
+.THIS .spinnerHolder{
+    position: relative;
+    display: inline-block;
+    width: 80px;
+    height: 80px;
+}
+.THIS .ARL .childTable {
+    border-color: #e5e5e5;
+    border-style: solid;
+    border-width: 0.1em;
+    border-radius: 0.1em;
+}
+.THIS .no-record {
+    position: absolute;
+    top: 50%;
+    right: 0;
+    bottom: 0;
+    left: 50%;
+    z-index: var(--lwc-zIndexSpinner,9050);
+    background-color: var(--lwc-colorBackgroundTempModalTintAlt,rgba(255, 255, 255, 0.75));
+    visibility: visible;
+}
+.THIS .ARL .slds-table_edit thead th {
+    padding: 8px 8px;
+}
+/* For Scrolling */
+.THIS ::-webkit-scrollbar {
+    width: 7px;
+    height: 7px;
+}
+.THIS ::-webkit-scrollbar-track {
+   display: none !important;
+}
+.THIS ::-webkit-scrollbar-thumb {
+    border-radius: 10px;
+    background: rgba(0,0,0,0.4);
+}
+.THIS .custom-input {
+    background-color: aqua;
+}
+.THIS .button-width {
+    width: 50px;
+}
+.THIS table td.action {
+    width: 100px;
+    overflow: hidden;
+    /* display: inline-block; */
+    white-space: nowrap;
+}
+.THIS table th.pencil {
+    width: 100px;
+}
+.THIS table td.front {
+    width: 20px;
+}
+.THIS table th.front {
+    width: 20px;
+}
+.THIS .edited-color {
+    background-color: #FAFFBD;
+}
+.THIS .delted-color, .THIS .delted-color:hover {
+    background-color: #F8BCBC !important;
+}
+.THIS tr.weekend-color, .THIS tr.weekend-color:hover {
+    background-color: #EEEEEE !important;
+}
+.THIS article div.slds-card__header {
+    padding: 0px;
+    margin: 0px;
+}
+.THIS article div.slds-card__body {
+    padding-bottom: 30px;
+    margin: 0px;
+}
+.THIS .save-button {
+    margin-right: 10px;
+}
+.THIS .e-footer {
+    padding: 10px 18px 10px 18px;
+}
+
+.THIS tbody {
+    display: block;
+    overflow: auto;
+}
+
+.THIS .table-size {
+    min-height: 450px;
+    height: 510px;
+}
+
+.THIS thead, .THIS tbody tr {
+    display: table;
+    width: 100%;
+    border-color: #e5e5e5;
+    border-bottom-style: solid;
+    border-width: 1px;
+}
+
+.THIS .relative-width-thead, .THIS .relative-width-tr {
+    table-layout: fixed;/* even columns width , fix width of table too*/
+}
+
+.THIS tr td:first-child {
+    width: 2%;
+    white-space: nowrap;
+}

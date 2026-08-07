@@ -1,0 +1,126 @@
+<template>
+    <!-- Hero Section -->
+    <div class="slds-grid slds-gutters slds-grid_vertical-align-center hero-section">
+        <div class="slds-col slds-small-size_1-of-1 slds-size_12-of-12 slds-p-around_x-large slow-text">
+            <div class="hero-title">Explore Opportunities & Apply Today!</div>
+            <div class="hero-subtitle">
+                Discover exciting career opportunities and submit your application in just a few clicks!
+            </div>
+        </div>
+    </div>
+
+    <!-- Search Bar -->
+
+
+    <!-- Job Listings -->
+    <div class="slds-grid slds-wrap slds-p-around-large job-listings slds-grid_align-stretch">
+        <div class="slds-col slds-small-size_1-of-1 slds-size_12-of-12 slds-medium-size_6-of-12">
+            <div class="slds-p-around_medium search-container">
+                <lightning-input type="search" placeholder="Search job title or location..."
+                    onchange={handleSearch}></lightning-input>
+            </div>
+
+            <template lwc:if={filteredJobs} for:each={filteredJobs} for:item="job">
+                <c-job-card key={job.key} job-title={job.title.value} job-level={job.level.value}
+                    job-location={job.location.value} job-schedule={job.workingHours.value}
+                    job-detail={job.jobDetail.value} job-requirements={job.highlightDetail.value}
+                    onshowdetails={handleShowDetails}>
+                </c-job-card>
+            </template>
+        </div>
+
+        <!-- Sidebar Detail Panel -->
+        <div class="slds-col slds-small-size_1-of-1 slds-size_12-of-12 slds-medium-size_6-of-12 "
+            if:false={selectedJob}>
+            <div class="sidebar-container" style=" margin: 2rem;">
+                <img src="/sfsites/c/resource/img_job_detail"></img>
+            </div>
+        </div>
+        <div class="slds-col slds-small-size_1-of-1 slds-size_12-of-12 slds-medium-size_6-of-12 " if:true={selectedJob}
+            style="padding-bottom: 3rem;">
+            <div class="sidebar-container" style=" margin: 2rem;">
+                <div class="sidebar card slds-p-around_none"
+                    style=" background: url('/sfsites/c/resource/bg_job_detail') no-repeat center;">
+                    <!-- <button class="close-btn" onclick={closeSidebar}>×</button> -->
+                    <div class="slds-grid slds-wrap">
+                        <div class="slds-col slds-size_12-of-12 slds-p-around_medium" style="color:#4b4b4b">
+                            <div if:false={isApplying} class="content-job-detail">
+                                <div style="text-align: center;font-size: 1.5rem;font-weight: bold;color:#0080cb">Job
+                                    Description
+                                </div>
+                                <hr>
+                                <p><strong>Position:</strong> {selectedJob.title}</p>
+                                <p><strong>Level:</strong> {selectedJob.level}</p>
+                                <p><strong>Location:</strong> {selectedJob.location}</p>
+                                <p><strong>Schedule:</strong> {selectedJob.schedule}</p>
+                                <lightning-formatted-rich-text value={formattedDetail}></lightning-formatted-rich-text>
+                                <!-- Apply Button -->
+                                <div class="slds-m-top_medium" style="text-align: center;">
+                                    <lightning-button variant="brand" label="Apply Now"
+                                        onclick={handleApply}></lightning-button>
+                                </div>
+                            </div>
+                            <!-- Applicant Information Form -->
+                            <div if:true={isApplying} class="application-form">
+                                <div style="text-align: center;font-size: 1.5rem;font-weight: bold;color:#0080cb">
+                                    Applicant Information
+                                </div>
+                                <hr>
+
+                                <!-- Position Applied - Disabled for display -->
+                                <lightning-input label="Position Applied" value={selectedJob.title}
+                                    disabled></lightning-input>
+
+                                <!-- Full Name - Required Validation -->
+                                <lightning-input name="fullname" label="Full Name" value={applicantName}
+                                    onchange={handleNameChange} required></lightning-input>
+
+                                <!-- Email - Required and email format validation -->
+                                <lightning-input name="email" type="email" label="Email" value={applicantEmail}
+                                    onchange={handleEmailChange} required></lightning-input>
+
+                                <!-- Phone - Required and phone number format validation -->
+                                <lightning-input name="phone" type="phone" label="Phone" value={applicantPhone}
+                                    onchange={handlePhoneChange} required></lightning-input>
+
+                                <!-- LinkedIn Profile -->
+                                <lightning-input name="linkedin" label="LinkedIn Profile" value={applicantLinkedIn}
+                                    onchange={handleLinkedInChange}></lightning-input>
+
+                                <!-- Expected Salary -->
+                                <lightning-input name="salary" type="number" label="Expected Salary ($)"
+                                    value={expectedSalary} onchange={handleSalaryChange}></lightning-input>
+
+                                <!-- Applicant Message -->
+                                <lightning-textarea name="coverletter" label="Why do you want this job?"
+                                    value={applicantMessage} onchange={handleMessageChange}
+                                    required></lightning-textarea>
+
+                                <!-- Resume Upload -->
+                                <div class="slds-m-top_medium">
+                                    <lightning-input label="Upload Resume" type="file" onchange={handleFileChange}
+                                        required></lightning-input>
+                                    <template if:true={resumeFileName}>
+                                        <p><strong>Uploaded:</strong> {resumeFileName}</p>
+                                    </template>
+                                </div>
+
+                                <!-- Cancel and Submit Buttons -->
+                                <div class="slds-m-top_medium" style="text-align: center;">
+                                    <lightning-button variant="neutral" label="Cancel"
+                                        onclick={handleCancel}></lightning-button>
+                                    <lightning-button variant="brand" label="Submit Application" onclick={handleSubmit}
+                                        class="slds-m-left_small" disabled={isFormValid}></lightning-button>
+                                </div>
+                            </div>
+                        </div>
+
+
+                    </div>
+
+                </div>
+            </div>
+
+        </div>
+    </div>
+</template>

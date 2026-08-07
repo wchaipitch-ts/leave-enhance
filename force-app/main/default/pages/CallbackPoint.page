@@ -1,0 +1,6 @@
+<apex:page controller="ConnectGateway" action="{!retrieveToken}"
+			applyHtmlTag="false" applyBodyTag="false" standardStylesheets="false" showHeader="false">
+
+			{!pageMsg}
+
+</apex:page>

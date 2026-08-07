@@ -1,0 +1,37 @@
+<template>
+    <table class="slds-table slds-table_cell-buffer slds-table_header-hidden slds-table_bordered" aria-label=" Example headless table of Opportunities with no borders ">
+        <thead class="slds-assistive-text">
+          <tr class="slds-line-height_reset">
+            <th class="" scope="col">
+              <div class="slds-truncate" title="Name">Name</div>
+            </th>
+            <th class="" scope="col">
+              <div class="slds-truncate" title="Icon">Icon</div>
+            </th>
+            <th class="" scope="col">
+              <div class="slds-truncate" title="Date">Date</div>
+            </th>
+            <th class="" scope="col">
+              <div class="slds-truncate" title="Time">Time</div>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+            <template for:each={selectedItems} for:item="item">
+                <tr class="slds-hint-parent" key={item.name}>
+                    <td data-label="Icon">
+                      <img src={item.icon} class="trail" alt="item image" />
+                    </td>
+                    <td data-label="Name" scope="row">
+                      <div class="slds-truncate" title={item.name}>
+                          <a href="#" class="trail-url-text">{item.name}</a>
+                      </div>
+                    </td>
+                    <td data-label="Date">
+                      <lightning-input type="datetime" data-id={item.id} data-type={item.type} label="Due Date" required="true" onchange={handleInputDueDate}></lightning-input>
+                    </td>
+                </tr>
+            </template>
+        </tbody>
+    </table>
+</template>

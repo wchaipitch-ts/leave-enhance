@@ -1,0 +1,29 @@
+.max-cert-type {
+    font-weight: bold;
+    color: #16325c;
+}
+
+.max-cert-user {
+    font-weight: bold;
+    color: #16325c;
+}
+
+.all-cert {
+    font-weight: bold;
+    color: #16325c;
+}
+
+.max-cert-icon {
+    --sds-c-icon-color-foreground-default: #159bd7;
+    --sds-c-icon-color-background: #159bd7;
+}
+
+.max-user-icon {
+    --sds-c-icon-color-foreground-default: #159bd7;
+    --sds-c-icon-color-background: #963cbd;
+}
+
+.all-cert-icon {
+    --sds-c-icon-color-foreground-default: #159bd7;
+    --sds-c-icon-color-background: #f2c417;
+}

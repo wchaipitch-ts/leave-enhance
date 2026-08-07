@@ -1,0 +1,132 @@
+<template>
+    <lightning-card title="Opportunity Product Editor" icon-name="standard:product">
+        <div class="beta-notice slds-p-left_x-large">
+            This feature is in beta. If you have any feedback or requests, please contact Yokkee.
+        </div>
+        <div class="slds-p-around_medium">
+            <template if:true={opportunityLineItems.length}>
+                <table class="slds-table slds-table_bordered slds-table_cell-buffer">
+                    <thead>
+                        <tr class="slds-line-height_reset">
+                            <th scope="col">
+                                <div class="slds-truncate" title="商品 / Product">商品 / Product</div>
+                            </th>
+                            <th scope="col">
+                                <div class="slds-truncate" title="数量 / Quantity">数量 / Quantity</div>
+                            </th>
+                            <th scope="col">
+                                <div class="slds-truncate" title="販売価格 / Sales Price">販売価格 / Sales Price</div>
+                            </th>
+                            <th scope="col">
+                                <div class="slds-truncate" title="提供日 / Date">提供日 / Date</div>
+                            </th>
+                            <th scope="col" style="width: 10%;">
+                                <div class="slds-truncate" title="操作 / Actions">操作 / Actions</div>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template for:each={opportunityLineItems} for:item="item" for:index="index">
+                            <tr key={item.key}>
+                                <td>
+                                    <template if:false={item.isNew}>
+                                        <div class="slds-truncate" title={item.PricebookEntry.Name}>{item.PricebookEntry.Name}</div>
+                                    </template>
+                                    <template if:true={item.isNew}>
+                                        <lightning-combobox
+                                            name="product"
+                                            label="Chose product"
+                                            value={item.PricebookEntryId}
+                                            placeholder="Chose product"
+                                            options={pricebookOptions}
+                                            data-index={index}
+                                            onchange={handleProductChange}>
+                                        </lightning-combobox>
+                                    </template>
+                                </td>
+                                <td>
+                                    <lightning-input
+                                        type="number"
+                                        value={item.Quantity}
+                                        data-field="Quantity"
+                                        data-index={index}
+                                        onchange={handleInputChange}
+                                        min="1"
+                                        step="0.01"
+                                    ></lightning-input>
+                                </td>
+                                <td>
+                                    <lightning-input
+                                        type="number"
+                                        value={item.UnitPrice}
+                                        data-field="UnitPrice"
+                                        data-index={index}
+                                        formatter="currency"
+                                        min="0"
+                                        step="0.01"
+                                        onchange={handleInputChange}
+                                    ></lightning-input>
+                                </td>
+                                <td>
+                                    <lightning-input
+                                        type="date"
+                                        value={item.ServiceDate}
+                                        data-field="ServiceDate"
+                                        data-index={index}
+                                        onchange={handleInputChange}
+                                    ></lightning-input>
+                                </td>
+                                <td>
+                                    <lightning-button-icon
+                                        icon-name="utility:copy"
+                                        alternative-text="Copy Row"
+                                        title="Copy Row"
+                                        data-index={index}
+                                        onclick={handleCopyRow}
+                                        class="slds-m-right_x-small"
+                                    ></lightning-button-icon>
+                                    <lightning-button-icon
+                                        icon-name="utility:delete"
+                                        alternative-text="Delete Row"
+                                        title="Delete Row"
+                                        data-index={index}
+                                        onclick={handleDeleteRow}
+                                    ></lightning-button-icon>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </template>
+            <template if:false={opportunityLineItems.length}>
+                <div class="slds-align_absolute-center slds-text-color_weak slds-p-vertical_xx-large">
+                    No Opportunity Products available. Please add new products.
+                </div>
+            </template>
+
+            <div class="slds-m-top_medium">
+                <lightning-button
+                    label="Add New Row"
+                    icon-name="utility:add"
+                    onclick={handleAddNewRow}
+                ></lightning-button>
+            </div>
+        </div>
+
+        <div slot="footer" class="slds-var-m-horizontal_medium slds-var-m-vertical_small">
+            <lightning-button
+                variant="brand"
+                label="Save"
+                onclick={handleSave}
+                class="slds-m-right_small"
+                disabled={isProcessing}
+            ></lightning-button>
+            <lightning-button
+                label="Cancel"
+                onclick={handleCancel}
+                class="slds-m-right_small"
+                disabled={isProcessing}
+            ></lightning-button>
+        </div>
+    </lightning-card>
+</template>

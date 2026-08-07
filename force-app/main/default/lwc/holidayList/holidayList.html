@@ -1,0 +1,82 @@
+<template>
+    <article class="slds-card">
+        <div class="slds-card__header slds-grid slds-grid">
+            <header class="slds-media slds-media_center slds-has-flexi-truncate">
+                <div class="image-container slds-col slds-size_1-of-6" style="padding: 1em;">
+                    <img src={terraSkyLogo} style="max-width: 60%;" alt="Card Image" />
+                </div>
+                <div class="slds-media__body slds-col slds-size_4-of-6">
+                    <h2 class="slds-card__header-title slds-align_absolute-center header-text">
+                        <span>TerraSky (Thailand) Co,.Ltd.</span>
+                    </h2>
+                    <h2 class="slds-card__header-title slds-align_absolute-center header-text">
+                        <span>Official Holiday {selectedYear}</span>
+                    </h2>
+                </div>
+                <div class="slds-media__body slds-col slds-size_1-of-6">
+
+                        <lightning-combobox
+                                name="YearTraget"
+                                label="Year Selected"
+                                value={selectedYear}
+                                placeholder="Select Year"
+                                options={options}
+                                onchange={handleChange} ></lightning-combobox>
+                    
+                        <p>Selected year is: {selectedYear}</p>
+
+                </div>
+            </header>
+        </div>
+    </article>
+    <article class="slds-card">
+        <div class="slds-card__body slds-col" style="padding: 5px 5px;">
+            <table
+                class="slds-table slds-table_cell-buffer slds-no-row-hover slds-table_bordered slds-table_col-bordered slds-table_fixed-layout"
+                role="grid" aria-label="Holiday list on table in a Card"
+                >
+                <thead>
+                    <tr class="slds-line-height_reset">
+                        <th class="" scope="col" style="width: 5%;">
+                            <div class="slds-truncate slds-text-align_center body-text" title="Name">No.</div>
+                        </th>
+                        <th class="" scope="col" style="width: 10%;">
+                            <div class="slds-truncate slds-text-align_center body-text" title="Company">Weekday</div>
+                        </th>
+                        <th class="" scope="col" style="width: 5%;">
+                            <div class="slds-truncate slds-text-align_center body-text" title="Title">Date</div>
+                        </th>
+                        <th class="" scope="col" style="width: 10%;">
+                            <div class="slds-truncate slds-text-align_center body-text" title="Email">Month</div>
+                        </th>
+                        <th class="" scope="col" style="width: 70%;">
+                            <div class="slds-truncate body-text" title="Email">Description</div>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template for:each={holidayList} for:item="holiday">
+                        <tr class="slds-hint-parent" key={holiday.Id}>
+                            <td data-lable="Holiday index">
+                                <div class="slds-truncate slds-text-align_center body-text" title='holiday.holidayIndex'>{holiday.holidayIndex}</div>
+                            </td>
+                            <td data-lable="Holiday in weekday">
+                                <div class="slds-truncate slds-text-align_center body-text" title={holiday.activaityDay}>{holiday.activaityDay}</div>
+                            </td>
+                            <td data-lable="Holiday Date">
+                                <div class="slds-truncate slds-text-align_center body-text" title={holiday.activityDate}>{holiday.activaityDate}</div>
+                            </td>
+                            <td data-lable="Holiday Month">
+                                <div class="slds-truncate slds-text-align_center body-text" title={holiday.activaityMonth}>{holiday.activaityMonth}</div>
+                            </td>
+                            <td data-lable="Holiday Description">
+                                <div class="slds-truncate body-text" title={holiday.Description}>{holiday.Description}
+                                </div>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+    </article>
+</template>

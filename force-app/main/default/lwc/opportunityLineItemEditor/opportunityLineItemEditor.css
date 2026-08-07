@@ -1,0 +1,15 @@
+:host {
+    --slds-c-input-width: 40rem; 
+}
+
+.wide-combobox {
+    width: 100%;
+    min-width: 20rem;
+    max-width: 40rem;
+} 
+
+.beta-notice {
+    font-size: 0.9rem;
+    color: #888;
+    margin-bottom: 0.5rem;
+}

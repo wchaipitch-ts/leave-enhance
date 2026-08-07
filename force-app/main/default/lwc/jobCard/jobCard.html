@@ -1,0 +1,37 @@
+<template>
+    <a onclick={handleMoreDetail} style="text-decoration-line: none;">
+        <div class="card hover-selected">
+            <div class="job-header">
+                <h2 class="job-title">{jobTitle}</h2>
+                <span class="experience-badge">Experience Hiring</span>
+            </div>
+
+            <div class="job-details">
+                <div class="slds-grid slds-wrap ">
+                    <div class="slds-col slds-size_12-of-12 slds-medium-size_4-of-12">
+                        <div class="job-info">
+                            <div class="icon-text">
+                                <lightning-icon icon-name="utility:user_role" size="small"></lightning-icon>
+                                <span>{jobLevel}</span>
+                            </div>
+                            <div class="icon-text">
+                                <lightning-icon icon-name="utility:checkin" size="small"></lightning-icon>
+                                <span>{jobLocation}</span>
+                            </div>
+                            <div class="icon-text">
+                                <lightning-icon icon-name="utility:date_time" size="small"></lightning-icon>
+                                <span>{jobSchedule}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="slds-col slds-size_12-of-12 slds-medium-size_8-of-12">
+                        <div class="job-description">
+                            <lightning-formatted-text value={jobRequirements}></lightning-formatted-text>
+                        </div>
+                    </div>
+                </div>
+                <!-- <button class="more-detail-button" >More Detail</button> -->
+            </div>
+        </div>
+    </a>
+</template>

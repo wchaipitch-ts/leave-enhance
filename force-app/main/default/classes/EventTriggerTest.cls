@@ -1,0 +1,122 @@
+@isTest
+private class EventTriggerTest {
+    @TestSetup
+    static void createTestData(){
+        User user = new User(
+                    ProfileId = [SELECT Id FROM Profile WHERE Name = 'EngineerGroupMember'].Id,
+                    LastName = 'last',
+                    Email = 'testuser@terrasky.co.th',
+                    Username = 'testuser@terrasky.co.th' + System.currentTimeMillis(),
+                    CompanyName = 'TEST',
+                    Title = 'title',
+                    Alias = 'alias',
+                    TimeZoneSidKey = 'Asia/Bangkok',
+                    EmailEncodingKey = 'UTF-8',
+                    LanguageLocaleKey = 'th',
+                    LocaleSidKey = 'th'
+                );
+        insert user;
+        
+        ApplicationItem__c appItem = new ApplicationItem__c(
+            Request_Type__c = 'Annual leave',
+            Period_Leave__c = 'All day',
+            Term_From__c = system.today(),
+            Remark__c = 'Test All day',
+            Status__c = 'Approved',
+            OwnerId = user.Id
+        );
+        insert appItem; 
+        System.debug('appItem : ' + appItem);
+        ApplicationItem__c appItemToUpdate = [SELECT Id, Status__c FROM ApplicationItem__c WHERE Id =: appItem.Id LIMIT 1];
+        appItemToUpdate.Status__c = 'Approved';
+        System.debug('appItemToUpdate : ' + appItemToUpdate);        
+        // start date and time 
+        Datetime strDateTime =  ( 'PM leave'==appItem.Period_Leave__c 
+                                ? DateTime.newInstance(appItem.Term_From__c.year(), appItem.Term_From__c.month(),appItem.Term_From__c.day() , 13, 0, 0)
+                                : DateTime.newInstance(appItem.Term_From__c.year(), appItem.Term_From__c.month(),appItem.Term_From__c.day() , 8, 30, 0)
+                            );
+        // end date and time 
+        Datetime endDateTime =  ( 'AM leave'==appItem.Period_Leave__c 
+                                ? DateTime.newInstance(appItem.Term_From__c.year(), appItem.Term_From__c.month(),appItem.Term_From__c.day() , 12, 0, 0)
+                                : DateTime.newInstance(appItem.Term_From__c.year(), appItem.Term_From__c.month(),appItem.Term_From__c.day() , 17, 0, 0)
+                            );                
+        // set even for block calendar
+        Event event = new Event();
+        event.WhatId = appItem.ID;
+        event.Subject = appItem.Request_Type__c;
+        event.OwnerId = appItem.OwnerId;
+        event.StartDateTime = strDateTime;
+        event.EndDateTime = endDateTime;
+        event.Description = appItem.Period_Leave__c;
+        
+        insert event;
+    }
+
+    @IsTest
+    static void eventEditByManagerTest(){        
+        ApplicationItem__c appItem = [SELECT Id, CreatedById FROM ApplicationItem__c LIMIT 1];
+        User user = [SELECT Id FROM User WHERE Id =: appItem.CreatedById LIMIT 1];
+        Event event = [SELECT Id FROM Event WHERE WhatId =: appItem.Id LIMIT 1];        
+        event.Description = 'Test edit event';
+        Test.startTest();                      
+            System.runAs(user) {
+                update event;
+            }
+        Test.stopTest();
+        Event eventAfterUpdate = [SELECT Id, Description FROM Event WHERE Id =: event.Id];
+        System.assertEquals(event.Description, eventAfterUpdate.Description);
+    }
+
+    @IsTest
+    static void eventEditByUserTest(){        
+        ApplicationItem__c appItem = [SELECT Id, OwnerId FROM ApplicationItem__c LIMIT 1];
+        User user = [SELECT Id FROM User WHERE Id =: appItem.OwnerId LIMIT 1];
+        Event event = [SELECT Id FROM Event WHERE WhatId =: appItem.Id LIMIT 1];
+        event.Description = 'Test edit event';
+        
+        Boolean isError = false;
+        Test.startTest();
+            try {                
+                System.runAs(user) {
+                    delete event;
+                }
+            } catch(Exception e) {
+                isError = true;
+            }
+        Test.stopTest();
+        System.assertEquals(true, isError);   
+    }
+
+    @IsTest
+    static void eventDeleteByManagerTest(){        
+        ApplicationItem__c appItem = [SELECT Id, CreatedById FROM ApplicationItem__c LIMIT 1];
+        User user = [SELECT Id FROM User WHERE Id =: appItem.CreatedById LIMIT 1];
+        Event event = [SELECT Id FROM Event WHERE WhatId =: appItem.Id LIMIT 1];
+        Test.startTest();
+        System.runAs(user) {
+            delete event;
+        }
+        Test.stopTest();
+        System.assertEquals(0, [SELECT COUNT() FROM Event WHERE Id = :event.id], 'event should be deleted');
+    }
+
+    @IsTest
+    static void eventDeleteByUserTest(){        
+        ApplicationItem__c appItem = [SELECT Id, OwnerId FROM ApplicationItem__c LIMIT 1];
+        User user = [SELECT Id FROM User WHERE Id =: appItem.OwnerId LIMIT 1];
+        Event event = [SELECT Id FROM Event WHERE WhatId =: appItem.Id LIMIT 1];
+        
+        Boolean isError = false;
+        Test.startTest();
+            try {                
+                System.runAs(user) {
+                    delete event;
+                }
+            } catch(Exception e) {
+                isError = true;
+            }
+        Test.stopTest();
+        System.assertEquals(true, isError);                             
+    }
+    
+}

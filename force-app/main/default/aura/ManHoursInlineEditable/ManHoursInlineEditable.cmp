@@ -1,0 +1,103 @@
+<aura:component controller="ManHoursInlineEditableController" implements="flexipage:availableForAllPageTypes,force:hasRecordId">
+
+    <!-- Attributes -->
+    <aura:attribute name="recordId"     type="String" />
+    <aura:attribute name="headerName"   type="String" access="global" default="Man Hours" />
+    <aura:attribute name="iconName"     type="String" access="global" default="standard:business_hours" />
+    <aura:attribute name="editableUser" type="String" access="global" default="false" />
+    
+    <aura:attribute name="minDate" type="String" access="global" />
+    <aura:attribute name="maxDate" type="String" access="global" />
+
+    <aura:attribute name="newLine"      type="Integer"  access="private" />
+    <aura:attribute name="isEdited"     type="Boolean"  access="private" />
+    <aura:attribute name="isLoading"    type="Boolean"  access="private" default="true" />
+    <aura:attribute name="isNoRecord"   type="Boolean"  access="private" />
+    <aura:attribute name="records"      type="List"     access="private" />
+    <aura:attribute name="recordsCopy"  type="List"     access="private" />
+    <aura:attribute name="fields"       type="List"     access="private" />
+
+    <!-- Events -->
+    <aura:handler name="init" action="{!c.doInit}" value="{!this}" />
+
+    <div>
+        <div class="ARL">
+            <div class="headerDiv slds-clearfix">
+                <div class="up-font slds-float_left slds-p-around_xx-small">
+                    <span>
+                    <lightning:icon iconName="{!v.iconName}" alternativeText="icon" size="small" />
+                </span>
+                    <span class="slds-p-around_small">{!v.headerName}&nbsp;({!v.records.length})</span>
+                </div>
+                <div class="slds-float_right">
+                    <lightning:buttonIcon iconName="utility:refresh" alternativeText="refresh" onclick="{!c.doInit}" />
+                </div>
+                <div class="slds-float_right">
+                    <lightning:button variant="brand" label="Save" title="Save" disabled="{!!v.isEdited}" onclick="{!c.save}" iconName="utility:save" class="save-button" />
+                </div>
+            </div>
+            <lightning:card>
+                <aura:if isTrue="{!v.isLoading}">
+                    <lightning:spinner alternativeText="Loading" size="medium" />
+                </aura:if>
+                <div class="childTable">
+                    <table class="customDataTable slds-table slds-table_bordered slds-table_edit slds-table_fixed-layout" role="grid">
+                        <thead class="relative-width-thead">
+                            <tr class="slds-line-height_reset">
+                                <th class="front"></th>
+                                <aura:iteration items="{!v.fields}" var="field">
+                                    <th>
+                                        <span>{!field.label}</span>
+                                    </th>
+                                </aura:iteration>
+                                <th class="pencil"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="scroller" class="slds-scrollable_y table-size">
+                            <aura:if isTrue="{!v.isNoRecord}">
+                                <div class="no-record">
+                                    No record
+                                </div>
+                                <aura:set attribute="else">
+                                    <aura:iteration items="{!v.records}" var="rcrd" indexVar="index">
+                                        <tr class="{!if(rcrd.isWeekend , 'weekend-color ', '') + 'relative-width-tr'}">
+                                            <td class="{!if(rcrd.isDeleted , 'delted-color ', '') + 'slds-truncate front'}">
+                                                <span></span>
+                                            </td>
+                                            <aura:iteration items="{!rcrd.record}" var="data">
+                                                <td class="{!if(and(rcrd.editMode, data.isEdit), if(data.isEdited, 'slds-is-edited ', '') + 'slds-cell-edit slds-cell_action-mode', if(rcrd.isDeleted, 'delted-color ', '') + 'slds-truncate')}">
+                                                    <aura:if isTrue="{!and(rcrd.editMode, data.isEdit)}">
+                                                        <div class="{!if(and(data.isRequired, or(data.value eq '', data.value eq null)) , 'slds-has-error ', '') + 'slds-form-element slds-form--inline'}">
+                                                            <aura:if isTrue="{!data.isRequired}">
+                                                                <abbr class="slds-required" title="required">*</abbr>&nbsp;
+                                                            </aura:if>
+                                                            <lightning:input type="{!data.ltngType}" variant="label-hidden" value="{!data.value}" name="{!(rcrd.Id + ',' + data.label)}" validity="false" step="any" onchange="{!c.onEdit}" />
+                                                        </div>
+                                                        <aura:set attribute="else">
+                                                            <span>{!data.value}</span>
+                                                        </aura:set>
+                                                    </aura:if>
+                                                </td>
+                                            </aura:iteration>
+                                            <td class="slds-truncate action">
+                                                <aura:if isTrue="{!!rcrd.isNew}">
+                                                    <lightning:buttonIcon name="{!rcrd.Id}" disabled="{!!rcrd.edited}" class="checkIco" onclick="{!c.resetRow}" iconName="utility:refresh" alternativeText="Refresh" />&nbsp;
+                                                </aura:if>
+                                                <lightning:buttonIcon name="{!rcrd.Id}" disabled="{!or(rcrd.isDeleted, !rcrd.editMode)}" class="closeIco" onclick="{!c.removeRow}" iconName="utility:close" alternativeText="Remove" />
+                                            </td>
+                                        </tr>
+                                    </aura:iteration>
+                                </aura:set>
+                            </aura:if>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="e-footer" slot="footer">
+                    <div class="slds-float_right">
+                        <lightning:buttonIcon iconName="utility:add" disabled="{!!v.editableUser}" alternativeText="Add new" onclick="{!c.addLine}" />
+                    </div>
+                </div>
+            </lightning:card>
+        </div>
+    </div>
+</aura:component>

@@ -1,0 +1,104 @@
+<template>
+    <lightning-card title="Trailhead learning assignment" icon-name="standard:trailhead">
+        <lightning-layout multiple-rows="true" vertical-align="end">
+            <lightning-layout-item size="12" small-device-size="6" medium-device-size="10" large-device-size="10"
+                padding="around-small">
+                <lightning-input label="Search badges or trails" value={searchInputText} onchange={handleInputChange}
+                    type="search" onkeyup={handleEnter}>
+                </lightning-input>
+            </lightning-layout-item>
+            <lightning-layout-item size="12" small-device-size="2" medium-device-size="2" large-device-size="2"
+                padding="around-small">
+                <lightning-button variant="brand" label="Search" title="Search" class="slds-m-left_x-small"
+                    onclick={handleClick}></lightning-button>
+            </lightning-layout-item>
+        </lightning-layout>
+    </lightning-card>
+
+    <template if:true={isModalOpen}>
+        <section role="dialog" tabindex="-1" aria-modal="true" aria-labelledby="modal-heading-01"
+            class="slds-modal slds-fade-in-open slds-modal_medium" onkeydown={handleEscKey}>
+            <div class="slds-modal__container">
+                <button class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse"
+                    onclick={closeModal}>
+                    <lightning-icon size="small" alternative-text="close" variant="inverse" icon-name="utility:close">
+                    </lightning-icon>
+                    <span class="slds-assistive-text">Cancel and close</span>
+                </button>
+                <div class="slds-modal__header">
+                    <h1 data-id="modal-heading-01" class="slds-modal__title slds-hyphenate">Trails and badges assignment
+                    </h1>
+                </div>
+                <div class="slds-modal__content slds-var-p-around_medium" data-id="modal-content-id-1">
+                    <lightning-tabset>
+                        <lightning-tab label="Trailmixes" icon-name="standard:trailhead">
+                            <c-badges-and-trailmixes-select trails-or-badges-data={trailmixesData} record-id={recordId} type="trailmix"
+                                selected-items={selectedTrailmixes} onselecteditem={handleSelectedItem}>
+                            </c-badges-and-trailmixes-select>
+                        </lightning-tab>
+                        <lightning-tab label="Badges" icon-name="standard:recipe">
+                            <c-badges-and-trailmixes-select trails-or-badges-data={badgesData} record-id={recordId} type="badge"
+                                selected-items={selectedBadges} onselecteditem={handleSelectedItem}>
+                            </c-badges-and-trailmixes-select>
+                        </lightning-tab>
+                    </lightning-tabset>
+                </div>
+                <div class="slds-modal__footer">
+                    <button class="slds-button slds-button_neutral" aria-label="Cancel and close"
+                        onclick={closeModal}>Cancel</button>
+                    <button class="slds-button slds-button_brand" onclick={handleNextStep}>Next</button>
+                </div>
+            </div>
+        </section>
+        <div class="slds-backdrop slds-backdrop_open"></div>
+    </template>
+
+    <template if:true={isNextStep}>
+        <section role="dialog" tabindex="-1" aria-modal="true" aria-labelledby="modal-heading-01"
+            class="slds-modal slds-fade-in-open slds-modal_medium" onkeydown={handleEscKey}>
+            <div class="slds-modal__container">
+                <button class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse"
+                    onclick={closeModal}>
+                    <lightning-icon size="small" alternative-text="close" variant="inverse" icon-name="utility:close">
+                    </lightning-icon>
+                    <span class="slds-assistive-text">Cancel and close</span>
+                </button>
+                <div class="slds-modal__header">
+                    <h1 data-id="modal-heading-01" class="slds-modal__title slds-hyphenate">Trails and badges assignment
+                    </h1>
+                </div>
+                <div class="slds-modal__content slds-var-p-around_medium" data-id="modal-content-id-2">
+                    <lightning-tabset>
+                        <lightning-tab label="Trailmixes" icon-name="standard:recipe">
+                            <c-badges-and-trailmixes-due-date-setting selected-items={selectedTrailmixes} onduedateset={handleDueDateSet}></c-badges-and-trailmixes-due-date-setting>
+                        </lightning-tab>
+                    </lightning-tabset>
+
+                    <lightning-tabset>
+                        <lightning-tab label="Badges" icon-name="standard:trailhead">
+                            <c-badges-and-trailmixes-due-date-setting selected-items={selectedBadges} onduedateset={handleDueDateSet}></c-badges-and-trailmixes-due-date-setting>
+                        </lightning-tab>
+                    </lightning-tabset>
+                    <template if:true={isLoad}>
+                        <div class="demo-only" style="height:6rem;">
+                            <div class="slds-spinner_container">
+                              <div role="status" class="slds-spinner slds-spinner_medium slds-spinner_brand">
+                                <span class="slds-assistive-text">Loading</span>
+                                <div class="slds-spinner__dot-a"></div>
+                                <div class="slds-spinner__dot-b"></div>
+                              </div>
+                            </div>
+                          </div>
+                    </template>
+                </div>
+                <div class="slds-modal__footer slds-modal__footer_directional">
+                    <button class="slds-button slds-button_neutral" onclick={handleBackStep}>Back</button>
+                    <button class="slds-button slds-button_neutral" aria-label="Cancel and close"
+                        onclick={closeModal}>Cancel</button>
+                    <button class="slds-button slds-button_brand" onclick={handleSaveBadgeAndTrail}>Assign</button>
+                </div>
+            </div>
+        </section>
+        <div class="slds-backdrop slds-backdrop_open"></div>
+    </template>
+</template>

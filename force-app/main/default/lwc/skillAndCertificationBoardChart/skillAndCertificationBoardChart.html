@@ -1,0 +1,104 @@
+<template>
+    <lightning-layout multiple-rows="true">
+        <lightning-layout-item class="slds-p-bottom_small" size="12">
+            <lightning-layout>
+                <lightning-layout-item class="slds-p-around_xxx-small" size="4">
+                    <div>
+                        <lightning-layout multiple-rows="true">
+                            <lightning-layout-item class="slds-p-around_none" size="12">
+                                <lightning-layout>
+                                    <lightning-layout-item class="slds-p-around_none slds-align_absolute-center"
+                                        size="3">
+                                        <lightning-icon icon-name="action:clone" size="small" class="max-cert-icon"
+                                            alternative-text="Max. Certification Type" title="Max. Certification Type">
+                                        </lightning-icon>
+                                    </lightning-layout-item>
+                                    <lightning-layout-item class="slds-p-around_none" size="9">
+                                        <lightning-layout
+                                            class="slds-text-heading_small slds-text-heading_small max-cert-type">
+                                            {maxCertType}</lightning-layout>
+                                        <lightning-layout class="slds-text-body_regular">Max. Certification Type
+                                        </lightning-layout>
+                                    </lightning-layout-item>
+                                </lightning-layout>
+                            </lightning-layout-item>
+                        </lightning-layout>
+                    </div>
+                </lightning-layout-item>
+                <lightning-layout-item class="slds-p-around_xxx-small" size="4">
+                    <div>
+                        <lightning-layout multiple-rows="true">
+                            <lightning-layout-item class="slds-p-around_none" size="12">
+                                <lightning-layout>
+                                    <lightning-layout-item class="slds-p-around_none slds-align_absolute-center"
+                                        size="3">
+                                        <lightning-icon icon-name="action:goal" size="small" class="max-user-icon"
+                                            alternative-text="Max. Certification of User"
+                                            title="Max. Certification of User"></lightning-icon>
+                                    </lightning-layout-item>
+                                    <lightning-layout-item class="slds-p-around_none" size="9">
+                                        <lightning-layout
+                                            class="slds-text-heading_small slds-text-heading_small max-cert-type">
+                                            {maxCertUser}</lightning-layout>
+                                        <lightning-layout class="slds-text-body_regular">Max. Certifications of User
+                                        </lightning-layout>
+                                    </lightning-layout-item>
+                                </lightning-layout>
+                            </lightning-layout-item>
+                        </lightning-layout>
+                    </div>
+                </lightning-layout-item>
+                <lightning-layout-item class="slds-p-around_xxx-small" size="4">
+                    <div>
+                        <lightning-layout multiple-rows="true">
+                            <lightning-layout-item class="slds-p-around_none" size="12">
+                                <lightning-layout>
+                                    <lightning-layout-item class="slds-p-around_none slds-align_absolute-center"
+                                        size="3">
+                                        <lightning-icon icon-name="action:new_group" size="small" class="all-cert-icon"
+                                            alternative-text="Total Certification" title="Total Certification">
+                                        </lightning-icon>
+                                    </lightning-layout-item>
+                                    <lightning-layout-item class="slds-p-around_none" size="9">
+                                        <lightning-layout
+                                            class="slds-text-heading_small slds-text-heading_small all-cert">
+                                            {allCertPass} Certifications</lightning-layout>
+                                        <lightning-layout class="slds-text-body_regular">Total Certification
+                                        </lightning-layout>
+                                    </lightning-layout-item>
+                                </lightning-layout>
+                            </lightning-layout-item>
+                        </lightning-layout>
+                    </div>
+                </lightning-layout-item>
+            </lightning-layout>
+        </lightning-layout-item>
+        <lightning-layout-item class="slds-p-top_medium slds-border_top" size="12">
+            <lightning-layout>
+                <lightning-layout-item class="slds-p-around_none" size="6">
+                    <c-chart type="horizontalBar" responsive="true">
+                        <c-dataset labels={certTypeNameTopFive}>
+                            <c-data label="# of Items" detail={certTypeAmountTopFive} backgroundcolor={chartBgHorizon}
+                                bordercolor={borderColorHorizon} borderwidth="1"></c-data>
+                        </c-dataset>
+                        <c-title text="Top 5 Most Holding Certificates" position="top"></c-title>
+                        <c-legend position="bottom"></c-legend>
+                        <c-cartesian-category-axis axis="y" position="left"></c-cartesian-category-axis>
+                        <c-cartesian-linear-axis axis="x" ticks-beginatzero="true"></c-cartesian-linear-axis>
+                    </c-chart>
+                </lightning-layout-item>
+                <lightning-layout-item class="slds-p-around_none" size="6">
+                    <c-chart type="doughnut" responsive="true">
+                        <c-dataset labels={certTypeNameAll}>
+                            <c-data label="# of Certs" detail={certTypeAmountAll} backgroundcolor={chartBgDonut}>
+                            </c-data>
+                        </c-dataset>
+                        <c-title text="All Holding Certificates" position="top"></c-title>
+                        <c-legend position="right"></c-legend>
+                        <c-arc-configuration bordercolor={borderColorDonut}></c-arc-configuration>
+                    </c-chart>
+                </lightning-layout-item>
+            </lightning-layout>
+        </lightning-layout-item>
+    </lightning-layout>
+</template>

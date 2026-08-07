@@ -1,0 +1,10 @@
+.count-cert {
+    font-weight: bold;
+    color: blueviolet;
+}
+
+.upcoming-days {
+    font-weight: bold;
+    color: rgb(226, 95, 43);
+    font-size: 30px;
+}

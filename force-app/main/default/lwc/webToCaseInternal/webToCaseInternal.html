@@ -1,0 +1,350 @@
+<template>
+  <template lwc:if={saving}>
+    <lightning-spinner alternative-text="Loading" size="large" variant="base"></lightning-spinner>
+  </template>
+  <lightning-card>
+    <div class="ContactSupport">
+      <div class="ContactSupport__Header">
+        <span class="ContactSupport__Header__Tiltle--Text">{label.HeaderInternal}</span>
+      </div>
+
+      <div class="ContactSupport__Body">
+
+        <template if:false={stageUploadPage}>
+
+          <!-- First Name -->
+          <div class="ContactSupport__Body__Row">
+            <div class="ContactSupport__Body__Label">
+              <label for="firstName" class="ContactSupport__Body__Label__firstText">First Name</label>
+            </div>
+            <div class="input-column">
+              <lightning-input variant="label-hidden" placeholder="Ticha" label="First Name" name="firstName"
+                value={firstName} onchange={handleInputChange}></lightning-input>
+              <div class="help-text">
+                If you are unsure which is first name and which is last name, please write the whole name here.<br />
+                If you are unsure of the customer's real name, please fill in nickname.
+              </div>
+            </div>
+          </div>
+
+          <!-- Last Name -->
+          <div class="ContactSupport__Body__Row">
+            <div class="ContactSupport__Body__Label">
+              <label for="lastName" class="ContactSupport__Body__Label__firstText">Last Name</label>
+            </div>
+            <div class="input-column">
+              <lightning-input variant="label-hidden" placeholder="Chaisakul" label="Last Name" name="lastName"
+                value={lastName} onchange={handleInputChange}></lightning-input>
+            </div>
+          </div>
+
+          <!-- Nickname -->
+          <div class="ContactSupport__Body__Row">
+            <div class="ContactSupport__Body__Label">
+              <label for="firstName" class="ContactSupport__Body__Label__firstText">Nickname</label>
+            </div>
+            <div class="input-column">
+              <lightning-input variant="label-hidden" placeholder="TC" name="Nickname__c" value={nickName}
+                onchange={handleInputChange}></lightning-input>
+            </div>
+          </div>
+
+          <!-- Email -->
+          <div class="ContactSupport__Body__Row">
+            <div class="ContactSupport__Body__Label">
+              <label for="email" class="ContactSupport__Body__Label__firstText">Email</label>
+              <label class="ContactSupport__Body__Label__required">Required</label>
+            </div>
+            <div class="input-column">
+              <lightning-input variant="label-hidden" placeholder="ticha@terrasky.co.th" type="email" label="Email"
+                name="email" value={email} onchange={handleInputChange} required></lightning-input>
+            </div>
+          </div>
+
+          <!-- Phone -->
+          <div class="ContactSupport__Body__Row">
+            <div class="ContactSupport__Body__Label">
+              <label for="phone" class="ContactSupport__Body__Label__firstText">Telephone</label>
+            </div>
+            <div class="input-column">
+              <lightning-input variant="label-hidden" placeholder="0975591261" label="Telephone" name="phone"
+                value={phone} onchange={handleInputChange}></lightning-input>
+            </div>
+          </div>
+
+          <!-- Company -->
+          <div class="ContactSupport__Body__Row">
+            <div class="ContactSupport__Body__Label">
+              <label for="company" class="ContactSupport__Body__Label__firstText">Company</label>
+            </div>
+            <div class="input-column">
+              <lightning-input variant="label-hidden" placeholder="TerraSky (Thailand) Co.,Ltd" label="Company"
+                name="company" value={company} onchange={handleInputChange}></lightning-input>
+            </div>
+          </div>
+
+          <!-- Subject -->
+          <div class="ContactSupport__Body__Row">
+            <div class="ContactSupport__Body__Label">
+              <label for="subject" class="ContactSupport__Body__Label__firstText">Subject</label>
+              <label class="ContactSupport__Body__Label__required">Required</label>
+            </div>
+            <div class="input-column">
+              <lightning-input variant="label-hidden" placeholder="Request/ Problem" label="Subject" name="subject"
+                value={subject} onchange={handleInputChange} required></lightning-input>
+            </div>
+          </div>
+
+          <!-- Product -->
+          <div class="ContactSupport__Body__Row">
+            <div class="ContactSupport__Body__Label">
+              <label for="product" class="ContactSupport__Body__Label__firstText">Product</label>
+            </div>
+            <div class="input-column">
+              <!-- <lightning-combobox variant="label-hidden" label="Product" name="Related_Product__c"
+                                  value={product} options={productOptions}
+                                  onchange={handleInputChange}>
+                                </lightning-combobox> -->
+              <select class="slds-select" name="product" onchange={handleInputChange} title="Product">
+                <option value="">--None--</option>
+                <option value="mitoco">mitoco</option>
+                <option value="mitocoAI">mitocoAI</option>
+                <option value="Salesforce">Salesforce</option>
+                <option value="SVE">SVE</option>
+              </select>
+              <template if:true={productValidate}>
+                <div style="color:red" class="slds-m-top_x-small slds-text-body_small">{productValidateMsg}</div>
+              </template>
+            </div>
+          </div>
+
+
+
+          <!-- Priority -->
+          <div class="ContactSupport__Body__Row">
+            <div class="ContactSupport__Body__Label">
+              <label for="priority" class="ContactSupport__Body__Label__firstText">Priority</label>
+              <label class="ContactSupport__Body__Label__required">Required</label>
+            </div>
+            <div class="input-column">
+              <!-- <lightning-combobox variant="label-hidden" label="Priority" name="Priority"
+                                  value={priority} options={priorityOptions}
+                                  onchange={handleInputChange} required></lightning-combobox> -->
+              <select class="slds-select" id="priority" onchange={handleInputChange} name="priority" required>
+                <option value="">--None--</option>
+                <option value="Urgent">Urgent</option>
+                <option value="Medium">Medium</option>
+                <option value="Low">Low</option>
+              </select>
+              <template if:true={priorityValidate}>
+                <div style="color:red" class="slds-m-top_x-small slds-text-body_small">{priorityValidateMsg}</div>
+              </template>
+              <div class="help-text">
+                <b>Urgent:</b> Major business operations are impacted with no available workaround.<br />
+                <b>Medium:</b> Major business operations are impacted, but a workaround is available, OR
+                Non-critical business operations are impacted with no available workaround.<br />
+                <b>Low:</b> Non-critical business operations are impacted, but a workaround is available or
+                General Inquiry.
+              </div>
+            </div>
+          </div>
+
+
+
+
+          <!-- Status -->
+          <div class="ContactSupport__Body__Row">
+            <div class="ContactSupport__Body__Label">
+              <label for="status" class="ContactSupport__Body__Label__firstText">Status</label>
+              <label class="ContactSupport__Body__Label__required">Required</label>
+            </div>
+            <div class="input-column">
+              <!-- <lightning-combobox variant="label-hidden" label="Status" name="status"
+                                  value={Status} options={statusOptions}
+                                  onchange={handleInputChange} required></lightning-combobox> -->
+              <select class="slds-select" id="status" onchange={handleInputChange} name="status" required>
+                <option value="">--None--</option>
+                <option value="New">New</option>
+                <option value="Assigned">Assigned</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Waiting for Customer">Waiting for Customer</option>
+                <option value="Canceled">Canceled</option>
+                <option value="Closed">Closed</option>
+              </select>
+              <template if:true={statusValidate}>
+                <div style="color:red" class="slds-m-top_x-small slds-text-body_small">{statusValidateMsg}</div>
+              </template>
+              <div class="help-text">
+                <b>New:</b> Pass to CSM with minimal information.<br />
+                <b>Assigned:</b> Skip.<br />
+                <b>In Progress:</b> Select if you want to pass to CSM with some progress.<br />
+                <b>Waiting for Customer:</b> If you provided an answer and the customer is still checking.<br />
+                <b>Canceled:</b> Skip.<br />
+                <b>Closed:</b> If the answer you provided solved the customer's issue, and they required no further
+                assistance.<br />
+              </div>
+            </div>
+          </div>
+
+          <!-- Description -->
+          <div class="ContactSupport__Body__Row">
+            <div class="ContactSupport__Body__Label">
+              <label for="description" class="ContactSupport__Body__Label__firstText">Description</label>
+              <label class="ContactSupport__Body__Label__required">Required</label>
+            </div>
+            <div class="input-column">
+              <lightning-textarea variant="label-hidden" placeholder="Write inquiry information from customer here..."
+                name="description" value={description} onchange={handleInputChange} required></lightning-textarea>
+              <div class="help-text">
+                Please provide the following details along with
+                your inquiry, especially if you are experiencing
+                issues with normal usage due to errors or other
+                disruptions:<br />
+                ‐ When did the error first occur? Was the
+                service working normally before then?<br />
+                ‐ Please describe any configuration or setting
+                changes you made around the time the error
+                started.<br />
+                ‐ Is this issue affecting only specific users,
+                or is it occurring for all users?
+              </div>
+            </div>
+          </div>
+
+          <!-- Comment -->
+          <div class="ContactSupport__Body__Row">
+            <div class="ContactSupport__Body__Label">
+              <label for="comment" class="ContactSupport__Body__Label__firstText">Comment</label>
+              <label class="ContactSupport__Body__Label__required">Required</label>
+            </div>
+            <div class="input-column">
+              <lightning-textarea variant="label-hidden" placeholder="Write conversation with customer here..."
+                label="Comment" name="comment" value={comment} onchange={handleInputChange}
+                required></lightning-textarea>
+              <div class="help-text">
+                Please provide a transcript of the conversation with the customer. <br />
+                If everything was resolved, please insert the information you provided to the customer.
+              </div>
+            </div>
+          </div>
+
+          <!-- Source -->
+          <div class="ContactSupport__Body__Row">
+            <div class="ContactSupport__Body__Label">
+              <label for="status" class="ContactSupport__Body__Label__firstText">Source</label>
+              <label class="ContactSupport__Body__Label__required">Required</label>
+            </div>
+            <div class="input-column">
+              <!-- <lightning-combobox variant="label-hidden" label="source" name="Source__c"
+                                  value={source} options={sourceOptions}
+                                  onchange={handleInputChange} required></lightning-combobox> -->
+              <!-- <select class="slds-select" id="00N5i00000JXDqY" name="00N5i00000JXDqY" title="Source" required>
+                    <option value="">--None--</option>
+                    <option value="LINE">LINE</option>
+                    <option value="SNS(Other)">SNS(Other)</option>
+                    <option value="Personal Email">Personal Email</option>
+                    <option value="Personal Phone">Personal Phone</option>
+                </select> -->
+              <select class="slds-select" name="source" onchange={handleInputChange} title="Source" required>
+                <option value="">--None--</option>
+                <option value="LINE">LINE</option>
+                <option value="SNS(Other)">SNS(Other)</option>
+                <option value="Personal Email">Personal Email</option>
+                <option value="Personal Phone">Personal Phone</option>
+              </select>
+              <template if:true={sourceValidate}>
+                <div style="color:red" class="slds-m-top_x-small slds-text-body_small">{sourceValidateMsg}</div>
+              </template>
+              <div class="help-text">
+                Which communication channel did you recieve this request from?<br />
+              </div>
+            </div>
+          </div>
+
+          <!-- TSTH Employee Nickname -->
+          <div class="ContactSupport__Body__Row">
+            <div class="ContactSupport__Body__Label">
+              <label for="subject" class="ContactSupport__Body__Label__firstText">TSTH Employee Nickname</label>
+              <label class="ContactSupport__Body__Label__required">Required</label>
+            </div>
+            <div class="input-column">
+              <!-- <lightning-input variant="label-hidden" placeholder="Yok" label="initiator"
+                               name="00Nfc0000006ulz" value={initiator}
+                               onchange={handleInputChange} required></lightning-input> -->
+              <lightning-input variant="label-hidden" placeholder="Yok" label="initiator" name="initiator"
+                value={initiator} onchange={handleInputChange} required></lightning-input>
+              <div class="help-text">
+                Write your own name(nickname) here, so that we know who recieved the case.<br />
+              </div>
+            </div>
+          </div>
+
+          <!-- upload files -->
+          <!-- <div class="ContactSupport__Body__Row">
+          <div class="ContactSupport__Body__Label">
+            <label for="subject" class="ContactSupport__Body__Label__firstText">Upload Files</label>
+          </div>
+          <div class="input-column">
+            <lightning-input variant="label-hidden" type="file" label="Attachments" multiple accept={acceptedFormats}
+              onchange={handleFileChange}></lightning-input>
+            <div class="help-text">
+              Each file must be no larger than 4 MB, and you can upload a maximum of 10 files.
+            </div>
+            <template if:true={fileNames}>
+              <div class="slds-m-top_x-small slds-text-body_small">{fileNames}</div>
+            </template>
+            <template if:true={fileNamesValidate}>
+              <div style="color:red" class="slds-m-top_x-small slds-text-body_small">{fileNamesValidateMsg}</div>
+            </template>
+          </div>
+        </div> -->
+
+          <div class="ContactSupport__Body__Row">
+            <div class="input-column" style="text-align: center;">
+              <lightning-input type="checkbox" label="Click here to upload files" name="uploadFiles"
+                value={uploadFilesCheck} onchange={uploadFilesHandle}></lightning-input>
+              <template if:true={uploadFilesCheck}>
+                <div class="slds-text-body_small" style="font-weight: bold;">We’ll submit your case
+                  and then take you to file
+                  upload.</div>
+              </template>
+
+
+            </div>
+          </div>
+        </template>
+        <template if:true={stageUploadPage}>
+          <div class="ContactSupport__Body__Row">
+            <div class="ContactSupport__Body__Label">
+              <label for="subject" class="ContactSupport__Body__Label__firstText">Upload Files</label>
+              <!-- <label class="ContactSupport__Body__Label__required">Required</label> -->
+            </div>
+            <div class="input-column">
+              <lightning-file-upload variant="label-hidden" label="Attact Files" name="fileUploader"
+                accept={acceptedFormats} record-id={recordIdForUpload} onuploadfinished={handleUploadFinished}
+                file-field-name="Guest_Record_fileupload__c" file-field-value={caseId} multiple>
+              </lightning-file-upload>
+
+              <template if:true={fileNames}>
+                <div class="slds-m-top_x-small slds-text-body_small">{fileNames}</div>
+              </template>
+            </div>
+          </div>
+        </template>
+        <div class="ContactSupport__Footer">
+          <!-- {uploadFilesCheck} -->
+          <template if:false={uploadFilesCheck}>
+            <lightning-button variant="brand" type="submit" label="Submit" onclick={handleSubmit}
+              disabled={saving}></lightning-button>
+          </template>
+          <template if:false={stageUploadPage}>
+            <template if:true={uploadFilesCheck}>
+              <lightning-button variant="brand" type="button" label="Submit & Upload Files"
+                onclick={handleNext}></lightning-button>
+            </template>
+          </template>
+        </div>
+      </div>
+    </div>
+  </lightning-card>
+</template>

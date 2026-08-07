@@ -1,0 +1,17 @@
+.content {
+    padding: 8px;
+    background-color: #ffffff;
+    border-radius: 0.25rem;
+    min-height: 194.5px;
+}
+
+img.trail {
+    height: 120px;
+    max-width: initial;
+    pointer-events: none;
+}
+
+.title {
+    font-weight: bold;
+    color: #0176D3;
+}

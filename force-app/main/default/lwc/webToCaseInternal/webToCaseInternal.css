@@ -1,0 +1,194 @@
+/* .ContactSupport {
+    max-width: 900px;
+    margin: auto;
+    padding: 20px 40px;
+    background-color: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+
+.ContactSupport__Header__Tiltle--Text {
+    color: #000000;
+    font-size: 28px;
+    font-weight: bold;
+}
+
+.ContactSupport__Body__Row {
+    display: flex;
+    align-items: flex-start;
+    padding-bottom: 16px;
+    margin-bottom: 16px;
+    border-bottom: 1px solid #eeee;
+}
+
+.ContactSupport__Body__Label {
+    width: 200px;
+    margin-top: 0px;
+}
+
+.ContactSupport__Body__Label__firstText {
+    font-weight: bold;
+    text-align: right;
+    padding-right: 10px;
+}
+
+.ContactSupport__Footer {
+    margin-top: 30px;
+     justify-content: center; 
+    align-items: center; 
+    margin-top: 20px; 
+}
+
+.submit-button {
+    width: auto;  
+} */
+/* new */
+
+
+
+body {
+            font-family: "Robot", sans-serif;
+            font-size: 16px;
+            background-color: #f4f6f9;
+        }
+
+        .ContactSupport {
+            max-width: 900px;
+            margin: auto;
+            padding: 20px 40px;
+            font-size: 16px;
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        }
+
+        /* Form Header */
+        .ContactSupport__Header {
+            width: 100%;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .ContactSupport__Header__Tiltle--Text {
+            color: #000000;
+            font-size: 28px;
+            font-weight: bold;
+        }
+        
+        .ContactSupport__Body {
+            width: 100%;
+        }
+
+        /* Form Row */
+        .ContactSupport__Body__Row {
+            display: flex;
+            align-items: flex-start; /* Align items to the top */
+            width: 100%;
+            padding-bottom: 16px;
+            margin-bottom: 16px;
+            border-bottom: 1px solid #eeee;
+        }
+        .ContactSupport__Body__Row:last-child {
+            border-bottom: none;
+        }
+
+        /* Label Container */
+        .ContactSupport__Body__Label {
+            width: 200px;
+            display: flex;
+            margin-right: 20px;
+            flex-shrink: 0;
+           
+        }
+        
+        /* Label Text */
+        .ContactSupport__Body__Label__firstText {
+            width: 140px;
+            font-weight: bold;
+            text-align: right;
+            padding-right: 10px;
+        }
+
+        /* Required Label Marker */
+        .ContactSupport__Body__Label__required {
+            width: auto; /* Adjusted for English text */
+            padding: 10px 12px;
+            color: #DE9D51;
+            border: 1px solid #DE9D51;
+            font-size: 10px;
+            font-weight: bold;
+            text-align: center;
+            line-height: 1;
+        }
+        
+        /* Column for input and help text */
+        .input-column {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        /* Input and Select Fields */
+        .ContactSupport__Body__inputText__required__whole,
+        .ContactSupport__Body__inputText__whole,
+        .ContactSupport__Body__selectList__required__whole {
+            width: 100%;
+            height: 50px;
+            font-family: "Robot!important", sans-serif;
+            font-size: 14px;
+            padding: 0 10px;
+            border: 1px solid #dddd;
+            border-radius: 4px;
+        }
+        
+        /* Highlight invalid fields */
+        .input-error, 
+        input:invalid, select:invalid:not([value=""]), textarea:invalid { /* HTML5バリデーション用 */
+            border-color: #d9534f !important;
+            box-shadow: 0 0 4px rgba(217, 83, 79, 0.4);
+        }
+
+        /* Text Area */
+        .ContactSupport__Body__InputArea__required {
+            width: 100%;
+            height: 150px;
+            resize: vertical;
+            font-family: "Robot!important", sans-serif;
+            font-size: 14px;
+            padding: 10px;
+            border: 1px solid #dddd;
+            border-radius: 4px;
+        }
+
+        /* Help Text Styling */
+        .help-text {
+            font-size: 13px;
+            color: #555;
+            margin-top: 8px;
+            line-height: 1.6;
+        }
+
+        .ContactSupport__Footer {
+            width: 100%;
+            display: flex;
+            margin-top: 30px;
+             display: flex;
+            justify-content: center; /* จัดกลางแนวนอน */
+            align-items: center; /* จัดกลางแนวตั้ง */
+            margin-top: 20px; /* เพิ่มระยะห่างจากส่วนบน */
+        }
+
+        .ContactSupport__Footer__Btn {
+            background: #3489CF !important;
+            color: #FFF !important;
+            border: none !important;
+            border-radius: 8px !important;
+            padding: 18px 40px !important;
+            width: auto !important;
+            margin: auto !important;
+            cursor: pointer;
+            font-size: 18px;
+            display: flex;
+    
+        }

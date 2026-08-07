@@ -1,0 +1,121 @@
+<template>
+    <!-- notify -->
+    <template if:true={showAnyMsg}>
+        <div class="slds-notify slds-notify_alert slds-alert_warning" role="alert">
+            <span class="slds-assistive-text">warning</span>
+            <span class="slds-icon_container slds-icon-utility-error slds-m-right_x-small" title="Description of icon when needed">
+                <svg class="slds-icon slds-icon_x-small" aria-hidden="true">
+                  <use xlink:href="/apexpages/slds/latest/assets/icons/utility-sprite/svg/symbols.svg#announcement"></use>
+                </svg>
+              </span>
+            <h2><b>UPCOMING : </b>  
+                <!-- <a href="#">More Information</a> -->
+            </h2>
+            <div class="slds-text-color_inverse"> Your {certificationName} exam on {examinationDate}</div>
+            <div class="slds-notify__close">
+                <button class="slds-button slds-button_icon slds-button_icon-small slds-button_icon-inverse" title="Close" onclick={closeShowAnyMsg}>
+                        <svg class="slds-button__icon" aria-hidden="true">
+                            <use xlink:href="/apexpages/slds/latest/assets/icons/utility-sprite/svg/symbols.svg#close"></use>
+                        </svg>
+                        <span class="slds-assistive-text">Close</span>
+                    </button>
+                <div lwc:dom="manual"></div>
+            </div>
+        </div>
+    </template>  
+    <lightning-card title="Certification Board" icon-name="standard:skill">
+        <lightning-tabset>
+            <lightning-tab label="Certification Chart">
+                <c-skill-and-certification-board-chart></c-skill-and-certification-board-chart>
+            </lightning-tab>
+            <lightning-tab label="My Certification">
+                <lightning-layout multiple-rows="true">
+                    <lightning-layout-item size="12" padding="around-small">
+                        <div class="slds-grid slds-gutters">
+                            <!-- profile -->
+                            <div class="slds-col">
+                                <div class="slds-align_absolute-center slds-p-bottom_small">
+                                    <span class="slds-avatar slds-avatar_circle slds-avatar_large">
+                                        <img alt={name} src={avatar} title={name} />
+                                    </span>
+                                </div>
+                                <div class="slds-p-bottom_small">
+                                    <p class="slds-align_absolute-center slds-text-heading_small slds-text-title_bold">
+                                        <lightning-formatted-text value={name}></lightning-formatted-text>
+                                    </p>
+                                    <p class="slds-align_absolute-center slds-text-body_small">
+                                        <lightning-formatted-text value={title}></lightning-formatted-text>
+                                    </p>
+                                </div>
+                                <div>
+                                    <p class="slds-align_absolute-center">Total Certification</p>
+                                    <p class="slds-align_absolute-center slds-text-heading_small">
+                                        <lightning-formatted-text class="count-cert" value={countcert}>
+                                        </lightning-formatted-text>
+                                    </p>
+                                </div>
+                            </div>
+                            <template if:true={loaded}>
+                                <div class="slds-col">
+                                    <lightning-spinner alternative-text="Loading" size="small" class="slds-spinner_brand">
+                                    </lightning-spinner>
+                                </div>
+                            </template>
+                            <!-- upcoming  -->                            
+                            <template if:true={showUpcomingExam}>
+                                <div class="slds-col slds-border_left slds-p-top_small">
+                                    <div c-skillandcertificationboardpersonal_skillandcertificationboardpersonal="" class="slds-align_absolute-center">
+                                        <img c-skillandcertificationboardpersonal_skillandcertificationboardpersonal="" src={certificationIcon} style="width: 60px; height: 60px;">
+                                    </div>
+                                    <div class="slds-p-bottom_small">
+                                        <p class="slds-align_absolute-center slds-text-body_small">
+                                            <b><lightning-formatted-text value={certificationName}></lightning-formatted-text></b>
+                                        </p>
+                                        <p class="slds-align_absolute-center"> Exam Date : {examinationDate}</p>
+                                    </div>
+                                    <div>
+                                        <p class="slds-align_absolute-center"><b>{titleText}</b></p>
+                                        <p class="slds-align_absolute-center slds-text-heading_small">
+                                            <lightning-formatted-text class="upcoming-days" value={numberOfDays}>
+                                            </lightning-formatted-text>
+                                        </p>                            
+                                        <p class="slds-align_absolute-center">{endText}</p>
+                                    </div>
+                                </div>
+                            </template>
+                            <!-- upcoming  -->                            
+                            <template if:true={certifications}>
+                                <div class="slds-col slds-border_left slds-p-top_small">
+                                    <div class="slds-scrollable" style="height:182px">
+                                        <template for:each={certifications} for:item="cert">
+                                            <div class="sldc-p-around_medium lgc-bg" key={cert.Id}>
+                                                <lightning-layout class="slds-p-bottom_small">
+                                                    <lightning-layout-item size="3">
+                                                        <div class="slds-align_absolute-center"><img style="width:60px;height:60px" src={cert.icon}></div>
+                                                    </lightning-layout-item>
+                                                    <lightning-layout-item size="9" class="slds-p-left_medium">
+                                                        <p class="slds-text-heading_small slds-text-title_bold">{cert.Name}</p>
+                                                        <p class="slds-text-body_small">{cert.expr0}-Present</p>
+                                                    </lightning-layout-item>
+                                                </lightning-layout>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </lightning-layout-item>
+                    <template if:true={loaded}>
+                        <div class="slds-col">
+                            <lightning-spinner alternative-text="Loading" size="small" class="slds-spinner_brand">
+                            </lightning-spinner>
+                        </div>
+                    </template>
+                </lightning-layout>
+            </lightning-tab>
+            <lightning-tab label="All Certification">
+                <c-skill-and-certification-board-all></c-skill-and-certification-board-all>
+            </lightning-tab>
+        </lightning-tabset>
+    </lightning-card>
+</template>

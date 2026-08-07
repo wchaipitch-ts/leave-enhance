@@ -1,0 +1,120 @@
+<apex:page controller="CalendarController" action="{!init}"
+	showHeader="false" sidebar="false"
+	docType="html-5.0" applyHtmlTag="false" applyBodyTag="false" readOnly="false" 
+	lightningStylesheets="true" cache="false">
+
+	<html>
+
+	<head>
+		<meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+		<style>
+			.eventTable{
+				border-collapse: separate;
+			}
+			.eventTable td{
+				padding-top:10px;
+				padding-bottom:10px;
+			}
+			.first-event{
+				border-top: 3px double lightslategray;
+			}
+			.gap-hours-1{
+				border-bottom: 3px solid lavenderblush;
+			}
+			.gap-hours-2{
+				border-bottom: 6px solid lavenderblush;
+			}
+			.gap-hours-3{
+				border-bottom: 9px solid lavenderblush;
+			}
+			.gap-hours-4, .gap-hours-5,.gap-hours-6,.gap-hours-7{
+				border-bottom: 12px solid lavenderblush;
+			}
+			.new{
+				background-color: lightskyblue;
+				border-radius: 4px;
+				padding:5px;
+			}
+			.update{
+				background-color: coral;
+				border-radius: 4px;
+				padding:5px;
+			}
+			.del{
+				background-color: dimgray;
+				color:white;
+				border-radius: 4px;
+				padding:5px;
+			}
+			.original{
+				display: inline-block;
+				background-color: mediumvioletred;
+				color:white;
+				width: 1rem;
+				height: 1rem;
+				border-radius: 50%;
+				text-align:center;
+  				line-height: 1rem;
+			}
+		</style>
+	</head>
+
+	<body class="slds-scope" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+
+
+<apex:form >
+	<!--OAuth Button-->
+	<apex:outputPanel layout="block" rendered="{!NOT(HasAccessToken)}">
+		<apex:commandButton value="OAuth" action="{!startauthorize}" rerender="authUrl"/>
+		<apex:outputPanel id="authUrl" layout="block">
+			{!authUrl}
+		</apex:outputPanel>
+	</apex:outputPanel>
+
+	<!--UserSelector Button-->
+	<apex:outputPanel layout="block" >
+		<apex:selectList id="userSelector" value="{!selectedUserId}" size="1">
+			<apex:selectOptions value="{!GBDusers}"/>
+		</apex:selectList>
+	</apex:outputPanel>
+
+	<!--Import Button-->
+	<apex:outputPanel layout="block" rendered="{!HasAccessToken}">
+		<apex:commandButton value="Import" action="{!doSync}" rerender="eventTable"/>
+	</apex:outputPanel>
+</apex:form>
+
+<apex:outputPanel layout="block" rendered="{!HasAccessToken}">
+	<div class="slds-m-around_small">
+		<span>{!userTimezone}</span>
+	</div>
+
+	<apex:dataTable value="{!records}" var="ev" styleClass="eventTable" id="eventTable">
+		<apex:column headerValue="開始" styleClass="{!ev.borderStyle}">
+			<!--
+			<apex:outputtext value="{0, date, yyyy/MM/dd HH:mm:ss}">
+				<apex:param value="{!ev.record.StartDatetime}"></apex:param>
+			</apex:outputtext>
+			-->
+			<apex:outputField value="{!ev.record.StartDatetime}"/>
+		</apex:column>
+		<apex:column headerValue="終了" styleClass="{!ev.borderStyle}">
+			<apex:outputField value="{!ev.record.EndDatetime}"/>
+		</apex:column>
+		<apex:column headerValue="件名" styleClass="{!ev.borderStyle}">
+			{!ev.record.Subject}
+		</apex:column>
+		<apex:column headerValue="区分" styleClass="{!ev.borderStyle}">
+			<apex:outputText styleClass="new" value="新規" rendered="{!ev.isNew}"/>
+			<apex:outputText styleClass="update" value="Update" rendered="{!ev.IsUpdated}"/>
+			<apex:outputText styleClass="del" value="削除" rendered="{!ev.deleteTarget}"/>
+			<apex:outputText styleClass="original" value="✓" rendered="{!AND(ev.myOriginal, NOT(ev.deleteTarget))}"/>
+		</apex:column>
+	</apex:dataTable>
+</apex:outputPanel>
+
+
+</body>
+</html>
+</apex:page>

@@ -1,0 +1,68 @@
+.hero-section {
+    height: 50vh;
+    background: url('/sfsites/c/resource/bg_job_applications') no-repeat center;
+    background-size: cover;
+    color: white;
+}
+
+.slow-text {
+    opacity: 0;
+    animation: fadeIn 2s ease-in-out forwards;
+}
+
+@keyframes fadeIn {
+    0% { opacity: 0; }
+    100% { opacity: 1; }
+}
+
+.hero-title {
+    font-size: 2rem;
+    color: #0080cb;
+    font-weight: bold;
+}
+
+.hero-subtitle {
+    font-size: 1.5rem;
+    font-weight: 300;
+    color: #606060;
+    font-style: italic;
+}
+
+.job-listings {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+}
+
+.search-container {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.sidebar-container {
+    position: relative;
+    height: 100%;
+}
+
+.sidebar {
+    position: sticky;
+    top: 0;
+    background: white;
+    box-shadow: -3px 0 10px rgba(0, 0, 0, 0.2);
+    padding: 20px;
+    overflow-y: auto;
+}
+
+.close-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: red;
+    color: white;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+}
+.content-job-detail{
+    min-height: 500px;
+}

@@ -1,0 +1,686 @@
+<template>
+	<!--
+    <lightning-card>
+        <div slot="title" class="highlight-panel">
+            <span class="highlight-panel-icon">
+                <lightning-icon icon-name="standard:shift_scheduling_operation" alternative-text="Timesheet Management Screen"
+                    title="Timesheet Management Screen"></lightning-icon>
+            </span>
+            <span class="highlight-panel-title">
+                Timesheet Management Screen
+            </span>
+        </div>
+    </lightning-card>
+    <br/>
+    -->
+
+	<lightning-card>
+		<div class="custom-box slds-p-around_none slds-m-top_x-small slds-m-bottom_medium slds-m-horizontal_none">
+			<lightning-layout>
+				<lightning-layout-item flexibility="auto">
+					<template lwc:if={isNotCurrentUser}>
+						<lightning-button-icon
+							style="position: absolute"
+							icon-name="utility:left"
+							alternative-text="Back to current user"
+							title="Back to current user"
+							onclick={onBack}>
+						</lightning-button-icon>
+					</template>
+					<div class="user-avatar-margin box-border slds-align_absolute-center">
+						<span class="user-avatar-size slds-avatar slds-avatar_circle slds-avatar_large" onclick={onUserRefresh}>
+							<img class="avatar-image" alt={userName} src={userAvatar} title={userName} />
+						</span>
+					</div>
+				</lightning-layout-item>
+
+				<lightning-layout-item size="6">
+					<div class="inform-box box-border custom-box slds-p-around_medium">
+						<lightning-layout class="user-card">
+							<lightning-layout-item flexibility="auto">
+								<div class="user-margin slds-p-bottom_small">
+									<label for="userName" class="user-label">Name</label><br />
+									<lightning-formatted-url value={userPath} tooltip={userName} label={userName} class="user-text" target="_blank">
+									</lightning-formatted-url>
+								</div>
+							</lightning-layout-item>
+							<lightning-layout-item flexibility="auto">
+								<div class="user-margin slds-p-bottom_small">
+									<label for="employeeNumber" class="user-label">Employee Number</label><br />
+									<lightning-formatted-text
+										name="employeeNumber"
+										value={employeeNumber}
+										class="user-text"></lightning-formatted-text>
+								</div>
+							</lightning-layout-item>
+							<lightning-layout-item flexibility="auto">
+								<div class="user-margin slds-p-bottom_small">
+									<label for="userTitle" class="user-label">Title</label><br />
+									<lightning-formatted-text name="userTitle" value={userTitle} class="user-text"></lightning-formatted-text>
+								</div>
+							</lightning-layout-item>
+							<lightning-layout-item flexibility="auto">
+								<div class="user-margin slds-p-bottom_small">
+									<label for="userTitle" class="user-label">Department</label><br />
+									<lightning-formatted-text
+										name="userDepartment"
+										value={userDepartment}
+										class="user-text"></lightning-formatted-text>
+								</div>
+							</lightning-layout-item>
+							<lightning-layout-item flexibility="auto">
+								<div class="user-margin slds-p-bottom_small">
+									<label for="userTitle" class="user-label">Manager</label><br />
+									<lightning-formatted-url
+										value={userManagerPath}
+										tooltip={userManagerName}
+										label={userManagerName}
+										class="user-text"
+										target="_blank">
+									</lightning-formatted-url>
+								</div>
+							</lightning-layout-item>
+						</lightning-layout>
+
+						<lightning-layout class="inform-card">
+							<lightning-layout-item flexibility="auto">
+								<div class="inform-margin slds-p-bottom_small">
+									<label for="standardWork" class="inform-label">Standard Work</label><br />
+									<lightning-formatted-text name="standardWork" value={standardWork} class="inform-text">
+									</lightning-formatted-text>
+								</div>
+							</lightning-layout-item>
+							<lightning-layout-item flexibility="auto">
+								<div class="inform-margin slds-p-bottom_small">
+									<label for="workedHours" class="inform-label">Worked Hours</label><br />
+									<lightning-formatted-text name="workedHours" value={workedHours} class="inform-text"> </lightning-formatted-text>
+								</div>
+							</lightning-layout-item>
+							<lightning-layout-item flexibility="auto">
+								<div class="inform-margin slds-p-bottom_small">
+									<label for="overtimeHours" class="inform-label">Overtime Hours</label><br />
+									<lightning-formatted-text name="overtimeHours" value={overtimeHours} class="inform-text">
+									</lightning-formatted-text>
+								</div>
+							</lightning-layout-item>
+							<lightning-layout-item flexibility="auto">
+								<div class="inform-margin slds-p-bottom_small">
+									<label for="leaveHours" class="inform-label">Leave Hours</label><br />
+									<lightning-formatted-text name="leaveHours" value={leaveHours} class="inform-text"> </lightning-formatted-text>
+								</div>
+							</lightning-layout-item>
+							<lightning-layout-item flexibility="auto">
+								<div class="inform-margin slds-p-bottom_small">
+									<label for="totalHours" class="inform-label">Total Hours</label><br />
+									<lightning-formatted-text name="totalHours" value={totalHours} class="inform-text"> </lightning-formatted-text>
+								</div>
+							</lightning-layout-item>
+							<lightning-layout-item flexibility="auto">
+								<div class="inform-margin slds-p-bottom_small">
+									<label for="userAnnualDate" class="inform-label">Annual Leave</label><br />
+									<lightning-formatted-text name="userAnnualDate" value={userAnnualDate} class="inform-text">
+									</lightning-formatted-text>
+								</div>
+							</lightning-layout-item>
+							<!-- <lightning-layout-item flexibility="auto">
+								<div class="user-margin slds-p-bottom_small">
+									<label for="employeeNumber" class="user-label">Annual Leave</label><br />
+									<lightning-formatted-text
+										name="employeeNumber"
+										value={employeeNumber}
+										class="user-text"></lightning-formatted-text>
+								</div>
+							</lightning-layout-item> -->
+						</lightning-layout>
+					</div>
+				</lightning-layout-item>
+
+				<lightning-layout-item size="4" class="slds-show_large">
+					<div class="box-border custom-box slds-p-around_medium slds-text-align_center">
+						<c-timestamp stamp={stamp} onstamped={handleStamped}></c-timestamp>
+						<template lwc:if={isNotCurrentUser}>
+							<div class="navexStandardManager slds-template__container slds-spinner_container"></div>
+						</template>
+					</div>
+				</lightning-layout-item>
+			</lightning-layout>
+		</div>
+	</lightning-card>
+
+	<lightning-card>
+		<lightning-layout>
+			<lightning-layout-item flexibility="auto">
+				<div class="custom-box box-border year-selector">
+					<div class="slds-grid slds-grid_align-spread slds-grow">
+						<div class="slds-align-middle">
+							<lightning-button-icon
+								icon-name="utility:left"
+								variant="container"
+								alternative-text="Previous Year"
+								class="slds-m-left_xx-medium"
+								title="Previous Year"
+								onclick={previousYear}>
+							</lightning-button-icon>
+						</div>
+						<lightning-icon
+							icon-name="utility:event"
+							class="event-icon"
+							style="cursor: pointer"
+							title="This Month"
+							onclick={setDefaultData}></lightning-icon>
+						<h2 aria-atomic="true" aria-live="assertive" class="slds-align-middle font-year" id="pickerDaySelected-year">
+							{selectedYear}
+						</h2>
+						<div class="slds-align-middle">
+							<lightning-button-icon
+								icon-name="utility:right"
+								variant="container"
+								alternative-text="Next Year"
+								class="slds-m-left_xx-medium"
+								title="Next Year"
+								onclick={nextYear}>
+							</lightning-button-icon>
+						</div>
+					</div>
+				</div>
+				<div class="custom-box box-border month-box">
+					<template iterator:row={monthOptions}>
+						<div key={row.value.key} class={row.value.class} data-id={row.value.value} onclick={setSelectedMonth}>
+							{row.value.value}. {row.value.label}
+						</div>
+					</template>
+				</div>
+			</lightning-layout-item>
+
+			<lightning-layout-item size="10">
+				<template lwc:if={isLoading}>
+					<lightning-spinner alternative-text="Loading"></lightning-spinner>
+				</template>
+				<table class="time-table custom-box">
+					<tr class="first-col">
+						<th class="col-OH-f" colspan="5">Operation Hour</th>
+						<th class="col-TI-f">Time In</th>
+						<th class="col-LB-f">Lunch Break</th>
+						<th class="col-TO-f">Time Out</th>
+						<th class="col-WH-f">Worked Hours</th>
+						<th class="col-RT-f">Regular Time</th>
+						<th class="col-OT-f">OverTime</th>
+						<th class="col-LO-f" rowspan="2">Location</th>
+						<th class="col-CM-f" rowspan="2">Comment</th>
+					</tr>
+					<tr class="second-col">
+						<th class="col-OH-s" colspan="5">{selectedMonthLabel}</th>
+						<th class="col-TI-s">{timeIn_Str}</th>
+						<th class="col-LB-s">{defaultLunchBreak}</th>
+						<th class="col-TO-s">{timeOut_Str}</th>
+						<th class="col-WH-s">{defaultTimeFormat}</th>
+						<th class="col-RT-s">{defaultTimeFormat}</th>
+						<th class="col-OT-s">{defaultTimeFormat}</th>
+					</tr>
+					<template iterator:row={timesheetDataList}>
+						<template lwc:if={row.value.isholiday}>
+							<tr key={row.value.date} class={row.value.row_data}>
+								<td class="row-OH-holiday">
+									<div style="display: flex">
+										<p data-id={row.value.date_id}>{row.value.shortdate}</p>
+									</div>
+								</td>
+								<td class={row.value.row_oh}></td>
+								<td class={row.value.row_oh}></td>
+								<td class={row.value.row_oh}></td>
+								<td class={row.value.row_wk}>{row.value.weekday}</td>
+								<td colspan="8" title={row.value.holiday.Description} class="row-CM">{row.value.holiday.Description}</td>
+							</tr>
+						</template>
+						<template lwc:elseif={row.value.isapprovedleave}>
+							<tr key={row.value.date} class={row.value.row_data}>
+								<td class={row.value.row_oh}>
+									<div style="display: flex">
+										<p data-id={row.value.date_id} onclick={openModal}>{row.value.shortdate}</p>
+										<!--&nbsp; &nbsp;
+										<template if:false={isNotCurrentUser}>
+											<lightning-icon
+												data-id={row.value.date_id}
+												class="edit-icon"
+												icon-name="utility:edit"
+												alternative-text="Edit"
+												size="xx-small"
+												title="Edit"
+												onclick={openModal}>
+											</lightning-icon>
+										</template>-->
+									</div>
+								</td>
+								<td class={row.value.row_oh}></td>
+								<template lwc:if={row.value.isweekend}>
+									<td class={row.value.row_oh}></td>
+									<td class={row.value.row_oh}></td>
+								</template>
+								<template lwc:elseif={isNotCurrentUser}>
+									<td class={row.value.row_oh}></td>
+									<td class={row.value.row_oh}></td>
+								</template>
+								<template lwc:elseif={row.value.isleave}>
+									<td class={row.value.row_oh}></td>
+									<td class={row.value.row_oh}>
+										<lightning-icon
+											data-id={row.value.leaveRequeste.Id}
+											class="lookup-icon"
+											icon-name="utility:record_alt"
+											alternative-text="Check Application"
+											size="x-small"
+											title="Check Application"
+											onclick={openViewAIModal}>
+										</lightning-icon>
+									</td>
+								</template>
+								<template lwc:else>
+									<td class={row.value.row_oh}></td>
+									<td class={row.value.row_oh}>
+										<lightning-icon
+											data-id={row.value.date_id}
+											class="create-icon blue-create"
+											icon-name="utility:record_create"
+											alternative-text="Submit Application"
+											size="x-small"
+											title="Submit Application"
+											onclick={openCreateAIModal}>
+										</lightning-icon>
+									</td>
+								</template>
+								<td class={row.value.row_wk}>{row.value.weekday}</td>
+								<td class={row.value.row_ti}>
+									<div style="display: flex">
+										<!--<div style="position: relative">-->
+										<template if:true={row.value.timestamp.isWarningTimeIn}>
+											<p style="cursor: default; display: flex; left: 10px;" title="Warning : Requires manual input reason">⚠️</p>
+											<!--<p style="cursor: default; position: absolute; left: 10px; font-size: 1.1rem" title="Warning : Requires manual input reason">⚠️</p>-->
+										</template>
+										<p>{row.value.timestamp.Stamped_TimeIn}</p>
+										&nbsp; &nbsp;
+										<template if:false={isNotCurrentUser}>
+											<lightning-icon
+												data-id={row.value.date_id}
+												class="edit-icon"
+												icon-name="utility:edit"
+												alternative-text="Edit"
+												size="xx-small"
+												title="Edit"
+												onclick={openModal}>
+											</lightning-icon>
+										</template>
+									</div>
+								</td>
+								<td class="row-LB">{defaultLunchBreak}</td>
+								<td class={row.value.row_to}>
+									<div style="display: flex">
+										<!--<div style="position: relative">-->
+										<template if:true={row.value.timestamp.isWarningTimeOut}>
+											<p style="cursor: default; display: flex; left: 10px;" title="Warning : Requires manual input reason">⚠️</p>
+											<!--<p style="cursor: default; position: absolute; left: 10px; font-size: 1.1rem" title="Warning : Requires manual input reason">⚠️</p>-->
+										</template>
+										<p>{row.value.timestamp.Stamped_TimeOut}</p>
+										&nbsp; &nbsp;
+										<template if:false={isNotCurrentUser}>
+											<lightning-icon
+												data-id={row.value.date_id}
+												class="edit-icon"
+												icon-name="utility:edit"
+												alternative-text="Edit"
+												size="xx-small"
+												title="Edit"
+												onclick={openModal}>
+											</lightning-icon>
+										</template>
+									</div>
+								</td>
+								<td class={row.value.row_wh}>
+									<div style="position: relative">
+										<template if:true={row.value.timestamp.isWarningWorkedHours}>
+											<p style="cursor: default; position: absolute; left: 10px; font-size: 1.1rem" title="Warning : Workhour under 7.5 requires a reason">⚠️</p>
+										</template>
+										<p>{row.value.timestamp.workedHours_Str}</p>
+									</div>
+								</td>
+								<td class="row-RT">{regularTime_Str}</td>
+								<td class={row.value.row_ot}>
+									<div style="position: relative">
+										<template if:true={row.value.timestamp.isWarningOT}>
+											<p style="cursor: default; position: absolute; left: 10px; font-size: 1.1rem" title="Warning : Requires Overtime reason">⚠️</p>
+										</template>
+										<p>{row.value.timestamp.overTime_Str}</p>
+									</div>
+								</td>
+								<td class="row-LO">
+									<template if:true={row.value.timestamp.isLocated}>
+										<p
+											data-id={row.value.date_id}
+											title="Location"
+											style="cursor: pointer; font-size: 1.5rem"
+											onclick={onMapOpen}>
+											🗺️
+										</p>
+									</template>
+								</td>
+								<td title={row.value.leaveRequeste.remark} class="row-CM">{row.value.leaveRequeste.remark}</td>
+							</tr>
+						</template>
+						<template lwc:else>
+							<tr key={row.value.date} class={row.value.row_data}>
+								<td class={row.value.row_oh}>
+									<div style="display: flex">
+										<p data-id={row.value.date_id} onclick={openModal}>{row.value.shortdate}</p>
+										<!--&nbsp; &nbsp;
+										<template if:false={isNotCurrentUser}>
+											<lightning-icon
+												data-id={row.value.date_id}
+												class="edit-icon"
+												icon-name="utility:edit"
+												alternative-text="Edit"
+												size="xx-small"
+												title="Edit"
+												onclick={openModal}>
+											</lightning-icon>
+										</template>-->
+									</div>
+								</td>
+								<td class={row.value.row_oh}></td>
+								<template lwc:if={row.value.isweekend}>
+									<td class={row.value.row_oh}></td>
+									<td class={row.value.row_oh}></td>
+								</template>
+								<template lwc:elseif={isNotCurrentUser}>
+									<td class={row.value.row_oh}></td>
+									<td class={row.value.row_oh}></td>
+								</template>
+								<template lwc:elseif={row.value.isleave}>
+									<td class={row.value.row_oh}></td>
+									<td class={row.value.row_oh}>
+										<lightning-icon
+											data-id={row.value.leaveRequeste.Id}
+											class="lookup-icon orange-check"
+											icon-name="utility:record_lookup"
+											alternative-text="Check Application"
+											size="x-small"
+											title="Check Application"
+											onclick={openViewAIModal}>
+										</lightning-icon>
+									</td>
+								</template>
+								<template lwc:else>
+									<td class={row.value.row_oh}></td>
+									<td class={row.value.row_oh}>
+										<lightning-icon
+											data-id={row.value.date_id}
+											class="create-icon blue-create"
+											icon-name="utility:record_create"
+											alternative-text="Submit Application"
+											size="x-small"
+											title="Submit Application"
+											onclick={openCreateAIModal}>
+										</lightning-icon>
+									</td>
+								</template>
+								<td class={row.value.row_wk}>{row.value.weekday}</td>
+								<td class={row.value.row_ti}>
+									<div style="display: flex">
+									<!--<div style="position: relative">-->
+										<template if:true={row.value.timestamp.isWarningTimeIn}>
+											<p style="cursor: default; display: flex; left: 10px;" title="Warning : Requires manual input reason">⚠️</p>
+											<!--<p style="cursor: default; position: absolute; left: 10px; font-size: 1.1rem" title="Warning : Requires manual input reason">⚠️</p>-->
+										</template>
+										<p>{row.value.timestamp.Stamped_TimeIn}</p>
+										&nbsp; &nbsp;
+										<template if:false={isNotCurrentUser}>
+											<lightning-icon
+												data-id={row.value.date_id}
+												class="edit-icon"
+												icon-name="utility:edit"
+												alternative-text="Edit"
+												size="xx-small"
+												title="Edit"
+												onclick={openModal}>
+											</lightning-icon>
+										</template>
+									</div>
+								</td>
+								<td class="row-LB">{defaultLunchBreak}</td>
+								<td class={row.value.row_to}>
+									<div style="display: flex">
+										<!--<div style="position: relative">-->
+										<template if:true={row.value.timestamp.isWarningTimeOut}>
+											<p style="cursor: default; display: flex; left: 10px;" title="Warning : Requires manual input reason">⚠️</p>
+											<!--<p style="cursor: default; position: absolute; left: 10px; font-size: 1.1rem" title="Warning : Requires manual input reason">⚠️</p>-->
+										</template>
+										<p>{row.value.timestamp.Stamped_TimeOut}</p>
+										&nbsp; &nbsp;
+										<template if:false={isNotCurrentUser}>
+											<lightning-icon
+												data-id={row.value.date_id}
+												class="edit-icon"
+												icon-name="utility:edit"
+												alternative-text="Edit"
+												size="xx-small"
+												title="Edit"
+												onclick={openModal}>
+											</lightning-icon>
+										</template>
+									</div>
+								</td>
+								<td class={row.value.row_wh}>
+									<div style="position: relative">
+										<template if:true={row.value.timestamp.isWarningWorkedHours}>
+											<p style="cursor: default; position: absolute; left: 10px; font-size: 1.1rem" title="Warning : Workhour under 7.5 requires a reason">⚠️</p>
+										</template>
+										<p>{row.value.timestamp.workedHours_Str}</p>
+									</div>
+								</td>
+								<td class="row-RT">{regularTime_Str}</td>
+								<td class={row.value.row_ot}>
+									<div style="position: relative">
+										<template if:true={row.value.timestamp.isWarningOT}>
+											<p style="cursor: default; position: absolute; left: 10px; font-size: 1.1rem" title="Warning : Requires Overtime reason">⚠️</p>
+										</template>
+										<p>{row.value.timestamp.overTime_Str}</p>
+									</div>
+								</td>
+								<td class="row-LO">
+									<template if:true={row.value.timestamp.isLocated}>
+										<p
+											data-id={row.value.date_id}
+											title="Location"
+											style="cursor: pointer; font-size: 1.5rem"
+											onclick={onMapOpen}>
+											🗺️
+										</p>
+									</template>
+								</td>
+								<td title={row.value.timestamp.Remark__c} class="row-CM">
+									<template lwc:if={row.value.timestamp.Stamped_TimeOut}>
+										<lightning-icon
+											data-id={row.value.date_id}
+											icon-name="utility:edit"
+											alternative-text="Edit Remark"
+											size="xx-small"
+											title="Remark Edit"
+											onclick={openRemarkModal}>
+										</lightning-icon>
+									</template>
+									&nbsp; &nbsp;
+									{row.value.timestamp.Remark}
+								</td>
+							</tr>
+						</template>
+					</template>
+				</table>
+			</lightning-layout-item>
+		</lightning-layout>
+		<template lwc:if={isPermissionUser}>
+			<div class="slds-form-element user-slector">
+				<div class="slds-form-element__control">
+					<div class="slds-select_container">
+						<select class="slds-select" onchange={onUserChanged}>
+							<template for:each={userList} for:item="option">
+								<option key={option.Id} class="uiInputSelectOption" value={option.Id} selected={option.selected}>
+									{option.Name}
+								</option>
+							</template>
+						</select>
+					</div>
+				</div>
+			</div>
+		</template>
+	</lightning-card>
+
+	<!-- /////////////////   Modal Area   ///////////////////// -->
+
+	<template if:true={isShowModal}>
+		<section role="dialog" tabindex="-1" aria-modal="true" class="slds-modal slds-fade-in-open slds-modal_medium">
+			<div class="slds-modal__container container-size">
+				<!-- modal header start -->
+				<header class="slds-modal__header">
+					<button class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse" title="Close" onclick={onCancel}>
+						<lightning-icon icon-name="utility:close" alternative-text="close" variant="inverse" size="small"></lightning-icon>
+						<span class="slds-assistive-text">Close</span>
+					</button>
+					<h2 class="slds-text-heading_medium slds-hyphenate">{modalHeader}</h2>
+				</header>
+				<!-- modal body start -->
+				<div class="slds-modal__content slds-p-around_medium">
+					<div class="form-legend-desktop right-require"><abbr class="slds-required">*</abbr> = Required Information</div>
+					<div class="slds-p-bottom_large" style="width: 100%">
+						<lightning-record-edit-form object-api-name="Timestamp__c">
+							<lightning-messages></lightning-messages>
+
+							<div class="slds-grid">
+								<div class="slds-col slds-size_2-of-2">
+									<template if:true={isFieldVisible}>
+										<lightning-input-field field-name="Name" disabled="" value={timestampNumber}> </lightning-input-field>
+									</template>
+								</div>
+							</div>
+							<div class="slds-grid">
+								<div class="slds-col slds-size_2-of-2">
+									<template if:true={isFieldVisible}>
+										<lightning-input-field field-name="Stamped_Date__c" disabled="" value={selectedDate}> </lightning-input-field>
+									</template>
+								</div>
+							</div>
+							<div class="slds-grid">
+								<div class="slds-col slds-size_1-of-2">
+									<template if:true={isFieldVisible}>
+										<lightning-input-field
+											data-id="timeIn"
+											field-name="Stamped_TimeIn__c"
+											dirty=""
+											value={stampedTimeIn}
+											onchange={onTimeChange}>
+										</lightning-input-field>
+									</template>
+								</div>
+								<div class="slds-col slds-size_1-of-2">
+									<template if:true={isFieldVisible}>
+										<lightning-input-field
+											data-id="timeOut"
+											field-name="Stamped_TimeOut__c"
+											dirty=""
+											value={stampedTimeOut}
+											onchange={onTimeChange}>
+										</lightning-input-field>
+									</template>
+								</div>
+							</div>
+
+							<!--<div class="slds-grid">
+								<div class="slds-col slds-size_2-of-2">
+									<lightning-input-field
+										field-name="Remark__c"
+										dirty=""
+										required={requireRemark}
+										value={remark}
+										onchange={onRemarkChange}>
+									</lightning-input-field>
+								</div>
+							</div>-->
+
+							<div class="slds-grid">
+								<div class="slds-col slds-size_2-of-2">
+									<!--<template if:true={isFieldVisible}>-->
+										<lightning-input-field
+											field-name="Maunal_Input_Reason__c"
+											dirty=""
+											required={requireManualInput}
+											value={manualInputReason}
+											onchange={onManualInputReasonChange}>
+										</lightning-input-field>
+									<!--</template>-->
+								</div>
+							</div>
+							<div class="slds-grid">
+								<div class="slds-col slds-size_2-of-2">
+									<template if:true={isRemarksFieldVisible}>
+										<template if:true={requireWorkHour}>
+											<lightning-input-field
+												field-name="WorkHour_Reason__c"
+												dirty=""
+												required={requireWorkHour}
+												value={workHourReason}
+												onchange={onWorkHourReasonChange}>
+											</lightning-input-field>
+										</template>
+									</template>
+								</div>
+							</div>
+							<div class="slds-grid">
+								<div class="slds-col slds-size_2-of-2">
+									<template if:true={isRemarksFieldVisible}>
+										<template if:true={requireOverTime}>
+											<lightning-input-field
+												field-name="Overtime_Reason__c"
+												dirty=""
+												required={requireOverTime}
+												value={overTimeReason}
+												onchange={onOverTimeReasonChange}>
+											</lightning-input-field>
+										</template>
+									</template>
+								</div>
+							</div>
+						</lightning-record-edit-form>
+					</div>
+				</div>
+				<!-- modal footer start-->
+				<footer class="slds-modal__footer">
+					<div class="slds-align_absolute-right">
+						<lightning-button onclick={onCancel} label="Cancel" title="Cancel" class="slds-m-left_x-small"> </lightning-button>
+						<lightning-button onclick={onSave} variant="brand" label="Save" title="Save Timestamp" class="slds-m-left_x-small">
+						</lightning-button>
+					</div>
+				</footer>
+			</div>
+		</section>
+		<div class="slds-backdrop slds-backdrop_open"></div>
+	</template>
+
+	<!-- /////////////////   Map Area   ///////////////////// -->
+
+	<template if:true={isShowMap}>
+		<section role="dialog" tabindex="-1" aria-modal="true" class="slds-modal slds-fade-in-open slds-modal_medium">
+			<div class="slds-modal__container map-container-size">
+				<!-- modal header start -->
+				<header class="slds-modal__header">
+					<button class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse" title="Close" onclick={onMapCancel}>
+						<lightning-icon icon-name="utility:close" alternative-text="close" variant="inverse" size="small"></lightning-icon>
+						<span class="slds-assistive-text">Close</span>
+					</button>
+					<h2 class="slds-text-heading_medium slds-hyphenate">Stamped Location</h2>
+				</header>
+				<!-- modal body start -->
+				<div class="map-box">
+					<lightning-map map-markers={mapMarkers} zoom-level={zoomLevel}></lightning-map>
+				</div>
+			</div>
+		</section>
+		<div class="slds-backdrop slds-backdrop_open"></div>
+	</template>
+</template>

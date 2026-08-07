@@ -1,0 +1,22 @@
+<template>
+    <template if:true={cardData}>
+        <div class="slds-form-element__control">
+            <div class="slds-visual-picker slds-visual-picker_medium">
+                <input type="checkbox" id="visual-picker-94" value="visual-picker-94" data-id={cardData.id} name={cardData.name} onchange={handleSelect}/>
+                <label for="visual-picker-94">
+                    <span class="slds-visual-picker__figure slds-visual-picker__text slds-align_absolute-center">
+                        <span>
+                            <img src={cardData.icon} class="trail slds-align_absolute-center" alt="trail image" />
+                            <div>
+                                <a class="title slds-align_absolute-center" href={cardData.url} target="_blank">{cardData.name}</a>
+                            </div>
+                        </span>
+                    </span>
+                    <span class="slds-icon_container slds-visual-picker__text-check">
+                        <lightning-icon icon-name="utility:new" variant="inverse" size="x-small"></lightning-icon>
+                    </span>
+                </label>
+            </div>
+        </div>
+    </template>
+</template>

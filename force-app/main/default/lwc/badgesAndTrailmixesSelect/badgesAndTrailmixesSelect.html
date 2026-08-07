@@ -1,0 +1,13 @@
+<template>
+    <div class="slds-box">
+        <template if:true={trailsOrBadgesData}>
+            <div class="content">
+                <template for:each={trailsOrBadgesData} for:item="data">
+                    <c-badges-and-trailmixes-card class="slds-var-m-around_x-small" key={data.id} card-data={data}
+                        selected-items={selectedItems} onselectedtrailorbadge={handleSelectedTrailOrBadge}>
+                    </c-badges-and-trailmixes-card>
+                </template>
+            </div>
+        </template>
+    </div>
+</template>

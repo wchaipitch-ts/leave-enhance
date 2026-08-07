@@ -1,0 +1,342 @@
+<template>
+    <lightning-card>
+        <div slot="title" class="highlight-panel">
+            <span class="highlight-panel-icon">
+                <lightning-icon icon-name="standard:business_hours" alternative-text="Man-Hours Input Screen"
+                    title="Man-Hours Input Screen"></lightning-icon>
+            </span>
+            <span class="highlight-panel-title">
+                Man-Hours Input Screen
+            </span>
+        </div>
+    </lightning-card>
+    <br />
+    <template if:false={loaded}>
+        <lightning-spinner alternative-text="Loading"></lightning-spinner>
+    </template>
+    <lightning-card>
+        <div slot="title">
+            <lightning-layout class="user-card">
+                <lightning-layout-item padding="around-small">
+                    <div class="user-margin slds-align_absolute-center slds-p-bottom_small">
+                        <span class="slds-avatar slds-avatar_circle slds-avatar_large">
+                            <img alt={userName} src={userAvatar} title={userName} />
+                        </span>
+                    </div>
+                </lightning-layout-item>
+                <lightning-layout-item padding="around-small">
+                    <div class="user-margin slds-p-bottom_small">
+                        <label for="userName" class="user-label">Name</label><br />
+                        <lightning-formatted-url value={userPath} tooltip={userName} label={userName} class="user-text"
+                            target="_blank">
+                        </lightning-formatted-url>
+                    </div>
+                </lightning-layout-item>
+                <lightning-layout-item padding="around-small">
+                    <div class="user-margin slds-p-bottom_small">
+                        <label for="userTitle" class="user-label">Title</label><br />
+                        <lightning-formatted-text name="userTitle" value={userTitle}
+                            class="user-text"></lightning-formatted-text>
+                    </div>
+                </lightning-layout-item>
+                <lightning-layout-item padding="around-small">
+                    <div class="user-margin slds-p-bottom_small">
+                        <label for="userTitle" class="user-label">Department</label><br />
+                        <lightning-formatted-text name="userDepartment" value={userDepartment}
+                            class="user-text"></lightning-formatted-text>
+                    </div>
+                </lightning-layout-item>
+                <lightning-layout-item padding="around-small">
+                    <div class="user-margin slds-p-bottom_small">
+                        <label for="userTitle" class="user-label">Manager</label><br />
+                        <lightning-formatted-url value={userManagerPath} tooltip={userManagerName}
+                            label={userManagerName} class="user-text" target="_blank">
+                        </lightning-formatted-url>
+                    </div>
+                </lightning-layout-item>
+            </lightning-layout>
+        </div>
+        <div slot="actions">
+            <lightning-layout>
+                <lightning-layout-item padding="around-small">
+                    <div aria-hidden="false" aria-label="Date picker" class="slds-datepicker month-picker-box"
+                        role="dialog">
+                        <div class="slds-datepicker__filter slds-grid month-picker">
+                            <div class="slds-datepicker__filter_month slds-grid slds-grid_align-spread slds-grow">
+                                <div class="slds-align-middle">
+                                    <lightning-button-icon icon-name="utility:left" variant="container"
+                                        alternative-text="Previous Month" class="slds-m-left_xx-small"
+                                        title="Previous Month" onclick={previousMonth}>
+                                    </lightning-button-icon>
+                                </div>
+                                <lightning-icon icon-name="utility:event" class="event-icon"></lightning-icon>
+                                <h2 aria-atomic="true" aria-live="assertive" class="slds-align-middle font-month"
+                                    id="pickerDaySelected-month">{monthLabel}</h2>
+                                <div class="slds-align-middle">
+                                    <lightning-button-icon icon-name="utility:right" variant="container"
+                                        alternative-text="Next Month" class="slds-m-left_xx-small" title="Next Month"
+                                        onclick={nextMonth}>
+                                    </lightning-button-icon>
+                                </div>
+                            </div>
+                            <lightning-combobox name="Years" value={yearSelected} placeholder="Years"
+                                options={yearOptions} onchange={yearChange} variant="label-hidden"
+                                dropdown-alignment="right">
+                            </lightning-combobox>
+                        </div>
+                    </div>
+                </lightning-layout-item>
+                <lightning-layout-item padding="around-small" class="refresh-button">
+                    <lightning-button-icon icon-name="utility:refresh" alternative-text="Refresh" title="Refresh"
+                        onclick={onRefresh}>
+                    </lightning-button-icon>
+                </lightning-layout-item>
+                <lightning-layout-item padding="around-small" class="today-button">
+                    <lightning-button label="Today" title="Today" variant="brand" onclick={onToday}>
+                    </lightning-button>
+                </lightning-layout-item>
+            </lightning-layout>
+        </div>
+        <div class="slds-p-horizontal_small">
+            <div class="row-all-table">
+                <div class="column-project">
+                    <table class="slds-table slds-table_bordered slds-table_edit slds-table_fixed-layout" role="grid">
+                        <thead class="link-header-1 relative-width-thead">
+                            <tr class="slds-line-height_reset" style="height: 70px;">
+                                <th colspan="12" class="main-header slds-is-resizable slds-text-align_center">
+                                    <p>Project List</p>
+                                </th>
+                            </tr>
+                            <tr class="slds-line-height_reset">
+                                <th colspan="6" class="sub-header slds-is-resizable slds-text-align_center">
+                                    <p>Project Name</p>
+                                </th>
+                                <th colspan="3" class="sub-header slds-is-resizable slds-text-align_center">
+                                    <p>Project Assign</p>
+                                </th>
+                                <th colspan="3" class="sub-header slds-is-resizable slds-text-align_center">
+                                    <p>Actual/Planing</p>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody class="slds-scrollable_y">
+                            <template iterator:row={projectList}>
+                                <tr key={row.value.Id} class={row.value.trCSS}>
+                                    <td colspan="6" role="gridcell" style="overflow: hidden;">
+                                        <p>
+                                            &nbsp;&nbsp;&#9679;&nbsp;&nbsp;<lightning-formatted-url
+                                                value={row.value.Project_No__r.path}
+                                                tooltip={row.value.Project_No__r.Project_Name__c}
+                                                label={row.value.Project_No__r.Project_Name__c} target="_blank">
+                                            </lightning-formatted-url>
+                                        </p>
+                                    </td>
+                                    <td colspan="3" role="gridcell" style="text-align: center; overflow: hidden;">
+                                        <p>
+                                            <lightning-formatted-url value={row.value.path} tooltip={row.value.Name}
+                                                label={row.value.Name} target="_blank">
+                                            </lightning-formatted-url>
+                                        </p>
+                                    </td>
+                                    <td colspan="3" role="gridcell" style="text-align: center; overflow: hidden;">
+                                        <p><span
+                                                class={row.value.apCSS}>{row.value.actual}</span><span>/{row.value.planning}</span>
+                                        </p>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                        <thead>
+                            <tr class="slds-line-height_reset">
+                                <th colspan="12" class="total-footer slds-is-resizable slds-text-align_center">
+                                    <p>Total : {totalHours}</p>
+                                </th>
+                            </tr>
+                        </thead>
+                    </table>
+                </div>
+                <div class="column-assign">
+                    <div class="container">
+                        <lightning-layout class="calendar-header">
+                            <lightning-layout-item flexibility="auto" padding="around-small">
+                                <div class="calendar-text">
+                                    <p>Calendar : {monthCalendarLabel} {yearCalendarLabel}</p>
+                                </div>
+                            </lightning-layout-item>
+                        </lightning-layout>
+                    </div>
+                    <div class="container">
+                        <div
+                            class="all-calendar-box slds-box slds-p-around_none slds-m-top_x-small slds-m-bottom_medium slds-m-horizontal_none">
+                            <lightning-layout>
+                                <template iterator:row={dateList}>
+                                    <lightning-layout-item key={row.value.date} flexibility="auto"
+                                        padding="around-small" class={row.value.headerCssClass}>
+                                        <template if:true={row.value.istoday}>
+                                            <template if:true={row.value.issat}>
+                                                <div style='height: 48px !important;'
+                                                    class="sat-color date-box slds-box slds-box_header slds-p-around_medium slds-text-align_center">
+                                                    <p><b>{row.value.day}</b><br />({row.value.weekday})</p>
+                                                </div>
+                                            </template>
+                                            <template if:true={row.value.issun}>
+                                                <div style='height: 48px !important;'
+                                                    class="sun-color date-box slds-box slds-box_header slds-p-around_medium slds-text-align_center">
+                                                    <p><b>{row.value.day}</b><br />({row.value.weekday})</p>
+                                                </div>
+                                            </template>
+                                            <template if:true={row.value.isweekday}>
+                                                <div style='height: 48px !important;'
+                                                    class="date-box slds-box slds-box_header slds-p-around_medium slds-text-align_center">
+                                                    <p><b>{row.value.day}</b><br />({row.value.weekday})</p>
+                                                </div>
+                                            </template>
+                                        </template>
+                                        <template if:false={row.value.istoday}>
+                                            <template if:true={row.value.issat}>
+                                                <div
+                                                    class="sat-color date-box slds-box slds-box_header slds-p-around_medium slds-text-align_center">
+                                                    <p><b>{row.value.day}</b><br />({row.value.weekday})</p>
+                                                </div>
+                                            </template>
+                                            <template if:true={row.value.issun}>
+                                                <div
+                                                    class="sun-color date-box slds-box slds-box_header slds-p-around_medium slds-text-align_center">
+                                                    <p><b>{row.value.day}</b><br />({row.value.weekday})</p>
+                                                </div>
+                                            </template>
+                                            <template if:true={row.value.isweekday}>
+                                                <div
+                                                    class="date-box slds-box slds-box_header slds-p-around_medium slds-text-align_center">
+                                                    <p><b>{row.value.day}</b><br />({row.value.weekday})</p>
+                                                </div>
+                                            </template>
+                                        </template>
+                                    </lightning-layout-item>
+                                </template>
+                            </lightning-layout>
+                            <template iterator:row={projectList}>
+                                <lightning-layout key={row.value.Id}>
+                                    <template iterator:man={row.value.manHourDate}>
+                                        <template if:true={man.value.isoutofscope}>
+                                            <lightning-layout-item key={man.value.Id} flexibility="auto"
+                                                padding="around-small" class={man.value.cellCssClass}>
+                                                <div
+                                                    class="data-box slds-box slds-box_body slds-p-around_medium slds-text-align_center">
+                                                    <div class="outofscope-cell">
+                                                        -
+                                                    </div>
+                                                </div>
+                                            </lightning-layout-item>
+                                        </template>
+                                        <template if:false={man.value.isoutofscope}>
+                                            <lightning-layout-item key={man.value.Id} flexibility="auto"
+                                                padding="around-small" class={man.value.cellCssClass}>
+                                                <div
+                                                    class="data-box slds-box slds-box_body slds-p-around_medium slds-text-align_center">
+                                                    <template if:true={man.value.manHourExist}>
+                                                        <div class="number-cell" id={man.value.addButtonId}
+                                                            onclick={onOpenModal}>
+                                                            <b>{man.value.totalHours}</b>
+                                                        </div>
+                                                    </template>
+                                                    <template if:false={man.value.manHourExist}>
+                                                        <div class="number-cell-none" id={man.value.addButtonId}
+                                                            onclick={onOpenModal}>
+                                                            0
+                                                        </div>
+                                                    </template>
+                                                </div>
+                                            </lightning-layout-item>
+                                        </template>
+                                    </template>
+                                </lightning-layout>
+                            </template>
+                            <lightning-layout>
+                                <template iterator:sum={summaryList}>
+                                    <lightning-layout-item key={sum.value.date} flexibility="auto"
+                                        padding="around-small" class={sum.value.footerCssClass}>
+                                        <div class={sum.value.footerDivCssClass}>
+                                            <div class={sum.value.summaryCssClass}>
+                                                <b>{sum.value.total}</b>
+                                            </div>
+                                        </div>
+                                    </lightning-layout-item>
+                                </template>
+                            </lightning-layout>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <p slot="footer" style="height: 30px; padding-top: 5px;">Powered by TerraSky (Thailand) Co., Ltd.</p>
+    </lightning-card>
+    <template if:true={isShowModal}>
+        <section role="dialog" tabindex="-1" aria-labelledby="modal-heading-01" aria-modal="true"
+            aria-describedby="modal-content-id-1" class="slds-modal slds-fade-in-open slds-modal_medium">
+            <div class="slds-modal__container">
+                <!-- modal header start -->
+                <header class="slds-modal__header">
+                    <button class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse"
+                        title="Close" onclick={hideModalBox}>
+                        <lightning-icon icon-name="utility:close" alternative-text="close" variant="inverse"
+                            size="small"></lightning-icon>
+                        <span class="slds-assistive-text">Close</span>
+                    </button>
+                    <h2 id="modal-heading-01" class="slds-text-heading_medium slds-hyphenate">
+                        <b>{projectSelectedShow}</b> : {dateSelectedShow}
+                    </h2>
+                </header>
+                <!-- modal body start -->
+                <div class="slds-modal__content slds-p-around_medium" id="modal-content-id-1">
+                    <div>
+                        <lightning-layout>
+                            <lightning-layout-item size="6" padding="around-small" class="slds-text-align_left">
+                                <div class="man-hour-header man-hour-header-text">
+                                    <span>
+                                        <lightning-icon icon-name="standard:business_hours" alternative-text="Man-Hour"
+                                            title="Man-Hour"></lightning-icon>
+                                    </span>
+                                    <span
+                                        class="slds-p-around_small">&nbsp;&nbsp;Man-Hour&nbsp;({manHourDataSize})</span>
+                                </div>
+                            </lightning-layout-item>
+                            <lightning-layout-item size="6" padding="around-small" class="slds-text-align_right">
+                                <div class="man-hour-header">
+                                    <lightning-button onclick={onClickManHourAddButton} label="Add"
+                                        title="Add Man-Hour record" icon-name="utility:add" class="slds-m-left_x-small"
+                                        disabled={lockDeletebtn}>
+
+                                    </lightning-button>
+                                    <lightning-button onclick={onSelectedDelete} variant="destructive" label="Delete"
+                                        title="Delete selected record" icon-name="utility:delete"
+                                        class="slds-m-left_x-small" disabled={isNoSelected}>
+                                    </lightning-button>
+                                </div>
+                            </lightning-layout-item>
+                        </lightning-layout>
+                        <div>
+                            <template if:true={isNoManHourData}>
+                                <div class="no-data-ele">No Data</div>
+                            </template>
+                            <template if:false={isNoManHourData}>
+                                <lightning-datatable data-id="manHourInputTable" key-field="Id" data={manHourData}
+                                    draft-values={draftValues} show-row-number-column row-number-offset={rowOffset}
+                                    columns={columns} onclick={handleSelected} oncellchange={handleCellChange}
+                                    onsave={handleSave} oncancel={handleCancel}>
+                                </lightning-datatable>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+                <!-- modal footer start-->
+                <footer class="slds-modal__footer">
+                    <div class="slds-align_absolute-right">
+                        <p class="total-text">Total : {manHourTotalHours} Hours</p>
+                    </div>
+                </footer>
+            </div>
+        </section>
+        <div class="slds-backdrop slds-backdrop_open"></div>
+    </template>
+</template>
