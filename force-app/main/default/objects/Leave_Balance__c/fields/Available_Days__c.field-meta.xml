@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Available_Days__c</fullName>
+    <description>Accrued + Carry Over - Used. Availability is capped by accrual, not by full entitlement.</description>
+    <label>Available Days</label>
+    <formula>BLANKVALUE(Accrued_Days__c,0) + BLANKVALUE(Carry_Over_Days__c,0) - BLANKVALUE(Used_Days__c,0)</formula>
+    <formulaTreatBlanksAs>BlankAsZero</formulaTreatBlanksAs>
+    <precision>18</precision>
+    <scale>1</scale>
+    <required>false</required>
+    <type>Number</type>
+</CustomField>

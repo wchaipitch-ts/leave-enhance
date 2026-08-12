@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Carry_Over_Expiry__c</fullName>
+    <description>Carry-over lapses after this date. June 30 under current policy.</description>
+    <label>Carry Over Expiry</label>
+    <required>false</required>
+    <type>Date</type>
+</CustomField>

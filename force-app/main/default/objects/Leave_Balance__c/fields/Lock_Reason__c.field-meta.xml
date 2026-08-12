@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Lock_Reason__c</fullName>
+    <description>UI message shown beside a locked balance.</description>
+    <label>Lock Reason</label>
+    <formula>IF( Is_Locked__c, "Not available during the probation period", "" )</formula>
+    <formulaTreatBlanksAs>BlankAsZero</formulaTreatBlanksAs>
+    <required>false</required>
+    <type>Text</type>
+</CustomField>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Entitlement_Days__c</fullName>
+    <description>Days granted per reset period. Left blank where entitlement is dynamic - Refreshment Leave defers to Refresh_Leave_Rule__mdt.</description>
+    <fieldManageability>DeveloperControlled</fieldManageability>
+    <label>Entitlement Days</label>
+    <precision>4</precision>
+    <required>false</required>
+    <scale>1</scale>
+    <type>Number</type>
+    <unique>false</unique>
+</CustomField>
