@@ -62,20 +62,7 @@ public class ApplicationItemTriggerLogic {
             return;
         }
 
-        Date rangeStart, rangeEnd;
-        for (ApplicationItem__c appl : requests) {
-            if (appl.Term_From__c == null) {
-                continue;
-            }
-            Date endDay = endDateOf(appl);
-            if (rangeStart == null || appl.Term_From__c < rangeStart) rangeStart = appl.Term_From__c;
-            if (rangeEnd == null || endDay > rangeEnd) rangeEnd = endDay;
-        }
-        if (rangeStart == null) {
-            return;
-        }
-
-        Set<Date> holidays = holidaysBetween(rangeStart, rangeEnd);
+        Set<Date> holidays = holidaysForBatch(requests);
 
         for (ApplicationItem__c appl : requests) {
             if (appl.Term_From__c == null) {
@@ -88,8 +75,56 @@ public class ApplicationItemTriggerLogic {
             }
             appl.Leave_Days__c = (startDay == endDay)
                 ? (isHalfDay(appl.Period_Leave__c) ? 0.5 : 1.0)
-                : workingDaysBetween(startDay, endDay, holidays);
+                : workingDaysFor(appl, holidays).size();
         }
+    }
+
+    /*
+     * LEAVE-26 — the days a request actually consumes. Shared by the day count, the
+     * calendar Events and the Man_hour__c records so the three cannot disagree.
+     *
+     * A single-day request is taken at face value, weekend or not: that is what the
+     * behaviour was before ranges existed, and refusing a deliberately chosen date
+     * belongs in a validation rule rather than in silent day counting. A range is
+     * expanded, skipping weekends and dated Holiday records.
+     */
+    public static List<Date> workingDaysFor(ApplicationItem__c appl, Set<Date> holidays) {
+        List<Date> days = new List<Date>();
+        if (appl.Term_From__c == null) {
+            return days;
+        }
+        Date startDay = appl.Term_From__c;
+        Date endDay = endDateOf(appl);
+        if (endDay < startDay) {
+            return days;
+        }
+        if (startDay == endDay) {
+            days.add(startDay);
+            return days;
+        }
+        Date cursor = startDay;
+        Integer guard = 0;
+        while (cursor <= endDay && guard++ < MAX_RANGE_DAYS) {
+            if (!isWeekend(cursor) && !holidays.contains(cursor)) {
+                days.add(cursor);
+            }
+            cursor = cursor.addDays(1);
+        }
+        return days;
+    }
+
+    /** The span a batch of requests covers, for a single Holiday query. */
+    public static Set<Date> holidaysForBatch(List<ApplicationItem__c> requests) {
+        Date rangeStart, rangeEnd;
+        for (ApplicationItem__c appl : requests) {
+            if (appl.Term_From__c == null) {
+                continue;
+            }
+            Date endDay = endDateOf(appl);
+            if (rangeStart == null || appl.Term_From__c < rangeStart) rangeStart = appl.Term_From__c;
+            if (rangeEnd == null || endDay > rangeEnd) rangeEnd = endDay;
+        }
+        return rangeStart == null ? new Set<Date>() : holidaysBetween(rangeStart, rangeEnd);
     }
 
     /*
@@ -206,40 +241,16 @@ public class ApplicationItemTriggerLogic {
             return;
         }
 
-        Date rangeStart, rangeEnd;
-        for (ApplicationItem__c appl : approvedList) {
-            if (appl.Term_From__c == null) {
-                continue;
-            }
-            Date endDay = endDateOf(appl);
-            if (rangeStart == null || appl.Term_From__c < rangeStart) rangeStart = appl.Term_From__c;
-            if (rangeEnd == null || endDay > rangeEnd) rangeEnd = endDay;
-        }
-        if (rangeStart == null) {
-            return;
-        }
-
-        Set<Date> holidays = holidaysBetween(rangeStart, rangeEnd);
+        Set<Date> holidays = holidaysForBatch(approvedList);
         List<Event> events = new List<Event>();
 
         for (ApplicationItem__c appl : approvedList) {
             if (appl.Term_From__c == null) {
                 continue;
             }
-            Date startDay = appl.Term_From__c;
-            Date endDay = endDateOf(appl);
-            if (endDay < startDay) {
-                continue;
-            }
-            Boolean singleDay = (startDay == endDay);
-
-            Date cursor = startDay;
-            Integer guard = 0;
-            while (cursor <= endDay && guard++ < MAX_RANGE_DAYS) {
-                if (!isWeekend(cursor) && !holidays.contains(cursor)) {
-                    events.add(buildEvent(appl, cursor, singleDay));
-                }
-                cursor = cursor.addDays(1);
+            Boolean singleDay = (appl.Term_From__c == endDateOf(appl));
+            for (Date d : workingDaysFor(appl, holidays)) {
+                events.add(buildEvent(appl, d, singleDay));
             }
         }
 
@@ -275,7 +286,7 @@ public class ApplicationItemTriggerLogic {
      * recurring company holiday inside a range still counts as a leave day. Same
      * limitation as TimesheetController.getHolidays.
      */
-    private static Set<Date> holidaysBetween(Date rangeStart, Date rangeEnd) {
+    public static Set<Date> holidaysBetween(Date rangeStart, Date rangeEnd) {
         Set<Date> result = new Set<Date>();
         for (Holiday h : [
             SELECT ActivityDate FROM Holiday
@@ -286,18 +297,6 @@ public class ApplicationItemTriggerLogic {
         return result;
     }
 
-    private static Decimal workingDaysBetween(Date rangeStart, Date rangeEnd, Set<Date> holidays) {
-        Integer count = 0;
-        Date cursor = rangeStart;
-        Integer guard = 0;
-        while (cursor <= rangeEnd && guard++ < MAX_RANGE_DAYS) {
-            if (!isWeekend(cursor) && !holidays.contains(cursor)) {
-                count++;
-            }
-            cursor = cursor.addDays(1);
-        }
-        return count;
-    }
 
     private static Boolean isWeekend(Date d) {
         return Math.mod(MONDAY_EPOCH.daysBetween(d), 7) >= 5;

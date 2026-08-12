@@ -4,6 +4,21 @@ public class CreateLeaveRecordOnManInputTriggerLogic {
     private static final Decimal PM_HOURS       = 4.0;   // 13:00 - 17:00
     private static final Decimal FULL_DAY_HOURS = 7.5;
 
+    /*
+     * One booking: a request paired with one of the working days it covers.
+     * A single-day request produces one; a range produces one per working day.
+     */
+    private class LeaveDay {
+        ApplicationItem__c appl;
+        Date performedOn;
+        Boolean singleDay;
+        LeaveDay(ApplicationItem__c appl, Date performedOn, Boolean singleDay) {
+            this.appl = appl;
+            this.performedOn = performedOn;
+            this.singleDay = singleDay;
+        }
+    }
+
     // Single-record entry point, retained for existing callers and tests.
     public void createLeaveRecord(ApplicationItem__c appl) {
         createLeaveRecords(new List<ApplicationItem__c>{ appl });
@@ -14,10 +29,17 @@ public class CreateLeaveRecordOnManInputTriggerLogic {
      * assignment, its own SOQL for the project, and up to three separate inserts,
      * so a batch of any size exhausted the query limit before the DML limit.
      *
-     * Each approved request needs a Man_hour__c hung off a ProjectAssign__c, which
-     * hangs off a per-year "Leave FYxx" Project__c. Any of the three may be missing,
-     * so the work runs in three passes: resolve or create projects, then resolve or
-     * create assignments, then insert the man hours.
+     * LEAVE-26: multi-day. A request is now expanded into one Man_hour__c per working
+     * day. Before this, a five-day leave booked a single 7.5h record instead of 37.5h,
+     * which understated the timesheet by the whole rest of the range — and disagreed
+     * with the calendar Events, which were already one per day.
+     *
+     * Each booking needs a Man_hour__c hung off a ProjectAssign__c, which hangs off a
+     * per-year "Leave FYxx" Project__c. Any of the three may be missing, so the work
+     * runs in three passes: resolve or create projects, then resolve or create
+     * assignments, then insert the man hours. A range crossing a month boundary needs
+     * an assignment in each month, which is why pass 2 keys on the booking date rather
+     * than on the request.
      */
     public void createLeaveRecords(List<ApplicationItem__c> applications) {
         List<ApplicationItem__c> approved = new List<ApplicationItem__c>();
@@ -30,14 +52,28 @@ public class CreateLeaveRecordOnManInputTriggerLogic {
             return;
         }
 
+        // Weekends and dated Holiday records are skipped by workingDaysFor, which is
+        // shared with the day count and the calendar Events so the three agree.
+        Set<Date> holidays = ApplicationItemTriggerLogic.holidaysForBatch(approved);
+        List<LeaveDay> bookings = new List<LeaveDay>();
+        for (ApplicationItem__c appl : approved) {
+            Boolean singleDay = (appl.Term_To__c == null || appl.Term_To__c == appl.Term_From__c);
+            for (Date d : ApplicationItemTriggerLogic.workingDaysFor(appl, holidays)) {
+                bookings.add(new LeaveDay(appl, d, singleDay));
+            }
+        }
+        if (bookings.isEmpty()) {
+            return;
+        }
+
         Set<String> projectNames = new Set<String>();
         Set<Id> ownerIds = new Set<Id>();
         Map<String, Date> anyDateForProject = new Map<String, Date>();
-        for (ApplicationItem__c appl : approved) {
-            String name = projectNameFor(appl.Term_From__c);
+        for (LeaveDay booking : bookings) {
+            String name = projectNameFor(booking.performedOn);
             projectNames.add(name);
-            ownerIds.add(appl.OwnerId);
-            anyDateForProject.put(name, appl.Term_From__c);
+            ownerIds.add(booking.appl.OwnerId);
+            anyDateForProject.put(name, booking.performedOn);
         }
 
         List<ProjectAssign__c> existingAssigns = [
@@ -82,22 +118,22 @@ public class CreateLeaveRecordOnManInputTriggerLogic {
             }
         }
 
-        // Pass 2 - resolve one assignment per project / owner / month
+        // Pass 2 - resolve one assignment per project / owner / month of the booking
         Map<String, ProjectAssign__c> assignByKey = new Map<String, ProjectAssign__c>();
         Map<String, ProjectAssign__c> assignsToCreate = new Map<String, ProjectAssign__c>();
-        for (ApplicationItem__c appl : approved) {
-            String name = projectNameFor(appl.Term_From__c);
-            Date monthStart = appl.Term_From__c.toStartOfMonth();
+        for (LeaveDay booking : bookings) {
+            String name = projectNameFor(booking.performedOn);
+            Date monthStart = booking.performedOn.toStartOfMonth();
             Date monthEnd = Date.newInstance(
                 monthStart.year(), monthStart.month(),
                 Date.daysInMonth(monthStart.year(), monthStart.month())
             );
-            String key = assignKey(name, appl.OwnerId, monthStart);
+            String key = assignKey(name, booking.appl.OwnerId, monthStart);
             if (assignByKey.containsKey(key) || assignsToCreate.containsKey(key)) {
                 continue;
             }
 
-            ProjectAssign__c match = findAssign(existingAssigns, name, appl.OwnerId, monthStart, monthEnd);
+            ProjectAssign__c match = findAssign(existingAssigns, name, booking.appl.OwnerId, monthStart, monthEnd);
             if (match != null) {
                 assignByKey.put(key, match);
                 continue;
@@ -108,7 +144,7 @@ public class CreateLeaveRecordOnManInputTriggerLogic {
                 continue;
             }
             assignsToCreate.put(key, new ProjectAssign__c(
-                Assignee__c   = appl.OwnerId,
+                Assignee__c   = booking.appl.OwnerId,
                 Project_No__c = parent.Id,
                 Start_Date__c = monthStart,
                 Due_Date__c   = monthEnd
@@ -119,24 +155,28 @@ public class CreateLeaveRecordOnManInputTriggerLogic {
             assignByKey.putAll(assignsToCreate);
         }
 
-        // Pass 3 - one man hour record per approved request
+        // Pass 3 - one man hour record per booked working day
         List<Man_hour__c> manHours = new List<Man_hour__c>();
-        for (ApplicationItem__c appl : approved) {
+        for (LeaveDay booking : bookings) {
             String key = assignKey(
-                projectNameFor(appl.Term_From__c),
-                appl.OwnerId,
-                appl.Term_From__c.toStartOfMonth()
+                projectNameFor(booking.performedOn),
+                booking.appl.OwnerId,
+                booking.performedOn.toStartOfMonth()
             );
             ProjectAssign__c assign = assignByKey.get(key);
             if (assign == null) {
                 continue;
             }
+            // Period_Leave__c is only meaningful on a single-day request; every day of
+            // a range is a full day.
             manHours.add(new Man_hour__c(
-                Performed_Date__c   = appl.Term_From__c,
-                Performed_Hours__c  = hoursFor(appl.Period_Leave__c),
+                Performed_Date__c   = booking.performedOn,
+                Performed_Hours__c  = booking.singleDay
+                    ? hoursFor(booking.appl.Period_Leave__c)
+                    : FULL_DAY_HOURS,
                 ProjectAssign_No__c = assign.Id,
-                Work__c             = appl.Request_Type__c,
-                Remark__c           = appl.Remark__c
+                Work__c             = booking.appl.Request_Type__c,
+                Remark__c           = booking.appl.Remark__c
             ));
         }
         if (!manHours.isEmpty()) {
