@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Granted_On__c</fullName>
+    <description>Date the grant engine populated this row's entitlement. Idempotency guard for LeaveManagementController: a row with a value here is not granted again. Replaces Annual_Leave_Granted_Year__c and Refresh_Leave_Granted_Year__c on User, which cannot be used any more - writing a guard on User (a setup object) in the same transaction as a Leave_Balance__c write would throw MIXED_DML_OPERATION. Blank means entitlement has not been granted for this type and year yet, which is the normal state for a Refreshment row before the anniversary.</description>
+    <label>Granted On</label>
+    <required>false</required>
+    <type>Date</type>
+</CustomField>

@@ -2,334 +2,417 @@
 public with sharing class LeaveManagementControllerTest {
 
     /*
-     * Partial rewrite for LEAVE-17, covering LEAVE-6 (annual grant) and LEAVE-7
-     * (new hire grant). Refresh-leave and expiry coverage follows once LEAVE-8
-     * and LEAVE-9 are implemented.
+     * LEAVE-27 — rewritten for the Leave_Balance__c grant engine.
      *
-     * The previous version of this class asserted the retired 3/6/8/10 tenure
-     * ladder and drove the controller through testMode / adjustAnnualLeaveDay(),
-     * none of which survive the LEAVE-5 rework, so it was replaced rather than
-     * edited. Dates are driven through todayOverride so the tests do not depend
-     * on the date they are run.
+     * The previous version asserted the leave fields on User. The engine no longer
+     * writes those at all, so this is a replacement rather than an edit.
+     *
+     * Dates are driven by calling runDaily(Date) directly so the tests do not depend
+     * on the day they are run — with one caveat. Accrued_Days__c is a formula using
+     * TODAY(), and it returns the full entitlement only once Leave_Year__c is strictly
+     * in the past. The grant year is therefore 2026 and the prior year 2025, both of
+     * which stay in the past for good, which keeps the carry-over assertions stable.
      */
 
-    private static final Date GRANT_DAY = Date.newInstance(2027, 1, 1);
-    private static final Integer GRANT_YEAR = 2027;
+    private static final Date    GRANT_DAY  = Date.newInstance(2026, 1, 1);
+    private static final Integer GRANT_YEAR = 2026;
+    private static final Integer PRIOR_YEAR = 2025;
 
-    @testSetup
-    static void setupTestData() {
-        Profile p = [SELECT Id FROM Profile WHERE Name = 'Standard User' LIMIT 1];
-        List<User> users = new List<User>{
-            // 8 days remaining -> carry over capped at 6
-            newUser(p.Id, 'CapCarry', Date.newInstance(2020, 3, 1), 8, 4),
-            // exactly at the cap -> carries the full 6
-            newUser(p.Id, 'AtCap', Date.newInstance(2020, 3, 1), 6, 0),
-            // below the cap -> carries the fractional balance intact
-            newUser(p.Id, 'UnderCap', Date.newInstance(2020, 3, 1), 5.5, 2),
-            // joins during the grant year -> must not receive the January 1 grant
-            newUser(p.Id, 'Future', Date.newInstance(2027, 3, 1), 0, 0),
-            // new hires, granted on their joining dates
-            newUser(p.Id, 'HireJan', Date.newInstance(2027, 1, 10), 0, 0),
-            newUser(p.Id, 'HireOct', Date.newInstance(2027, 10, 20), 0, 0),
-            // refresh leave anniversaries
-            newUser(p.Id, 'Anniv3', Date.newInstance(2024, 3, 15), 0, 0),
-            newUser(p.Id, 'Anniv7', Date.newInstance(2020, 6, 10), 0, 0),
-            newUser(p.Id, 'LeapJoin', Date.newInstance(2024, 2, 29), 0, 0)
+    private static final String ANNUAL     = 'Annual leave';
+    private static final String REFRESH    = 'Refresh Leave';
+    private static final String SICK       = 'Sick leave';
+    private static final String PERSONAL   = 'Personal leave';
+    private static final String STATUTORY  = 'Bereavement leave';
+
+    // ------------------------------------------------------------------ fixtures
+
+    /*
+     * A fixed policy set. Custom Metadata cannot be inserted by DML and tests see the
+     * org's real rows, so configuration is injected rather than read.
+     */
+    private static List<Leave_Type_Policy__mdt> fixedPolicies() {
+        return new List<Leave_Type_Policy__mdt>{
+            new Leave_Type_Policy__mdt(Leave_Type__c = ANNUAL, Entitlement_Days__c = 12,
+                Accrual_Method__c = 'Monthly', Deducts_Balance__c = true,
+                Locked_During_Probation__c = true, Active__c = true),
+            new Leave_Type_Policy__mdt(Leave_Type__c = REFRESH, Entitlement_Days__c = null,
+                Accrual_Method__c = 'Anniversary', Deducts_Balance__c = true,
+                Locked_During_Probation__c = true, Active__c = true),
+            new Leave_Type_Policy__mdt(Leave_Type__c = SICK, Entitlement_Days__c = 30,
+                Accrual_Method__c = 'Upfront', Deducts_Balance__c = true, Active__c = true),
+            new Leave_Type_Policy__mdt(Leave_Type__c = PERSONAL, Entitlement_Days__c = 3,
+                Accrual_Method__c = 'Upfront', Deducts_Balance__c = true, Active__c = true),
+            new Leave_Type_Policy__mdt(Leave_Type__c = STATUTORY, Entitlement_Days__c = 0,
+                Accrual_Method__c = null, Deducts_Balance__c = false, Active__c = true)
         };
-
-        // expiry cases
-        User carryLapsed = newUser(p.Id, 'CarryLapsed', Date.newInstance(2020, 1, 1), 12, 0);
-        carryLapsed.Carry_Over_Days__c = 4;
-        carryLapsed.Carry_Over_Expiry__c = Date.newInstance(2027, 6, 30);
-        carryLapsed.Annual_Leave_Granted_Year__c = 2027;
-        users.add(carryLapsed);
-
-        User refreshLapsed = newUser(p.Id, 'RefreshLapsed', Date.newInstance(2020, 1, 1), 12, 0);
-        refreshLapsed.Refresh_Leave_Days__c = 3;
-        refreshLapsed.Refresh_Leave_Expiry__c = Date.newInstance(2027, 4, 15);
-        refreshLapsed.Annual_Leave_Granted_Year__c = 2027;
-        refreshLapsed.Refresh_Leave_Granted_Year__c = 2027;
-        users.add(refreshLapsed);
-
-        // granted last year with a lapsed expiry: the January 1 run must re-grant and
-        // re-date the carry over without the same run's sweep expiring it again
-        User rollover = newUser(p.Id, 'Rollover', Date.newInstance(2020, 1, 1), 3, 9);
-        rollover.Carry_Over_Days__c = 5;
-        rollover.Carry_Over_Expiry__c = Date.newInstance(2026, 6, 30);
-        rollover.Annual_Leave_Granted_Year__c = 2026;
-        users.add(rollover);
-
-        insert users;
     }
 
     private static List<Refresh_Leave_Rule__mdt> fixedTiers() {
         List<Refresh_Leave_Rule__mdt> rules = new List<Refresh_Leave_Rule__mdt>();
         for (Integer y = 1; y <= 5; y++) {
             rules.add(new Refresh_Leave_Rule__mdt(
-                Years_of_Service__c = y,
-                Days_Granted__c = y,
-                Grant_Window_Months__c = 1,
-                Active__c = true
+                Years_of_Service__c = y, Days_Granted__c = y,
+                Grant_Window_Months__c = 1, Active__c = true
             ));
         }
         return rules;
     }
 
-    private static User newUser(Id profileId, String lastName, Date startDate, Decimal balance, Decimal used) {
-        String uniqueName = lastName + DateTime.now().getTime() + Math.round(Math.random() * 10000);
-        return new User(
-            FirstName = 'Test',
-            LastName = lastName,
-            Email = uniqueName + '@example.com',
-            Username = uniqueName + '@example.com.leavetest',
-            Alias = lastName.left(8),
-            CommunityNickname = uniqueName.left(40),
-            TimeZoneSidKey = 'Asia/Bangkok',
-            LocaleSidKey = 'en_US',
-            EmailEncodingKey = 'UTF-8',
-            ProfileId = profileId,
-            LanguageLocaleKey = 'en_US',
-            Start_Date__c = startDate,
-            Annual_Leave_Day__c = balance,
-            Annual_Leave_Used__c = used,
-            Annual_Leave_Granted_Year__c = null
+    private static void useFixtures() {
+        LeaveManagementController.policyOverride = fixedPolicies();
+        LeaveManagementController.ruleOverride   = fixedTiers();
+    }
+
+    @testSetup
+    static void setupTestData() {
+        Profile p = [SELECT Id FROM Profile WHERE Name = 'Standard User' LIMIT 1];
+        List<User> users = new List<User>{
+            newUser(p.Id, 'CapCarry',   Date.newInstance(2020, 3, 1)),
+            newUser(p.Id, 'AtCap',      Date.newInstance(2020, 3, 1)),
+            newUser(p.Id, 'UnderCap',   Date.newInstance(2020, 3, 1)),
+            newUser(p.Id, 'NoPrior',    Date.newInstance(2020, 3, 1)),
+            newUser(p.Id, 'Future',     Date.newInstance(2026, 3, 1)),
+            newUser(p.Id, 'HireJan',    Date.newInstance(2026, 1, 10)),
+            newUser(p.Id, 'HireOct',    Date.newInstance(2026, 10, 20)),
+            newUser(p.Id, 'Anniv3',     Date.newInstance(2023, 3, 15)),
+            newUser(p.Id, 'Anniv7',     Date.newInstance(2019, 6, 10)),
+            newUser(p.Id, 'LeapJoin',   Date.newInstance(2024, 2, 29)),
+            newUser(p.Id, 'CarryLapse', Date.newInstance(2020, 1, 1)),
+            newUser(p.Id, 'RefLapse',   Date.newInstance(2020, 1, 1))
+        };
+        // User is a setup object; runAs lets the Leave_Balance__c inserts below share
+        // this transaction without MIXED_DML_OPERATION.
+        System.runAs(new User(Id = UserInfo.getUserId())) {
+            insert users;
+        }
+
+        Map<String, Id> byName = new Map<String, Id>();
+        for (User u : users) byName.put(u.LastName, u.Id);
+
+        // Prior-year annual rows. Available = Entitlement - Used because 2025 is a
+        // closed year, so Accrued_Days__c returns the full entitlement.
+        insert new List<Leave_Balance__c>{
+            priorAnnual(byName.get('CapCarry'), 12, 4),    // available 8  -> capped to 6
+            priorAnnual(byName.get('AtCap'),    12, 6),    // available 6  -> carries 6
+            priorAnnual(byName.get('UnderCap'), 12, 6.5),  // available 5.5 -> carries 5.5
+            priorAnnual(byName.get('CarryLapse'), 12, 0)
+        };
+    }
+
+    private static Leave_Balance__c priorAnnual(Id employeeId, Decimal entitlement, Decimal used) {
+        return new Leave_Balance__c(
+            Employee__c = employeeId, Leave_Type__c = ANNUAL, Leave_Year__c = PRIOR_YEAR,
+            External_Key__c = employeeId + '-' + ANNUAL + '-' + PRIOR_YEAR,
+            Entitlement_Days__c = entitlement, Accrual_Method__c = 'Monthly',
+            Used_Days__c = used, Carry_Over_Days__c = 0, Pending_Days__c = 0,
+            Granted_On__c = Date.newInstance(PRIOR_YEAR, 1, 1), Status__c = 'Active'
         );
     }
 
-    private static User load(String lastName) {
-        return [
-            SELECT Name, Start_Date__c, Probation_End_Date__c,
-                   Annual_Leave_Allocated__c, Annual_Leave_Day__c, Annual_Leave_Used__c,
-                   Carry_Over_Days__c, Carry_Over_Expiry__c,
-                   Annual_Leave_Granted_Year__c,
-                   Refresh_Leave_Days__c, Refresh_Leave_Expiry__c, Refresh_Leave_Granted_Year__c
-            FROM User WHERE LastName = :lastName LIMIT 1
-        ];
+    private static User newUser(Id profileId, String lastName, Date startDate) {
+        String uniqueName = lastName + DateTime.now().getTime() + Math.round(Math.random() * 10000);
+        return new User(
+            FirstName = 'Test', LastName = lastName,
+            Email = uniqueName + '@example.com',
+            Username = uniqueName + '@example.com.leavetest',
+            Alias = lastName.left(8), CommunityNickname = uniqueName.left(40),
+            TimeZoneSidKey = 'Asia/Bangkok', LocaleSidKey = 'en_US',
+            EmailEncodingKey = 'UTF-8', ProfileId = profileId,
+            LanguageLocaleKey = 'en_US', Start_Date__c = startDate
+        );
     }
+
+    private static Id userId(String lastName) {
+        return [SELECT Id FROM User WHERE LastName = :lastName LIMIT 1].Id;
+    }
+
+    /** The balance row for a name, type and year, or null if the engine made none. */
+    private static Leave_Balance__c row(String lastName, String leaveType, Integer yr) {
+        List<Leave_Balance__c> found = [
+            SELECT Entitlement_Days__c, Used_Days__c, Carry_Over_Days__c, Carry_Over_Expiry__c,
+                   Expiry_Date__c, Granted_On__c, Available_Days__c, Accrual_Method__c,
+                   Locked_During_Probation__c, Leave_Type__c, Leave_Year__c
+            FROM Leave_Balance__c
+            WHERE Employee__r.LastName = :lastName AND Leave_Type__c = :leaveType
+              AND Leave_Year__c = :yr
+        ];
+        return found.isEmpty() ? null : found[0];
+    }
+
+    // ------------------------------------------------------------------ annual grant
 
     @isTest
     static void annualGrantCapsCarryOverAtSixDays() {
-        LeaveManagementController.todayOverride = GRANT_DAY;
-
+        useFixtures();
         Test.startTest();
-        LeaveManagementController.runDaily();
+        LeaveManagementController.runDaily(GRANT_DAY);
         Test.stopTest();
 
-        User u = load('CapCarry');
-        System.assertEquals(12, u.Annual_Leave_Allocated__c, 'allocation is a flat 12 days');
-        System.assertEquals(12, u.Annual_Leave_Day__c, 'balance resets to the new allocation');
-        System.assertEquals(6, u.Carry_Over_Days__c, '8 remaining days must cap at 6');
-        System.assertEquals(0, u.Annual_Leave_Used__c, 'consumption resets for the new year');
-        System.assertEquals(Date.newInstance(GRANT_YEAR, 6, 30), u.Carry_Over_Expiry__c, 'carry over expires June 30');
-        System.assertEquals(GRANT_YEAR, u.Annual_Leave_Granted_Year__c, 'granted year guard is stamped');
+        Leave_Balance__c r = row('CapCarry', ANNUAL, GRANT_YEAR);
+        System.assertEquals(12, r.Entitlement_Days__c, 'the new year starts at a flat 12');
+        System.assertEquals(6, r.Carry_Over_Days__c, '8 days available is capped at 6');
+        System.assertEquals(0, r.Used_Days__c, 'consumption resets');
+        System.assertEquals(Date.newInstance(GRANT_YEAR, 6, 30), r.Carry_Over_Expiry__c,
+            'carry over expires on June 30');
+        System.assertEquals(GRANT_DAY, r.Granted_On__c, 'the grant is stamped for idempotency');
     }
 
     @isTest
     static void annualGrantCarriesBalancesAtOrBelowTheCap() {
-        LeaveManagementController.todayOverride = GRANT_DAY;
-
+        useFixtures();
         Test.startTest();
-        LeaveManagementController.runDaily();
+        LeaveManagementController.runDaily(GRANT_DAY);
         Test.stopTest();
 
-        System.assertEquals(6, load('AtCap').Carry_Over_Days__c, 'exactly 6 days carries in full');
-        System.assertEquals(5.5, load('UnderCap').Carry_Over_Days__c, 'half days survive the carry over');
+        System.assertEquals(6, row('AtCap', ANNUAL, GRANT_YEAR).Carry_Over_Days__c,
+            'exactly at the cap carries in full');
+        System.assertEquals(5.5, row('UnderCap', ANNUAL, GRANT_YEAR).Carry_Over_Days__c,
+            'below the cap carries the fractional balance intact');
+        System.assertEquals(0, row('NoPrior', ANNUAL, GRANT_YEAR).Carry_Over_Days__c,
+            'no prior year row means nothing to carry');
+    }
+
+    @isTest
+    static void annualGrantCreatesARowForEveryActiveType() {
+        useFixtures();
+        Test.startTest();
+        LeaveManagementController.runDaily(GRANT_DAY);
+        Test.stopTest();
+
+        System.assertEquals(30, row('NoPrior', SICK, GRANT_YEAR).Entitlement_Days__c,
+            'sick leave is granted upfront');
+        System.assertEquals(3, row('NoPrior', PERSONAL, GRANT_YEAR).Entitlement_Days__c,
+            'personal leave is granted upfront');
+        System.assertEquals(0, row('NoPrior', STATUTORY, GRANT_YEAR).Entitlement_Days__c,
+            'statutory types still need a row, with no entitlement');
+
+        Leave_Balance__c refresh = row('NoPrior', REFRESH, GRANT_YEAR);
+        System.assertNotEquals(null, refresh, 'refreshment gets a row on January 1');
+        System.assertEquals(null, refresh.Granted_On__c,
+            'but is not granted until the anniversary');
     }
 
     @isTest
     static void annualGrantSkipsJoinersLaterInTheYear() {
-        LeaveManagementController.todayOverride = GRANT_DAY;
-
+        useFixtures();
         Test.startTest();
-        LeaveManagementController.runDaily();
+        LeaveManagementController.runDaily(GRANT_DAY);
         Test.stopTest();
 
-        User u = load('Future');
-        System.assertEquals(null, u.Annual_Leave_Granted_Year__c,
-            'a March joiner must wait for the pro-rated new hire grant, not receive 12 days on January 1');
+        System.assertEquals(null, row('Future', ANNUAL, GRANT_YEAR),
+            'someone joining in March gets the pro-rated new-hire grant instead');
     }
 
     @isTest
     static void annualGrantIsIdempotentWithinTheYear() {
-        LeaveManagementController.todayOverride = GRANT_DAY;
-
+        useFixtures();
         Test.startTest();
-        LeaveManagementController.runDaily();
-        // Spend a day, then re-run: the guard must leave the balance alone.
-        User spent = load('CapCarry');
-        update new User(Id = spent.Id, Annual_Leave_Day__c = 11, Annual_Leave_Used__c = 1);
-        LeaveManagementController.runDaily();
+        LeaveManagementController.runDaily(GRANT_DAY);
+        // Spend a day, then re-run the same grant.
+        Leave_Balance__c r = row('CapCarry', ANNUAL, GRANT_YEAR);
+        update new Leave_Balance__c(Id = [SELECT Id FROM Leave_Balance__c
+            WHERE Employee__r.LastName = 'CapCarry' AND Leave_Type__c = :ANNUAL
+              AND Leave_Year__c = :GRANT_YEAR].Id, Used_Days__c = 2);
+        LeaveManagementController.runDaily(GRANT_DAY);
         Test.stopTest();
 
-        User u = load('CapCarry');
-        System.assertEquals(11, u.Annual_Leave_Day__c, 'a second run in the same year must not re-grant');
-        System.assertEquals(1, u.Annual_Leave_Used__c, 'consumption must not be wiped by a re-run');
+        System.assertEquals(2, row('CapCarry', ANNUAL, GRANT_YEAR).Used_Days__c,
+            'a second run in the same year must not reset consumption');
+        System.assertEquals(6, row('CapCarry', ANNUAL, GRANT_YEAR).Carry_Over_Days__c,
+            'nor re-carry the balance');
     }
+
+    // ------------------------------------------------------------------ new hire
 
     @isTest
     static void newHireGrantIsProRatedByJoiningMonth() {
-        LeaveManagementController.todayOverride = Date.newInstance(2027, 1, 10);
-
+        useFixtures();
         Test.startTest();
-        LeaveManagementController.runDaily();
+        LeaveManagementController.runDaily(Date.newInstance(2026, 1, 10));
         Test.stopTest();
 
-        User u = load('HireJan');
-        System.assertEquals(12, u.Annual_Leave_Allocated__c, 'a January 10 joiner receives 12 days');
-        System.assertEquals(12, u.Annual_Leave_Day__c, 'balance matches the grant');
-        System.assertEquals(GRANT_YEAR, u.Annual_Leave_Granted_Year__c, 'granted year guard is stamped');
+        System.assertEquals(12, row('HireJan', ANNUAL, GRANT_YEAR).Entitlement_Days__c,
+            'joining in January earns 13 - 1 = 12 days');
     }
 
     @isTest
     static void newHireGrantLateInTheYearIsSmaller() {
-        LeaveManagementController.todayOverride = Date.newInstance(2027, 10, 20);
-
+        useFixtures();
         Test.startTest();
-        LeaveManagementController.runDaily();
+        LeaveManagementController.runDaily(Date.newInstance(2026, 10, 20));
         Test.stopTest();
 
-        System.assertEquals(3, load('HireOct').Annual_Leave_Allocated__c, 'an October 20 joiner receives 3 days');
+        System.assertEquals(3, row('HireOct', ANNUAL, GRANT_YEAR).Entitlement_Days__c,
+            'joining in October earns 13 - 10 = 3 days');
+    }
+
+    /*
+     * The gap that made LEAVE-27 urgent: without a full set of rows a new hire's
+     * first request of any type cannot be approved, because a missing balance row is
+     * a hard error in ApplicationItemTriggerLogic.
+     */
+    @isTest
+    static void newHireGetsARowForEveryActiveType() {
+        useFixtures();
+        Test.startTest();
+        LeaveManagementController.runDaily(Date.newInstance(2026, 10, 20));
+        Test.stopTest();
+
+        System.assertEquals(30, row('HireOct', SICK, GRANT_YEAR).Entitlement_Days__c,
+            'sick leave is not pro-rated');
+        System.assertEquals(3, row('HireOct', PERSONAL, GRANT_YEAR).Entitlement_Days__c,
+            'personal leave is not pro-rated');
+        System.assertNotEquals(null, row('HireOct', STATUTORY, GRANT_YEAR),
+            'statutory types get a row so requests can be approved');
+        System.assertNotEquals(null, row('HireOct', REFRESH, GRANT_YEAR),
+            'refreshment gets a row, ungranted until the anniversary');
     }
 
     @isTest
     static void newHireIsNotGrantedBeforeJoining() {
-        LeaveManagementController.todayOverride = Date.newInstance(2027, 10, 19);
-
+        useFixtures();
         Test.startTest();
-        LeaveManagementController.runDaily();
+        LeaveManagementController.runDaily(Date.newInstance(2026, 10, 19));
         Test.stopTest();
 
-        System.assertEquals(null, load('HireOct').Annual_Leave_Granted_Year__c,
-            'the grant lands on the joining date, not before');
+        System.assertEquals(null, row('HireOct', ANNUAL, GRANT_YEAR),
+            'nothing is granted the day before joining');
     }
 
-    // ---------------------------------------------------------------- LEAVE-8
+    // ------------------------------------------------------------------ refreshment
 
     @isTest
     static void refreshGrantMatchesTheTierForCompletedYears() {
-        LeaveManagementController.ruleOverride = fixedTiers();
-
+        useFixtures();
         Test.startTest();
-        LeaveManagementController.runDaily(Date.newInstance(2027, 3, 15));
+        LeaveManagementController.runDaily(Date.newInstance(2026, 3, 15));
         Test.stopTest();
 
-        User u = load('Anniv3');
-        System.assertEquals(3, u.Refresh_Leave_Days__c, '3 completed years grants 3 days');
-        System.assertEquals(Date.newInstance(2027, 4, 15), u.Refresh_Leave_Expiry__c,
-            'expiry is the anniversary plus the tier grant window');
-        System.assertEquals(2027, u.Refresh_Leave_Granted_Year__c, 'granted year guard is stamped');
+        Leave_Balance__c r = row('Anniv3', REFRESH, GRANT_YEAR);
+        System.assertEquals(3, r.Entitlement_Days__c, 'three completed years grants three days');
+        System.assertEquals(Date.newInstance(2026, 4, 15), r.Expiry_Date__c,
+            'the window is one month');
+        System.assertEquals(Date.newInstance(2026, 3, 15), r.Granted_On__c, 'stamped on the anniversary');
     }
 
     @isTest
     static void refreshGrantBeyondTheTopTierKeepsUsingIt() {
-        LeaveManagementController.ruleOverride = fixedTiers();
-
+        useFixtures();
         Test.startTest();
-        LeaveManagementController.runDaily(Date.newInstance(2027, 6, 10));
+        LeaveManagementController.runDaily(Date.newInstance(2026, 6, 10));
         Test.stopTest();
 
-        System.assertEquals(5, load('Anniv7').Refresh_Leave_Days__c,
-            '7 years exceeds every tier and must fall back to the highest one');
+        System.assertEquals(5, row('Anniv7', REFRESH, GRANT_YEAR).Entitlement_Days__c,
+            'seven years keeps matching the highest configured tier');
     }
 
     @isTest
     static void refreshGrantFallsBackToFeb28InNonLeapYears() {
-        LeaveManagementController.ruleOverride = fixedTiers();
-
+        useFixtures();
         Test.startTest();
-        LeaveManagementController.runDaily(Date.newInstance(2027, 2, 28));
+        LeaveManagementController.runDaily(Date.newInstance(2026, 2, 28));
         Test.stopTest();
 
-        System.assertEquals(3, load('LeapJoin').Refresh_Leave_Days__c,
-            'a February 29 joiner has no anniversary in 2027, so February 28 stands in');
-    }
-
-    @isTest
-    static void refreshGrantUsesFeb29InLeapYears() {
-        LeaveManagementController.ruleOverride = fixedTiers();
-
-        Test.startTest();
-        LeaveManagementController.runDaily(Date.newInstance(2028, 2, 29));
-        Test.stopTest();
-
-        System.assertEquals(4, load('LeapJoin').Refresh_Leave_Days__c,
-            '2028 is a leap year, so the real anniversary applies and tenure is 4 years');
+        System.assertNotEquals(null, row('LeapJoin', REFRESH, GRANT_YEAR),
+            'a February 29 joiner is granted on February 28 when the year is not a leap year');
     }
 
     @isTest
     static void refreshGrantIgnoresNonAnniversaryDays() {
-        LeaveManagementController.ruleOverride = fixedTiers();
-
+        useFixtures();
         Test.startTest();
-        LeaveManagementController.runDaily(Date.newInstance(2027, 3, 16));
+        LeaveManagementController.runDaily(Date.newInstance(2026, 3, 14));
         Test.stopTest();
 
-        System.assertEquals(null, load('Anniv3').Refresh_Leave_Granted_Year__c,
-            'the day after the anniversary must not grant');
+        Leave_Balance__c r = row('Anniv3', REFRESH, GRANT_YEAR);
+        System.assert(r == null || r.Granted_On__c == null,
+            'the day before the anniversary grants nothing');
     }
 
     @isTest
     static void refreshGrantIsIdempotentWithinTheYear() {
-        LeaveManagementController.ruleOverride = fixedTiers();
-
+        useFixtures();
         Test.startTest();
-        LeaveManagementController.runDaily(Date.newInstance(2027, 3, 15));
-        User granted = load('Anniv3');
-        update new User(Id = granted.Id, Refresh_Leave_Days__c = 1);
-        LeaveManagementController.runDaily(Date.newInstance(2027, 3, 15));
+        LeaveManagementController.runDaily(Date.newInstance(2026, 3, 15));
+        update new Leave_Balance__c(Id = [SELECT Id FROM Leave_Balance__c
+            WHERE Employee__r.LastName = 'Anniv3' AND Leave_Type__c = :REFRESH].Id,
+            Used_Days__c = 1);
+        LeaveManagementController.runDaily(Date.newInstance(2026, 3, 15));
         Test.stopTest();
 
-        System.assertEquals(1, load('Anniv3').Refresh_Leave_Days__c,
-            'a second run on the same anniversary must not re-grant');
+        System.assertEquals(1, row('Anniv3', REFRESH, GRANT_YEAR).Used_Days__c,
+            'a second run on the same anniversary must not reset consumption');
     }
 
-    // ---------------------------------------------------------------- LEAVE-9
+    // ------------------------------------------------------------------ expiry
 
+    /*
+     * Carry over is consumed before current-year entitlement, so only the unconsumed
+     * part lapses. Reducing Carry_Over_Days__c to the consumed amount removes exactly
+     * the unused days while leaving the already-taken ones accounted for.
+     */
     @isTest
-    static void lapsedCarryOverIsZeroedAndCleared() {
+    static void lapsedCarryOverKeepsOnlyTheConsumedPortion() {
+        useFixtures();
         Test.startTest();
-        LeaveManagementController.runDaily(Date.newInstance(2027, 7, 1));
+        LeaveManagementController.runDaily(GRANT_DAY);            // carry 6, expiry Jun 30
+        update new Leave_Balance__c(Id = [SELECT Id FROM Leave_Balance__c
+            WHERE Employee__r.LastName = 'CapCarry' AND Leave_Type__c = :ANNUAL
+              AND Leave_Year__c = :GRANT_YEAR].Id, Used_Days__c = 4);
+        LeaveManagementController.runDaily(Date.newInstance(2026, 7, 1));
         Test.stopTest();
 
-        User u = load('CarryLapsed');
-        System.assertEquals(0, u.Carry_Over_Days__c, 'carry over is forfeited after June 30');
-        System.assertEquals(null, u.Carry_Over_Expiry__c, 'the expiry date is cleared');
-        System.assertEquals(12, u.Annual_Leave_Day__c, 'current year days are untouched by expiry');
+        Leave_Balance__c r = row('CapCarry', ANNUAL, GRANT_YEAR);
+        System.assertEquals(4, r.Carry_Over_Days__c,
+            '4 of the 6 carried-in days were taken, so only those 4 survive');
+        System.assertEquals(null, r.Carry_Over_Expiry__c, 'the expiry date is cleared');
+        System.assertEquals(4, r.Used_Days__c, 'consumption is not rewritten');
     }
 
     @isTest
     static void carryOverSurvivesUpToItsExpiryDate() {
+        useFixtures();
         Test.startTest();
-        LeaveManagementController.runDaily(Date.newInstance(2027, 6, 30));
+        LeaveManagementController.runDaily(GRANT_DAY);
+        LeaveManagementController.runDaily(Date.newInstance(2026, 6, 30));
         Test.stopTest();
 
-        User u = load('CarryLapsed');
-        System.assertEquals(4, u.Carry_Over_Days__c, 'the expiry date itself is still usable');
-        System.assertEquals(Date.newInstance(2027, 6, 30), u.Carry_Over_Expiry__c, 'expiry date is retained');
+        Leave_Balance__c r = row('CapCarry', ANNUAL, GRANT_YEAR);
+        System.assertEquals(6, r.Carry_Over_Days__c, 'carry over survives on its expiry date');
+        System.assertEquals(Date.newInstance(2026, 6, 30), r.Carry_Over_Expiry__c,
+            'and the date is still set');
     }
 
     @isTest
-    static void lapsedRefreshLeaveIsZeroedAndCleared() {
+    static void lapsedRefreshmentIsWipedDownToWhatWasUsed() {
+        useFixtures();
         Test.startTest();
-        LeaveManagementController.runDaily(Date.newInstance(2027, 4, 16));
+        LeaveManagementController.runDaily(Date.newInstance(2026, 3, 15));   // 3 days, expires Apr 15
+        update new Leave_Balance__c(Id = [SELECT Id FROM Leave_Balance__c
+            WHERE Employee__r.LastName = 'Anniv3' AND Leave_Type__c = :REFRESH].Id,
+            Used_Days__c = 1);
+        LeaveManagementController.runDaily(Date.newInstance(2026, 4, 16));
         Test.stopTest();
 
-        User u = load('RefreshLapsed');
-        System.assertEquals(0, u.Refresh_Leave_Days__c, 'refresh leave lapses once the window closes');
-        System.assertEquals(null, u.Refresh_Leave_Expiry__c, 'the expiry date is cleared');
+        Leave_Balance__c r = row('Anniv3', REFRESH, GRANT_YEAR);
+        System.assertEquals(1, r.Entitlement_Days__c,
+            'the two unused days are wiped; the one taken remains accounted for');
+        System.assertEquals(0, r.Available_Days__c, 'nothing is left to use');
+        System.assertEquals(null, r.Expiry_Date__c, 'the expiry date is cleared');
     }
 
     @isTest
     static void januaryGrantSurvivesTheSameRunsExpirySweep() {
+        useFixtures();
         Test.startTest();
-        LeaveManagementController.runDaily(Date.newInstance(2027, 1, 1));
+        // The prior-year row for CarryLapse has a June 30 expiry that has long passed.
+        // The January 1 run must grant the new year without its own sweep undoing it.
+        LeaveManagementController.runDaily(GRANT_DAY);
         Test.stopTest();
 
-        User u = load('Rollover');
-        System.assertEquals(3, u.Carry_Over_Days__c,
-            'the carry over written by this run must not be swept by the same run');
-        System.assertEquals(Date.newInstance(2027, 6, 30), u.Carry_Over_Expiry__c,
-            'the freshly written expiry date must survive the sweep');
-        System.assertEquals(12, u.Annual_Leave_Day__c, 'the new allocation applies');
+        Leave_Balance__c r = row('CarryLapse', ANNUAL, GRANT_YEAR);
+        System.assertEquals(12, r.Entitlement_Days__c, 'the new year is granted');
+        System.assertEquals(Date.newInstance(GRANT_YEAR, 6, 30), r.Carry_Over_Expiry__c,
+            'the freshly written expiry date is not swept by the same run');
     }
 }

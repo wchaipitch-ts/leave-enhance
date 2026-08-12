@@ -1,26 +1,36 @@
 public with sharing class LeaveManagementController implements Schedulable {
 
     /*
-     * LEAVE-5: reworked to the January 1st granting model.
+     * LEAVE-27 — the grant engine now maintains Leave_Balance__c rather than the
+     * leave fields on User.
      *
-     * Removed in that pass:
-     *   - the 3/6/8/10 tenure ladder (annual leave is now a flat 12 days)
-     *   - the Anniversary / CalendarYear mode fork and the Leave_Calculation_Mode label
-     *   - the "skip if tenure < 6 months" guard, which excluded mid-year hires
-     *   - the Annual_Leave_Day__c = Annual_Leave_Allocated__c sync, which reset
-     *     consumption on every run
+     * Why this had to change: a missing Leave_Balance__c row blocks approval
+     * (ApplicationItemTriggerLogic raises addError), and nothing else creates rows.
+     * Before this, anyone hired after the initial backfill could never have leave
+     * approved, and every nightly run wrote to User fields that nothing reads.
      *
-     * The job now runs daily and decides for itself what is due today.
+     * The idempotency guards moved with it. Annual_Leave_Granted_Year__c and
+     * Refresh_Leave_Granted_Year__c live on User, and User is a setup object —
+     * writing one of them in the same transaction as a Leave_Balance__c row throws
+     * MIXED_DML_OPERATION. Granted_On__c on the balance row replaces both.
      *
-     * Every SOQL below selects the same field set on purpose. stage() can hand one
-     * grant an sObject that a previous grant queried, and reading a field that the
-     * earlier query did not select throws SObjectException at runtime.
+     * This class no longer performs any DML on User. That is what lets createLogFile
+     * be synchronous: the @future existed only to dodge the same mixed DML problem.
+     *
+     * The User leave fields are left exactly as they are — frozen fallback. They are
+     * no longer written and are retired at cutover.
      */
 
-    // Test hooks. Tests drive the clock and the refresh-leave tiers through these
-    // rather than depending on System.today() or the org's Custom Metadata rows.
+    private static final Decimal ANNUAL_ENTITLEMENT = 12;
+    private static final Decimal CARRY_OVER_CAP     = 6;
+    private static final String  TYPE_ANNUAL        = 'Annual leave';
+    private static final String  ACCRUAL_ANNIVERSARY = 'Anniversary';
+
+    // Test hooks. Tests drive the clock and the configuration through these rather
+    // than depending on System.today() or the org's Custom Metadata rows.
     @TestVisible private static Date todayOverride;
     @TestVisible private static List<Refresh_Leave_Rule__mdt> ruleOverride;
+    @TestVisible private static List<Leave_Type_Policy__mdt> policyOverride;
 
     public void execute(SchedulableContext sc) {
         runDaily();
@@ -32,15 +42,14 @@ public with sharing class LeaveManagementController implements Schedulable {
 
     /*
      * Runs the grants as at a specific date. Public so a missed run can be replayed
-     * for the date it should have happened, and so the January 1 path can be
-     * exercised by hand outside a test context. Every grant is guarded by a
-     * granted-year field, so replaying a date that already ran changes nothing.
+     * for the date it should have happened. Every grant is guarded by Granted_On__c,
+     * so replaying a date that already ran changes nothing.
      */
     public static void runDaily(Date today) {
-        // Users are accumulated by Id so that two grants landing on the same day
-        // mutate one sObject instance rather than overwriting each other. Anything
+        // Rows are accumulated by External_Key__c so that two grants landing on the
+        // same day mutate one instance rather than overwriting each other. Anything
         // added here must be read back from the map, not re-queried.
-        Map<Id, User> toUpdate = new Map<Id, User>();
+        Map<String, Leave_Balance__c> staged = new Map<String, Leave_Balance__c>();
         List<String> logDetails = new List<String>{
             'Run Date: ' + System.now(),
             'Effective Date: ' + today,
@@ -49,16 +58,16 @@ public with sharing class LeaveManagementController implements Schedulable {
 
         try {
             if (today.month() == 1 && today.day() == 1) {
-                grantAnnualLeave(today, toUpdate, logDetails);
+                grantAnnualLeave(today, staged, logDetails);
             }
-            grantNewHireLeave(today, toUpdate, logDetails);
-            grantRefreshLeave(today, toUpdate, logDetails);
+            grantNewHireLeave(today, staged, logDetails);
+            grantRefreshLeave(today, staged, logDetails);
             // Expiry runs last so it evaluates the dates this run has just written,
             // not the stale ones still in the database.
-            expireLeave(today, toUpdate, logDetails);
+            expireLeave(today, staged, logDetails);
 
-            if (!toUpdate.isEmpty()) {
-                update toUpdate.values();
+            if (!staged.isEmpty()) {
+                upsert staged.values() External_Key__c;
                 createLogFile(String.join(logDetails, '\n'));
             }
         } catch (Exception e) {
@@ -68,138 +77,128 @@ public with sharing class LeaveManagementController implements Schedulable {
         }
     }
 
-    /*
-     * Returns the working instance for a user. If an earlier grant already staged
-     * this user, that instance is returned so both grants accumulate onto one
-     * record; a freshly queried copy would silently discard the earlier changes.
-     */
-    private static User stage(Map<Id, User> toUpdate, User queried) {
-        if (toUpdate.containsKey(queried.Id)) {
-            return toUpdate.get(queried.Id);
-        }
-        toUpdate.put(queried.Id, queried);
-        return queried;
-    }
+    // ------------------------------------------------------------------ grants
 
     /*
-     * LEAVE-6 — annual leave grant, January 1. See spec §3.1.
-     * Flat 12 days; carry over MIN(6, Annual_Leave_Day__c) with expiry June 30.
-     * Guarded by Annual_Leave_Granted_Year__c.
+     * LEAVE-6 / LEAVE-27 — annual grant, January 1.
      *
-     * §3.1 also specifies a waiver of the 6-day cap for anyone whose probation
-     * ends inside the grant year. It is deliberately not implemented: it cannot
-     * fire. Probation ends in the grant year only for September-to-December
-     * joiners, and the new-hire grant gives them 13 - month, so at most four
-     * days — always under the cap. Reinstate it only if a cutover migrates a
-     * larger legacy balance onto someone still serving probation.
+     * Creates the full set of rows for the new year, not just the annual one: every
+     * active leave type needs a row or its first request of the year cannot be
+     * approved. Refreshment is the exception — it is granted on the anniversary, so
+     * its row is created with no entitlement and no Granted_On__c.
+     *
+     * Carry over is MIN(6, the prior year's Available). Available is
+     * Accrued + CarriedIn - Used, so at year end it is exactly what the employee had
+     * left, which is the figure the policy caps.
      */
-    private static void grantAnnualLeave(Date today, Map<Id, User> toUpdate, List<String> logDetails) {
+    private static void grantAnnualLeave(Date today, Map<String, Leave_Balance__c> staged,
+                                         List<String> logDetails) {
         Integer yr = today.year();
+        List<User> employees = employeesStartedBy(today);
+        if (employees.isEmpty()) return;
 
-        // Start_Date__c <= today excludes future joiners, who must receive the
-        // pro-rated new-hire grant on their joining date instead of a full 12 days.
-        List<User> candidates = [
-            SELECT Id, Name, Start_Date__c,
-                   Annual_Leave_Allocated__c, Annual_Leave_Day__c, Annual_Leave_Used__c,
-                   Carry_Over_Days__c, Carry_Over_Expiry__c,
-                   Annual_Leave_Granted_Year__c,
-                   Refresh_Leave_Days__c, Refresh_Leave_Expiry__c, Refresh_Leave_Granted_Year__c
-            FROM User
-            WHERE IsActive = TRUE
-              AND Start_Date__c != NULL
-              AND Start_Date__c <= :today
-              AND (Annual_Leave_Granted_Year__c = NULL OR Annual_Leave_Granted_Year__c != :yr)
-        ];
+        Map<String, Leave_Balance__c> existing = loadBalances(idsOf(employees), new Set<Integer>{ yr, yr - 1 });
 
-        for (User queried : candidates) {
-            User usr = stage(toUpdate, queried);
-            if (usr.Annual_Leave_Granted_Year__c == yr) continue;
+        for (User usr : employees) {
+            for (Leave_Type_Policy__mdt policy : activePolicies()) {
+                Leave_Balance__c row = stage(staged, existing, usr.Id, policy, yr);
+                if (ACCRUAL_ANNIVERSARY.equals(policy.Accrual_Method__c) || row.Granted_On__c != null) {
+                    continue;
+                }
 
-            Decimal balance = usr.Annual_Leave_Day__c == null ? 0 : usr.Annual_Leave_Day__c;
-            Decimal carryOver = balance > 6 ? 6 : balance;
+                row.Entitlement_Days__c = policy.Entitlement_Days__c;
+                row.Used_Days__c        = 0;
+                row.Granted_On__c       = today;
 
-            usr.Annual_Leave_Allocated__c = 12;
-            usr.Annual_Leave_Day__c = 12;
-            usr.Carry_Over_Days__c = carryOver;
-            usr.Carry_Over_Expiry__c = Date.newInstance(yr, 6, 30);
-            usr.Annual_Leave_Used__c = 0;
-            usr.Annual_Leave_Granted_Year__c = yr;
+                if (TYPE_ANNUAL.equals(policy.Leave_Type__c)) {
+                    Leave_Balance__c prior = existing.get(balanceKey(usr.Id, TYPE_ANNUAL, yr - 1));
+                    Decimal priorAvailable = prior == null ? 0 : zeroIfNull(prior.Available_Days__c);
+                    if (priorAvailable < 0) priorAvailable = 0;
+                    Decimal carryOver = priorAvailable > CARRY_OVER_CAP ? CARRY_OVER_CAP : priorAvailable;
 
-            logDetails.add('ANNUAL  ' + usr.Name
-                + ' | start=' + usr.Start_Date__c
-                + ' | priorBalance=' + balance
-                + ' | carryOver=' + carryOver);
+                    row.Entitlement_Days__c  = ANNUAL_ENTITLEMENT;
+                    row.Carry_Over_Days__c   = carryOver;
+                    row.Carry_Over_Expiry__c = Date.newInstance(yr, 6, 30);
+
+                    logDetails.add('ANNUAL  ' + usr.Name
+                        + ' | start=' + usr.Start_Date__c
+                        + ' | priorAvailable=' + priorAvailable
+                        + ' | carryOver=' + carryOver);
+                }
+            }
         }
     }
 
     /*
-     * LEAVE-7 — new hire grant, on the joining date. See spec §3.2.
-     * days = 13 - Start_Date__c.month(), i.e. one day for each month remaining in
-     * the calendar year, counting the joining month. Guarded by Annual_Leave_Granted_Year__c.
+     * LEAVE-7 / LEAVE-27 — new hire grant, on the joining date.
+     *
+     * Annual is 13 - joining month, i.e. one day for each month remaining in the
+     * calendar year counting the joining month. Everything else takes the policy
+     * entitlement in full; nothing in the policy pro-rates statutory leave.
+     *
+     * This is the path that gives a new employee their rows at all. Without it their
+     * first leave request cannot be approved.
      */
-    private static void grantNewHireLeave(Date today, Map<Id, User> toUpdate, List<String> logDetails) {
+    private static void grantNewHireLeave(Date today, Map<String, Leave_Balance__c> staged,
+                                          List<String> logDetails) {
         Integer yr = today.year();
-
         List<User> newHires = [
-            SELECT Id, Name, Start_Date__c,
-                   Annual_Leave_Allocated__c, Annual_Leave_Day__c, Annual_Leave_Used__c,
-                   Carry_Over_Days__c, Carry_Over_Expiry__c,
-                   Annual_Leave_Granted_Year__c,
-                   Refresh_Leave_Days__c, Refresh_Leave_Expiry__c, Refresh_Leave_Granted_Year__c
+            SELECT Id, Name, Start_Date__c
             FROM User
-            WHERE IsActive = TRUE
-              AND Start_Date__c = :today
-              AND (Annual_Leave_Granted_Year__c = NULL OR Annual_Leave_Granted_Year__c != :yr)
+            WHERE IsActive = TRUE AND Start_Date__c = :today
         ];
+        if (newHires.isEmpty()) return;
 
-        for (User queried : newHires) {
-            User usr = stage(toUpdate, queried);
-            // A January 1 joiner is picked up by grantAnnualLeave first. That grant is
-            // staged but not yet committed, so the guard has to be re-checked here
-            // against the staged instance rather than trusted from the query.
-            if (usr.Annual_Leave_Granted_Year__c == yr) continue;
+        Map<String, Leave_Balance__c> existing = loadBalances(idsOf(newHires), new Set<Integer>{ yr });
 
-            Decimal days = 13 - usr.Start_Date__c.month();
-
-            usr.Annual_Leave_Allocated__c = days;
-            usr.Annual_Leave_Day__c = days;
-            usr.Annual_Leave_Granted_Year__c = yr;
-
+        for (User usr : newHires) {
+            for (Leave_Type_Policy__mdt policy : activePolicies()) {
+                Leave_Balance__c row = stage(staged, existing, usr.Id, policy, yr);
+                if (ACCRUAL_ANNIVERSARY.equals(policy.Accrual_Method__c) || row.Granted_On__c != null) {
+                    continue;
+                }
+                row.Entitlement_Days__c = TYPE_ANNUAL.equals(policy.Leave_Type__c)
+                    ? 13 - usr.Start_Date__c.month()
+                    : policy.Entitlement_Days__c;
+                row.Used_Days__c  = 0;
+                row.Granted_On__c = today;
+            }
             logDetails.add('NEWHIRE ' + usr.Name
                 + ' | start=' + usr.Start_Date__c
-                + ' | granted=' + days);
+                + ' | annual=' + (13 - usr.Start_Date__c.month()));
         }
     }
 
     /*
-     * LEAVE-8 — refresh leave grant, on the anniversary. See spec §3.3.
-     * Guarded by Refresh_Leave_Granted_Year__c.
+     * LEAVE-8 / LEAVE-27 — refreshment grant, on the anniversary.
+     * Tier by completed years of service; expires one month later and is then wiped.
      */
-    private static void grantRefreshLeave(Date today, Map<Id, User> toUpdate, List<String> logDetails) {
+    private static void grantRefreshLeave(Date today, Map<String, Leave_Balance__c> staged,
+                                          List<String> logDetails) {
         Integer yr = today.year();
         List<Refresh_Leave_Rule__mdt> rules = getRules();
-        if (rules.isEmpty()) return;
+        Leave_Type_Policy__mdt refreshPolicy = anniversaryPolicy();
+        if (rules.isEmpty() || refreshPolicy == null) return;
 
         // The day is matched in Apex rather than SOQL so that February 29 joiners
         // can be caught on February 28 in non-leap years.
         List<User> candidates = [
-            SELECT Id, Name, Start_Date__c,
-                   Annual_Leave_Allocated__c, Annual_Leave_Day__c, Annual_Leave_Used__c,
-                   Carry_Over_Days__c, Carry_Over_Expiry__c,
-                   Annual_Leave_Granted_Year__c,
-                   Refresh_Leave_Days__c, Refresh_Leave_Expiry__c, Refresh_Leave_Granted_Year__c
+            SELECT Id, Name, Start_Date__c
             FROM User
             WHERE IsActive = TRUE
               AND Start_Date__c != NULL
               AND Start_Date__c < :today
               AND CALENDAR_MONTH(Start_Date__c) = :today.month()
-              AND (Refresh_Leave_Granted_Year__c = NULL OR Refresh_Leave_Granted_Year__c != :yr)
         ];
+        if (candidates.isEmpty()) return;
 
-        for (User queried : candidates) {
-            User usr = stage(toUpdate, queried);
-            if (usr.Refresh_Leave_Granted_Year__c == yr) continue;
+        Map<String, Leave_Balance__c> existing = loadBalances(idsOf(candidates), new Set<Integer>{ yr });
+
+        for (User usr : candidates) {
             if (!isAnniversary(usr.Start_Date__c, today)) continue;
+
+            Leave_Balance__c row = stage(staged, existing, usr.Id, refreshPolicy, yr);
+            if (row.Granted_On__c != null) continue;
 
             Integer years = usr.Start_Date__c.monthsBetween(today) / 12;
             Refresh_Leave_Rule__mdt rule = tierFor(rules, years);
@@ -207,16 +206,184 @@ public with sharing class LeaveManagementController implements Schedulable {
 
             Integer window = rule.Grant_Window_Months__c == null ? 1 : rule.Grant_Window_Months__c.intValue();
 
-            usr.Refresh_Leave_Days__c = rule.Days_Granted__c;
-            usr.Refresh_Leave_Expiry__c = today.addMonths(window);
-            usr.Refresh_Leave_Granted_Year__c = yr;
+            row.Entitlement_Days__c = rule.Days_Granted__c;
+            row.Used_Days__c        = 0;
+            row.Expiry_Date__c      = today.addMonths(window);
+            row.Granted_On__c       = today;
 
             logDetails.add('REFRESH ' + usr.Name
                 + ' | start=' + usr.Start_Date__c
                 + ' | years=' + years
                 + ' | granted=' + rule.Days_Granted__c
-                + ' | expires=' + usr.Refresh_Leave_Expiry__c);
+                + ' | expires=' + row.Expiry_Date__c);
         }
+    }
+
+    /*
+     * LEAVE-9 / LEAVE-27 — expiry sweep, daily.
+     *
+     * Only the UNUSED portion lapses. Carry over is consumed before current-year
+     * entitlement, so the consumed part is MIN(CarriedIn, Used) and that is what
+     * survives; the rest is dropped. Availability is Accrued + CarriedIn - Used, so
+     * reducing CarriedIn to the consumed amount removes exactly the unused days and
+     * leaves the already-taken ones accounted for.
+     *
+     * Refreshment works the same way against Entitlement_Days__c: granted on the
+     * anniversary, and whatever is not used within the window is wiped.
+     *
+     * Expired days are simply lost; nothing is paid out.
+     */
+    private static void expireLeave(Date today, Map<String, Leave_Balance__c> staged,
+                                    List<String> logDetails) {
+        List<Leave_Balance__c> candidates = [
+            SELECT Id, External_Key__c, Employee__r.Name, Leave_Type__c, Leave_Year__c,
+                   Entitlement_Days__c, Used_Days__c, Carry_Over_Days__c,
+                   Carry_Over_Expiry__c, Expiry_Date__c, Granted_On__c,
+                   Accrual_Method__c, Locked_During_Probation__c, Status__c
+            FROM Leave_Balance__c
+            WHERE Status__c = 'Active'
+              AND ((Carry_Over_Expiry__c != NULL AND Carry_Over_Expiry__c < :today)
+                OR (Expiry_Date__c != NULL AND Expiry_Date__c < :today))
+        ];
+
+        for (Leave_Balance__c queried : candidates) {
+            // Read the staged instance where one exists: a grant earlier in this run
+            // may have already replaced the expiry date the query matched on.
+            Leave_Balance__c row = staged.containsKey(queried.External_Key__c)
+                ? staged.get(queried.External_Key__c)
+                : queried;
+
+            Boolean carryExpired = row.Carry_Over_Expiry__c != null && row.Carry_Over_Expiry__c < today;
+            Boolean windowExpired = row.Expiry_Date__c != null && row.Expiry_Date__c < today;
+            if (!carryExpired && !windowExpired) continue;
+
+            staged.put(row.External_Key__c, row);
+
+            if (carryExpired) {
+                Decimal carriedIn = zeroIfNull(row.Carry_Over_Days__c);
+                Decimal used      = zeroIfNull(row.Used_Days__c);
+                Decimal consumed  = carriedIn < used ? carriedIn : used;
+                if (carriedIn > consumed) {
+                    logDetails.add('EXPIRE  ' + row.Employee__r.Name
+                        + ' | carryOver lapsed=' + (carriedIn - consumed)
+                        + ' of ' + carriedIn + ' on ' + row.Carry_Over_Expiry__c);
+                }
+                row.Carry_Over_Days__c   = consumed;
+                row.Carry_Over_Expiry__c = null;
+            }
+
+            if (windowExpired) {
+                Decimal granted  = zeroIfNull(row.Entitlement_Days__c);
+                Decimal used     = zeroIfNull(row.Used_Days__c);
+                Decimal consumed = granted < used ? granted : used;
+                if (granted > consumed) {
+                    logDetails.add('EXPIRE  ' + row.Employee__r.Name
+                        + ' | ' + row.Leave_Type__c + ' lapsed=' + (granted - consumed)
+                        + ' of ' + granted + ' on ' + row.Expiry_Date__c);
+                }
+                row.Entitlement_Days__c = consumed;
+                row.Expiry_Date__c      = null;
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ helpers
+
+    /*
+     * The working instance for one employee, leave type and year. Reads the staged
+     * map first so several grants on the same day accumulate onto one record, then
+     * the database, then creates a new row from the policy.
+     */
+    private static Leave_Balance__c stage(Map<String, Leave_Balance__c> staged,
+                                          Map<String, Leave_Balance__c> existing,
+                                          Id employeeId, Leave_Type_Policy__mdt policy, Integer yr) {
+        String key = balanceKey(employeeId, policy.Leave_Type__c, yr);
+        if (staged.containsKey(key)) {
+            return staged.get(key);
+        }
+        Leave_Balance__c row = existing.get(key);
+        if (row == null) {
+            row = new Leave_Balance__c(
+                Employee__c                = employeeId,
+                Leave_Type__c              = policy.Leave_Type__c,
+                Leave_Year__c              = yr,
+                External_Key__c            = key,
+                Entitlement_Days__c        = policy.Entitlement_Days__c,
+                Accrual_Method__c          = policy.Accrual_Method__c,
+                Locked_During_Probation__c = policy.Locked_During_Probation__c == true,
+                Used_Days__c               = 0,
+                Pending_Days__c            = 0,
+                Carry_Over_Days__c         = 0,
+                Status__c                  = 'Active'
+            );
+        }
+        staged.put(key, row);
+        return row;
+    }
+
+    private static Map<String, Leave_Balance__c> loadBalances(Set<Id> employeeIds, Set<Integer> years) {
+        Map<String, Leave_Balance__c> byKey = new Map<String, Leave_Balance__c>();
+        List<Decimal> yearValues = new List<Decimal>();
+        for (Integer y : years) yearValues.add(y);
+
+        for (Leave_Balance__c bal : [
+            SELECT Id, External_Key__c, Employee__c, Leave_Type__c, Leave_Year__c,
+                   Entitlement_Days__c, Accrued_Days__c, Available_Days__c,
+                   Used_Days__c, Carry_Over_Days__c, Carry_Over_Expiry__c,
+                   Expiry_Date__c, Granted_On__c, Accrual_Method__c,
+                   Locked_During_Probation__c, Pending_Days__c, Status__c
+            FROM Leave_Balance__c
+            WHERE Employee__c IN :employeeIds AND Leave_Year__c IN :yearValues
+        ]) {
+            byKey.put(bal.External_Key__c, bal);
+        }
+        return byKey;
+    }
+
+    private static List<User> employeesStartedBy(Date today) {
+        // Start_Date__c <= today excludes future joiners, who receive the pro-rated
+        // new-hire grant on their joining date instead of a full year's entitlement.
+        return [
+            SELECT Id, Name, Start_Date__c
+            FROM User
+            WHERE IsActive = TRUE
+              AND Start_Date__c != NULL
+              AND Start_Date__c <= :today
+        ];
+    }
+
+    private static Set<Id> idsOf(List<User> users) {
+        Set<Id> ids = new Set<Id>();
+        for (User u : users) ids.add(u.Id);
+        return ids;
+    }
+
+    /*
+     * Must match ApplicationItemTriggerLogic.balanceKey and
+     * scripts/apex/03_backfill_leave_balances.apex exactly.
+     */
+    private static String balanceKey(Id employeeId, String leaveType, Integer yr) {
+        return employeeId + '-' + leaveType + '-' + yr;
+    }
+
+    @TestVisible
+    private static List<Leave_Type_Policy__mdt> activePolicies() {
+        List<Leave_Type_Policy__mdt> source = policyOverride != null
+            ? policyOverride
+            : Leave_Type_Policy__mdt.getAll().values();
+        List<Leave_Type_Policy__mdt> active = new List<Leave_Type_Policy__mdt>();
+        for (Leave_Type_Policy__mdt p : source) {
+            if (p.Active__c == true) active.add(p);
+        }
+        return active;
+    }
+
+    /** The single type granted on an anniversary — Refreshment Leave. */
+    private static Leave_Type_Policy__mdt anniversaryPolicy() {
+        for (Leave_Type_Policy__mdt p : activePolicies()) {
+            if (ACCRUAL_ANNIVERSARY.equals(p.Accrual_Method__c)) return p;
+        }
+        return null;
     }
 
     /*
@@ -250,65 +417,20 @@ public with sharing class LeaveManagementController implements Schedulable {
         return best;
     }
 
-    /*
-     * LEAVE-9 — expiry sweep, daily. See spec §3.4.
-     * Expired days are simply lost; nothing is paid out.
-     */
-    private static void expireLeave(Date today, Map<Id, User> toUpdate, List<String> logDetails) {
-        List<User> candidates = [
-            SELECT Id, Name, Start_Date__c,
-                   Annual_Leave_Allocated__c, Annual_Leave_Day__c, Annual_Leave_Used__c,
-                   Carry_Over_Days__c, Carry_Over_Expiry__c,
-                   Annual_Leave_Granted_Year__c,
-                   Refresh_Leave_Days__c, Refresh_Leave_Expiry__c, Refresh_Leave_Granted_Year__c
-            FROM User
-            WHERE IsActive = TRUE
-              AND ((Carry_Over_Expiry__c != NULL AND Carry_Over_Expiry__c < :today)
-                OR (Refresh_Leave_Expiry__c != NULL AND Refresh_Leave_Expiry__c < :today))
-        ];
-
-        for (User queried : candidates) {
-            // Read the staged instance where one exists: a grant earlier in this run
-            // may have already replaced the expiry date the query matched on.
-            User usr = toUpdate.containsKey(queried.Id) ? toUpdate.get(queried.Id) : queried;
-
-            Boolean carryExpired = usr.Carry_Over_Expiry__c != null && usr.Carry_Over_Expiry__c < today;
-            Boolean refreshExpired = usr.Refresh_Leave_Expiry__c != null && usr.Refresh_Leave_Expiry__c < today;
-            if (!carryExpired && !refreshExpired) continue;
-
-            usr = stage(toUpdate, usr);
-
-            if (carryExpired) {
-                logDetails.add('EXPIRE  ' + usr.Name
-                    + ' | carryOver=' + usr.Carry_Over_Days__c
-                    + ' lapsed on ' + usr.Carry_Over_Expiry__c);
-                usr.Carry_Over_Days__c = 0;
-                usr.Carry_Over_Expiry__c = null;
-            }
-
-            if (refreshExpired) {
-                logDetails.add('EXPIRE  ' + usr.Name
-                    + ' | refresh=' + usr.Refresh_Leave_Days__c
-                    + ' lapsed on ' + usr.Refresh_Leave_Expiry__c);
-                usr.Refresh_Leave_Days__c = 0;
-                usr.Refresh_Leave_Expiry__c = null;
-            }
-        }
-    }
-
-    /*
-     * Refresh leave tiers. getAll() consumes no SOQL query or row limits.
-     */
     @TestVisible
     private static List<Refresh_Leave_Rule__mdt> getRules() {
         return ruleOverride != null ? ruleOverride : Refresh_Leave_Rule__mdt.getAll().values();
     }
 
+    private static Decimal zeroIfNull(Decimal value) {
+        return value == null ? 0 : value;
+    }
+
     /*
-     * Async because User is a setup object and Error_Log__c / ContentVersion are not:
-     * writing both in one transaction throws MIXED_DML_OPERATION.
+     * Synchronous now. This was @future only because the class used to update User,
+     * a setup object, in the same transaction as Error_Log__c and ContentVersion.
+     * It writes no User records any more, so there is no mixed DML to dodge.
      */
-    @future
     private static void createLogFile(String logDetails) {
         try {
             Error_Log__c log = new Error_Log__c();
