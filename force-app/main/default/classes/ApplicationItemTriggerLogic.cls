@@ -6,64 +6,241 @@ public class ApplicationItemTriggerLogic {
     private static final Integer MORNING_END_HOUR   = 12;
     private static final Integer WORKDAY_END_HOUR   = 17;
 
-    private static final String AM_LEAVE  = 'AM leave';
-    private static final String PM_LEAVE  = 'PM leave';
+    private static final String AM_LEAVE = 'AM leave';
+    private static final String PM_LEAVE = 'PM leave';
 
-    // Request_Type__c values that move a balance. Note that Refresh Leave is the only
-    // one with a capital L — the picklist is inconsistent and these must match exactly.
-    private static final String TYPE_ANNUAL   = 'Annual leave';
-    private static final String TYPE_SICK     = 'Sick leave';
-    private static final String TYPE_PERSONAL = 'Personal leave';
-    private static final String TYPE_REFRESH  = 'Refresh Leave';
+    // The only type with a carry-over bucket, so the only one needing attribution.
+    private static final String TYPE_ANNUAL = 'Annual leave';
 
-    // Recorded and approved like any other request, but deliberately touching no
-    // balance: unpaid leave by definition, and the statutory types which carry their
-    // own legal entitlements rather than drawing on a company allowance.
-    private static final Set<String> NON_DEDUCTING_TYPES = new Set<String>{
-        'Unpaid leave',
-        'Bereavement leave',
-        'Marriage leave',
-        'Maternity leave',
-        'Military service leave',
-        'Ordination leave',
-        'Sterilization leave',
-        'Training or knowledge leave',
-        'Other'
-    };
+    // 1900-01-01 was a Monday, so days-since gives 0=Mon .. 5=Sat, 6=Sun.
+    private static final Date MONDAY_EPOCH = Date.newInstance(1900, 1, 1);
+
+    // A request cannot span a calendar year (validation rule), so 366 is a hard
+    // ceiling. The guard exists so a bad date can never spin the loop.
+    private static final Integer MAX_RANGE_DAYS = 366;
+
+    // Test hook. Custom Metadata cannot be inserted by DML and tests see the org's
+    // real rows, so classification is overridden here rather than in the database.
+    @TestVisible private static List<Leave_Type_Policy__mdt> policyOverride;
+    private static Map<String, Leave_Type_Policy__mdt> policyCache;
 
     /*
-     * LEAVE-11: Events are collected and inserted once. The insert used to sit
-     * inside the loop, so 150 approvals in one transaction exhausted the DML
-     * statement limit.
+     * LEAVE-25 — active policies by leave type.
+     *
+     * Replaces the hardcoded deducting / non-deducting sets. Classifying a new leave
+     * type is now a Custom Metadata row, not a deployment. getAll() consumes no SOQL
+     * query or row limits.
+     */
+    private static Map<String, Leave_Type_Policy__mdt> policies() {
+        if (policyCache != null) {
+            return policyCache;
+        }
+        policyCache = new Map<String, Leave_Type_Policy__mdt>();
+        List<Leave_Type_Policy__mdt> source = policyOverride != null
+            ? policyOverride
+            : Leave_Type_Policy__mdt.getAll().values();
+        for (Leave_Type_Policy__mdt p : source) {
+            if (p.Active__c == true) {
+                policyCache.put(p.Leave_Type__c, p);
+            }
+        }
+        return policyCache;
+    }
+
+    /*
+     * LEAVE-25 — day count for a date range. Runs in the before contexts on every
+     * leave request, not only approved ones, so the figure is right from Draft onward.
+     *
+     * Term_To__c blank means a single-day request, which is what every record created
+     * before the field existed looks like.
+     *
+     * Period_Leave__c only applies to a single day: AM or PM across a range is
+     * meaningless and is rejected by a validation rule.
+     */
+    public void calculateLeaveDays(List<ApplicationItem__c> requests) {
+        if (requests.isEmpty()) {
+            return;
+        }
+
+        Date rangeStart, rangeEnd;
+        for (ApplicationItem__c appl : requests) {
+            if (appl.Term_From__c == null) {
+                continue;
+            }
+            Date endDay = endDateOf(appl);
+            if (rangeStart == null || appl.Term_From__c < rangeStart) rangeStart = appl.Term_From__c;
+            if (rangeEnd == null || endDay > rangeEnd) rangeEnd = endDay;
+        }
+        if (rangeStart == null) {
+            return;
+        }
+
+        Set<Date> holidays = holidaysBetween(rangeStart, rangeEnd);
+
+        for (ApplicationItem__c appl : requests) {
+            if (appl.Term_From__c == null) {
+                continue;
+            }
+            Date startDay = appl.Term_From__c;
+            Date endDay = endDateOf(appl);
+            if (endDay < startDay) {
+                continue; // reported by the end-before-start validation rule
+            }
+            appl.Leave_Days__c = (startDay == endDay)
+                ? (isHalfDay(appl.Period_Leave__c) ? 0.5 : 1.0)
+                : workingDaysBetween(startDay, endDay, holidays);
+        }
+    }
+
+    /*
+     * LEAVE-25 — balance deduction on approval. Rewritten from the User-field version.
+     *
+     * Balances now live on Leave_Balance__c, an ordinary custom object, so this runs
+     * in the same transaction as the approval. The @future split is gone: it existed
+     * only because User is a setup object, and its failure mode left a request
+     * approved with the balance never moved and nothing on the record saying so.
+     * If the balance write fails now, the approval fails with it.
+     *
+     * Still runs in a before context so Carry_Over_Days_Used__c lands on the in-flight
+     * record without a second DML on ApplicationItem__c.
+     *
+     * Over-spend is deliberately NOT blocked here. Blocking at approval fails the
+     * whole transaction after the fact; the check belongs at creation, where an
+     * over-balance request is re-labelled Leave Without Pay instead (LEAVE-27).
+     */
+    public void deductLeaveBalance(List<ApplicationItem__c> approvedList) {
+        if (approvedList.isEmpty()) {
+            return;
+        }
+
+        Map<String, Leave_Type_Policy__mdt> policyByType = policies();
+        List<ApplicationItem__c> deductible = new List<ApplicationItem__c>();
+        Set<String> keys = new Set<String>();
+
+        for (ApplicationItem__c appl : approvedList) {
+            appl.Carry_Over_Days_Used__c = 0;
+
+            Leave_Type_Policy__mdt policy = policyByType.get(appl.Request_Type__c);
+            if (policy == null) {
+                // Fail loudly rather than silently deducting from the wrong place or
+                // nothing at all. A new picklist value needs a policy row first.
+                appl.addError('Leave type "' + appl.Request_Type__c + '" has no active '
+                    + 'Leave Type Policy record. Add one before this request can be approved.');
+                continue;
+            }
+            if (policy.Deducts_Balance__c != true || appl.Term_From__c == null) {
+                continue; // recorded and approved, but moves no balance
+            }
+
+            deductible.add(appl);
+            keys.add(balanceKey(appl.OwnerId, appl.Request_Type__c, appl.Term_From__c.year()));
+        }
+        if (deductible.isEmpty()) {
+            return;
+        }
+
+        // FOR UPDATE locks the rows for the rest of the transaction, so two approvals
+        // for the same person and type cannot read the same figure and both write it.
+        Map<String, Leave_Balance__c> balanceByKey = new Map<String, Leave_Balance__c>();
+        for (Leave_Balance__c bal : [
+            SELECT Id, External_Key__c, Carry_Over_Days__c, Used_Days__c
+            FROM Leave_Balance__c
+            WHERE External_Key__c IN :keys
+            FOR UPDATE
+        ]) {
+            balanceByKey.put(bal.External_Key__c, bal);
+        }
+
+        Map<Id, Leave_Balance__c> touched = new Map<Id, Leave_Balance__c>();
+
+        for (ApplicationItem__c appl : deductible) {
+            String key = balanceKey(appl.OwnerId, appl.Request_Type__c, appl.Term_From__c.year());
+            Leave_Balance__c bal = balanceByKey.get(key);
+            if (bal == null) {
+                appl.addError('No ' + appl.Request_Type__c + ' balance exists for '
+                    + appl.Term_From__c.year() + '. Balances are created by the daily leave job.');
+                continue;
+            }
+
+            Decimal days = zeroIfNull(appl.Leave_Days__c);
+            if (days <= 0) {
+                continue;
+            }
+
+            /*
+             * Carry over is consumed before the current year because it expires on
+             * June 30. It does not reduce Carry_Over_Days__c: that field holds the
+             * amount carried IN and stays fixed for the year, which is what makes
+             * Available = Accrued + CarriedIn - Used come out right.
+             *
+             * The attribution recorded here is what lets the June 30 sweep work out
+             * how much carry over went unused: lapse = MAX(0, CarriedIn - Used).
+             */
+            if (TYPE_ANNUAL.equals(appl.Request_Type__c)) {
+                Decimal carryRemaining = zeroIfNull(bal.Carry_Over_Days__c) - zeroIfNull(bal.Used_Days__c);
+                if (carryRemaining < 0) {
+                    carryRemaining = 0;
+                }
+                appl.Carry_Over_Days_Used__c = days <= carryRemaining ? days : carryRemaining;
+            }
+
+            bal.Used_Days__c = zeroIfNull(bal.Used_Days__c) + days;
+            touched.put(bal.Id, bal);
+        }
+
+        if (!touched.isEmpty()) {
+            update touched.values();
+        }
+    }
+
+    /*
+     * LEAVE-11 / LEAVE-25: one Event per working day of the range. Events are
+     * collected and inserted once — the insert used to sit inside the loop, so 150
+     * approvals in one transaction exhausted the DML statement limit.
      *
      * Callers pass records that have just crossed into Approved; the status
      * transition is decided in ApplicationItemTriggerHandler.
      */
     public void setLeaveDateTime(List<ApplicationItem__c> approvedList) {
+        if (approvedList.isEmpty()) {
+            return;
+        }
+
+        Date rangeStart, rangeEnd;
+        for (ApplicationItem__c appl : approvedList) {
+            if (appl.Term_From__c == null) {
+                continue;
+            }
+            Date endDay = endDateOf(appl);
+            if (rangeStart == null || appl.Term_From__c < rangeStart) rangeStart = appl.Term_From__c;
+            if (rangeEnd == null || endDay > rangeEnd) rangeEnd = endDay;
+        }
+        if (rangeStart == null) {
+            return;
+        }
+
+        Set<Date> holidays = holidaysBetween(rangeStart, rangeEnd);
         List<Event> events = new List<Event>();
 
         for (ApplicationItem__c appl : approvedList) {
             if (appl.Term_From__c == null) {
                 continue;
             }
-            Date d = appl.Term_From__c;
+            Date startDay = appl.Term_From__c;
+            Date endDay = endDateOf(appl);
+            if (endDay < startDay) {
+                continue;
+            }
+            Boolean singleDay = (startDay == endDay);
 
-            Datetime startDateTime = (PM_LEAVE == appl.Period_Leave__c)
-                ? DateTime.newInstance(d.year(), d.month(), d.day(), LUNCH_END_HOUR, 0, 0)
-                : DateTime.newInstance(d.year(), d.month(), d.day(), WORKDAY_START_HOUR, WORKDAY_START_MIN, 0);
-
-            Datetime endDateTime = (AM_LEAVE == appl.Period_Leave__c)
-                ? DateTime.newInstance(d.year(), d.month(), d.day(), MORNING_END_HOUR, 0, 0)
-                : DateTime.newInstance(d.year(), d.month(), d.day(), WORKDAY_END_HOUR, 0, 0);
-
-            events.add(new Event(
-                WhatId        = appl.Id,
-                Subject       = appl.Request_Type__c,
-                OwnerId       = appl.OwnerId,
-                StartDateTime = startDateTime,
-                EndDateTime   = endDateTime,
-                Description   = appl.Period_Leave__c
-            ));
+            Date cursor = startDay;
+            Integer guard = 0;
+            while (cursor <= endDay && guard++ < MAX_RANGE_DAYS) {
+                if (!isWeekend(cursor) && !holidays.contains(cursor)) {
+                    events.add(buildEvent(appl, cursor, singleDay));
+                }
+                cursor = cursor.addDays(1);
+            }
         }
 
         if (!events.isEmpty()) {
@@ -71,127 +248,76 @@ public class ApplicationItemTriggerLogic {
         }
     }
 
-    /*
-     * LEAVE-13 — balance deduction on approval. See spec §3.5.
-     *
-     * Runs from a BEFORE trigger on purpose. Carry_Over_Days_Used__c is set directly
-     * on the in-flight record, so there is no DML on ApplicationItem__c, and therefore
-     * no recursion guard and no interaction with the approval record lock.
-     *
-     * The User update cannot happen here: User is a setup object and ApplicationItem__c
-     * is not, so writing both in one transaction throws MIXED_DML_OPERATION. That is not
-     * theoretical — the Minus_Annual_Leave_Day flow did exactly this and failed on every
-     * run. The balances therefore travel to an @future method as JSON.
-     *
-     * Balances are allowed to go negative. Blocking here would fail the whole approval
-     * transaction; preventing over-spend belongs in a validation rule (LEAVE-4).
-     */
-    public void deductLeaveBalance(List<ApplicationItem__c> approvedList) {
-        if (approvedList.isEmpty()) {
-            return;
-        }
+    private static Event buildEvent(ApplicationItem__c appl, Date d, Boolean singleDay) {
+        Boolean am = singleDay && AM_LEAVE == appl.Period_Leave__c;
+        Boolean pm = singleDay && PM_LEAVE == appl.Period_Leave__c;
 
-        Set<Id> ownerIds = new Set<Id>();
-        for (ApplicationItem__c appl : approvedList) {
-            if (appl.OwnerId != null) {
-                ownerIds.add(appl.OwnerId);
-            }
-        }
-        if (ownerIds.isEmpty()) {
-            return;
-        }
+        Datetime startDateTime = pm
+            ? DateTime.newInstance(d.year(), d.month(), d.day(), LUNCH_END_HOUR, 0, 0)
+            : DateTime.newInstance(d.year(), d.month(), d.day(), WORKDAY_START_HOUR, WORKDAY_START_MIN, 0);
 
-        Map<Id, User> owners = new Map<Id, User>([
-            SELECT Id, Annual_Leave_Day__c, Annual_Leave_Used__c, Carry_Over_Days__c,
-                   Refresh_Leave_Days__c, Sick_Leave_Used__c, Personal_Leave_Used__c
-            FROM User
-            WHERE Id IN :ownerIds
-        ]);
+        Datetime endDateTime = am
+            ? DateTime.newInstance(d.year(), d.month(), d.day(), MORNING_END_HOUR, 0, 0)
+            : DateTime.newInstance(d.year(), d.month(), d.day(), WORKDAY_END_HOUR, 0, 0);
 
-        // Users are mutated in place, so several requests approved together for the
-        // same person accumulate rather than overwriting each other.
-        Set<Id> touched = new Set<Id>();
-
-        for (ApplicationItem__c appl : approvedList) {
-            User owner = owners.get(appl.OwnerId);
-            if (owner == null) {
-                continue;
-            }
-
-            String type = appl.Request_Type__c;
-            Decimal days = daysFor(appl.Period_Leave__c);
-            appl.Carry_Over_Days_Used__c = 0;
-
-            if (TYPE_ANNUAL.equals(type)) {
-                // Carry over is consumed first: it expires on June 30, whereas the
-                // current year's days run to the end of the year.
-                Decimal carryAvailable = zeroIfNull(owner.Carry_Over_Days__c);
-                Decimal fromCarry = days <= carryAvailable ? days : carryAvailable;
-
-                owner.Carry_Over_Days__c  = carryAvailable - fromCarry;
-                owner.Annual_Leave_Day__c = zeroIfNull(owner.Annual_Leave_Day__c) - (days - fromCarry);
-                owner.Annual_Leave_Used__c = zeroIfNull(owner.Annual_Leave_Used__c) + days;
-
-                appl.Carry_Over_Days_Used__c = fromCarry;
-
-            } else if (TYPE_SICK.equals(type)) {
-                owner.Sick_Leave_Used__c = zeroIfNull(owner.Sick_Leave_Used__c) + days;
-
-            } else if (TYPE_PERSONAL.equals(type)) {
-                owner.Personal_Leave_Used__c = zeroIfNull(owner.Personal_Leave_Used__c) + days;
-
-            } else if (TYPE_REFRESH.equals(type)) {
-                owner.Refresh_Leave_Days__c = zeroIfNull(owner.Refresh_Leave_Days__c) - days;
-
-            } else if (NON_DEDUCTING_TYPES.contains(type)) {
-                continue;
-
-            } else {
-                // Fail loudly rather than silently deducting from the wrong place or
-                // nothing at all. A new picklist value must be classified here first.
-                appl.addError('Leave type "' + type + '" has no balance rule. '
-                    + 'Classify it in ApplicationItemTriggerLogic before this request can be approved.');
-                continue;
-            }
-
-            touched.add(owner.Id);
-        }
-
-        if (touched.isEmpty()) {
-            return;
-        }
-
-        List<User> balanceUpdates = new List<User>();
-        for (Id ownerId : touched) {
-            balanceUpdates.add(owners.get(ownerId));
-        }
-        applyBalances(JSON.serialize(balanceUpdates));
+        return new Event(
+            WhatId        = appl.Id,
+            Subject       = appl.Request_Type__c,
+            OwnerId       = appl.OwnerId,
+            StartDateTime = startDateTime,
+            EndDateTime   = endDateTime,
+            Description   = singleDay ? appl.Period_Leave__c : 'All day'
+        );
     }
 
     /*
-     * Transaction 2 of the mixed DML split: User only.
-     *
-     * If this fails the request is already approved but the balance was never moved,
-     * and nothing on the record says so. An Error_Log__c is the only trace, so it has
-     * to be written even when the update throws.
+     * Recurring Holiday rows carry a null ActivityDate and are not matched here, so a
+     * recurring company holiday inside a range still counts as a leave day. Same
+     * limitation as TimesheetController.getHolidays.
      */
-    @future
-    private static void applyBalances(String serialisedUsers) {
-        List<User> users = (List<User>) JSON.deserialize(serialisedUsers, List<User>.class);
-        try {
-            update users;
-        } catch (Exception e) {
-            System.debug('Leave balance update failed: ' + e.getMessage() + '\n' + e.getStackTraceString());
-            try {
-                insert new Error_Log__c(Process_Type__c = 'Leave Balance Deduction');
-            } catch (Exception logFailure) {
-                System.debug('Could not record the balance failure: ' + logFailure.getMessage());
-            }
+    private static Set<Date> holidaysBetween(Date rangeStart, Date rangeEnd) {
+        Set<Date> result = new Set<Date>();
+        for (Holiday h : [
+            SELECT ActivityDate FROM Holiday
+            WHERE ActivityDate >= :rangeStart AND ActivityDate <= :rangeEnd
+        ]) {
+            result.add(h.ActivityDate);
         }
+        return result;
     }
 
-    private static Decimal daysFor(String periodLeave) {
-        return (AM_LEAVE == periodLeave || PM_LEAVE == periodLeave) ? 0.5 : 1.0;
+    private static Decimal workingDaysBetween(Date rangeStart, Date rangeEnd, Set<Date> holidays) {
+        Integer count = 0;
+        Date cursor = rangeStart;
+        Integer guard = 0;
+        while (cursor <= rangeEnd && guard++ < MAX_RANGE_DAYS) {
+            if (!isWeekend(cursor) && !holidays.contains(cursor)) {
+                count++;
+            }
+            cursor = cursor.addDays(1);
+        }
+        return count;
+    }
+
+    private static Boolean isWeekend(Date d) {
+        return Math.mod(MONDAY_EPOCH.daysBetween(d), 7) >= 5;
+    }
+
+    private static Date endDateOf(ApplicationItem__c appl) {
+        return appl.Term_To__c == null ? appl.Term_From__c : appl.Term_To__c;
+    }
+
+    private static Boolean isHalfDay(String periodLeave) {
+        return AM_LEAVE == periodLeave || PM_LEAVE == periodLeave;
+    }
+
+    /*
+     * Must match the format written by the backfill and the grant engine exactly —
+     * see scripts/apex/03_backfill_leave_balances.apex.
+     */
+    @TestVisible
+    private static String balanceKey(Id ownerId, String leaveType, Integer year) {
+        return ownerId + '-' + leaveType + '-' + year;
     }
 
     private static Decimal zeroIfNull(Decimal value) {

@@ -18,6 +18,25 @@ private class ApplicationItemTriggerTest {
         insert user;
         // User user = [SELECT Id, ManagerId FROM User WHERE Profile.name = 'EngineerGroupMember' LIMIT 1];
 
+        /*
+         * LEAVE-25: approving a deducting leave type now requires a Leave_Balance__c
+         * row to deduct from — a missing row is a hard error rather than a silent
+         * approval against an entitlement that does not exist. Every request below is
+         * Annual leave dated today, so one row covers the whole class.
+         */
+        insert new Leave_Balance__c(
+            Employee__c         = user.Id,
+            Leave_Type__c       = 'Annual leave',
+            Leave_Year__c       = System.today().year(),
+            External_Key__c     = user.Id + '-Annual leave-' + System.today().year(),
+            Entitlement_Days__c = 12,
+            Accrual_Method__c   = 'Monthly',
+            Carry_Over_Days__c  = 0,
+            Used_Days__c        = 0,
+            Pending_Days__c     = 0,
+            Status__c           = 'Active'
+        );
+
         List<ApplicationItem__c> leaveRequestList = new List<ApplicationItem__c>();
         // All day request
         leaveRequestList.add(new ApplicationItem__c(

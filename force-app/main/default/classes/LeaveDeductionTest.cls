@@ -2,25 +2,46 @@
 private class LeaveDeductionTest {
 
     /*
-     * LEAVE-18 — balance deduction on approval (LEAVE-13, spec §3.5).
+     * LEAVE-25 — balance deduction against Leave_Balance__c.
      *
-     * The User update happens in an @future, so every assertion on a balance has to
-     * come after Test.stopTest().
+     * Rewritten from the User-field version. Balances no longer live on a setup
+     * object, so there is no @future and no need to assert after Test.stopTest();
+     * the balance write is part of the same transaction as the approval.
+     *
+     * Classification comes from the org's real Leave_Type_Policy__mdt rows, so these
+     * tests also assert that the configuration is right, not only the code.
      */
 
-    private static User owner() {
-        return [
-            SELECT Id, Annual_Leave_Day__c, Annual_Leave_Used__c, Carry_Over_Days__c,
-                   Refresh_Leave_Days__c, Sick_Leave_Used__c, Personal_Leave_Used__c
-            FROM User WHERE CompanyName = 'LEAVETEST' LIMIT 1
-        ];
+    private static final Date MONDAY_EPOCH = Date.newInstance(1900, 1, 1);
+    private static Id cachedUserId;
+
+    private static Id testUserId() {
+        if (cachedUserId == null) {
+            cachedUserId = [SELECT Id FROM User WHERE CompanyName = 'LEAVETEST' LIMIT 1].Id;
+        }
+        return cachedUserId;
+    }
+
+    private static Integer testYear() {
+        return System.today().year();
+    }
+
+    /** A fixed weekday-agnostic date: single-day requests ignore weekends entirely. */
+    private static Date singleDate() {
+        return Date.newInstance(testYear(), 3, 2);
+    }
+
+    private static Date mondayInTestYear() {
+        Date d = Date.newInstance(testYear(), 3, 2);
+        Integer dayOfWeek = Math.mod(MONDAY_EPOCH.daysBetween(d), 7);
+        return d.addDays(Math.mod(7 - dayOfWeek, 7));
     }
 
     @testSetup
     static void setup() {
         Profile p = [SELECT Id FROM Profile WHERE Name = 'Standard User' LIMIT 1];
         String uniqueName = 'deduct' + DateTime.now().getTime();
-        insert new User(
+        User u = new User(
             FirstName = 'Deduct',
             LastName = 'Tester',
             Email = uniqueName + '@example.com',
@@ -32,25 +53,56 @@ private class LeaveDeductionTest {
             EmailEncodingKey = 'UTF-8',
             ProfileId = p.Id,
             LanguageLocaleKey = 'en_US',
-            Start_Date__c = Date.newInstance(2020, 1, 1),
-            Annual_Leave_Allocated__c = 12,
-            Annual_Leave_Day__c = 12,
-            Annual_Leave_Used__c = 0,
-            Carry_Over_Days__c = 3,
-            Refresh_Leave_Days__c = 2,
-            Sick_Leave_Used__c = 0,
-            Personal_Leave_Used__c = 0
+            Start_Date__c = Date.newInstance(2020, 1, 1)
+        );
+        // User is a setup object. Wrapping the insert in runAs lets the Leave_Balance__c
+        // inserts below run in the same test setup without MIXED_DML_OPERATION.
+        System.runAs(new User(Id = UserInfo.getUserId())) {
+            insert u;
+        }
+
+        Integer yr = System.today().year();
+        insert new List<Leave_Balance__c>{
+            balanceRow(u.Id, 'Annual leave',   yr, 12, 'Monthly',     3),
+            balanceRow(u.Id, 'Refresh Leave',  yr, 2,  'Anniversary', 0),
+            balanceRow(u.Id, 'Sick leave',     yr, 30, 'Upfront',     0),
+            balanceRow(u.Id, 'Personal leave', yr, 3,  'Upfront',     0)
+        };
+    }
+
+    private static Leave_Balance__c balanceRow(Id ownerId, String leaveType, Integer yr,
+                                               Decimal entitlement, String accrual, Decimal carryOver) {
+        return new Leave_Balance__c(
+            Employee__c         = ownerId,
+            Leave_Type__c       = leaveType,
+            Leave_Year__c       = yr,
+            External_Key__c     = ownerId + '-' + leaveType + '-' + yr,
+            Entitlement_Days__c = entitlement,
+            Accrual_Method__c   = accrual,
+            Carry_Over_Days__c  = carryOver,
+            Used_Days__c        = 0,
+            Pending_Days__c     = 0,
+            Status__c           = 'Active'
         );
     }
 
-    private static ApplicationItem__c request(Id ownerId, String type, String period) {
+    private static Leave_Balance__c balance(String leaveType) {
+        return [
+            SELECT Used_Days__c, Carry_Over_Days__c, Entitlement_Days__c
+            FROM Leave_Balance__c
+            WHERE Employee__c = :testUserId() AND Leave_Type__c = :leaveType
+            LIMIT 1
+        ];
+    }
+
+    private static ApplicationItem__c request(String type, String period) {
         return new ApplicationItem__c(
             Request_Type__c = type,
             Period_Leave__c = period,
-            Term_From__c    = System.today().addDays(30),
+            Term_From__c    = singleDate(),
             Remark__c       = 'deduction test',
             Status__c       = 'Pending',
-            OwnerId         = ownerId
+            OwnerId         = testUserId()
         );
     }
 
@@ -59,186 +111,235 @@ private class LeaveDeductionTest {
         update appl;
     }
 
+    private static Decimal carryAttribution(Id applId) {
+        return [SELECT Carry_Over_Days_Used__c FROM ApplicationItem__c WHERE Id = :applId].Carry_Over_Days_Used__c;
+    }
+
+    // ---------------------------------------------------------------- day counting
+
     @isTest
-    static void annualLeaveDrawsFromCarryOverFirst() {
-        ApplicationItem__c appl = request(owner().Id, 'Annual leave', 'All day');
+    static void singleDayRequestCountsOneDay() {
+        ApplicationItem__c appl = request('Annual leave', 'All day');
         insert appl;
-
-        Test.startTest();
-        approve(appl);
-        Test.stopTest();
-
-        User u = owner();
-        System.assertEquals(2, u.Carry_Over_Days__c, 'a full day comes out of carry over while it lasts');
-        System.assertEquals(12, u.Annual_Leave_Day__c, 'the current year balance is untouched while carry over remains');
-        System.assertEquals(1, u.Annual_Leave_Used__c, 'consumption is counted regardless of bucket');
-        System.assertEquals(1, [SELECT Carry_Over_Days_Used__c FROM ApplicationItem__c WHERE Id = :appl.Id].Carry_Over_Days_Used__c,
-            'the split is recorded on the request');
+        System.assertEquals(1, [SELECT Leave_Days__c FROM ApplicationItem__c WHERE Id = :appl.Id].Leave_Days__c,
+            'a request with no end date is a single day');
     }
 
     @isTest
-    static void annualLeaveSpillsIntoCurrentYearWhenCarryOverRunsOut() {
-        // 3 carry over days available, 4 requested across two approvals
+    static void halfDayCountsAsHalfADay() {
+        ApplicationItem__c appl = request('Annual leave', 'AM leave');
+        insert appl;
+        approve(appl);
+
+        System.assertEquals(0.5, [SELECT Leave_Days__c FROM ApplicationItem__c WHERE Id = :appl.Id].Leave_Days__c,
+            'AM leave is half a day');
+        System.assertEquals(0.5, balance('Annual leave').Used_Days__c, 'half a day is consumed');
+    }
+
+    @isTest
+    static void multiDayRangeCountsWorkingDaysOnly() {
+        Date mon = mondayInTestYear();
+        Date nextMon = mon.addDays(7);
+        Integer holidays = [SELECT COUNT() FROM Holiday
+                            WHERE ActivityDate >= :mon AND ActivityDate <= :nextMon];
+
+        ApplicationItem__c appl = request('Annual leave', 'All day');
+        appl.Term_From__c = mon;
+        appl.Term_To__c   = nextMon;
+        insert appl;
+
+        System.assertEquals(6 - holidays,
+            [SELECT Leave_Days__c FROM ApplicationItem__c WHERE Id = :appl.Id].Leave_Days__c,
+            'Monday to the following Monday is six working days, excluding both weekend days');
+    }
+
+    @isTest
+    static void multiDayRequestDeductsEveryWorkingDay() {
+        Date mon = mondayInTestYear();
+        Date fri = mon.addDays(4);
+        Integer holidays = [SELECT COUNT() FROM Holiday
+                            WHERE ActivityDate >= :mon AND ActivityDate <= :fri];
+
+        ApplicationItem__c appl = request('Annual leave', 'All day');
+        appl.Term_From__c = mon;
+        appl.Term_To__c   = fri;
+        insert appl;
+        approve(appl);
+
+        System.assertEquals(5 - holidays, balance('Annual leave').Used_Days__c,
+            'the whole range is deducted, not just the first day');
+    }
+
+    // ---------------------------------------------------------------- deduction
+
+    @isTest
+    static void annualLeaveIncrementsUsedOnItsOwnRow() {
+        ApplicationItem__c appl = request('Annual leave', 'All day');
+        insert appl;
+        approve(appl);
+
+        System.assertEquals(1, balance('Annual leave').Used_Days__c, 'one day is consumed');
+        System.assertEquals(3, balance('Annual leave').Carry_Over_Days__c,
+            'carried-in carry over is fixed for the year and is not decremented');
+        System.assertEquals(1, carryAttribution(appl.Id),
+            'the day is attributed to carry over, which is consumed first');
+    }
+
+    @isTest
+    static void carryOverAttributionStopsAtTheCarriedInAmount() {
+        // 3 carry over days available, 4 requested across one batch
         List<ApplicationItem__c> batch = new List<ApplicationItem__c>();
-        Id ownerId = owner().Id;
         for (Integer i = 0; i < 4; i++) {
-            batch.add(request(ownerId, 'Annual leave', 'All day'));
+            ApplicationItem__c appl = request('Annual leave', 'All day');
+            appl.Term_From__c = singleDate().addDays(i);
+            batch.add(appl);
         }
         insert batch;
 
-        Test.startTest();
         for (ApplicationItem__c appl : batch) {
             appl.Status__c = 'Approved';
         }
         update batch;
-        Test.stopTest();
 
-        User u = owner();
-        System.assertEquals(0, u.Carry_Over_Days__c, 'carry over is exhausted first');
-        System.assertEquals(11, u.Annual_Leave_Day__c, 'the fourth day spills into the current year');
-        System.assertEquals(4, u.Annual_Leave_Used__c, 'all four days are counted as used');
+        System.assertEquals(4, balance('Annual leave').Used_Days__c, 'all four days are consumed');
 
         Decimal totalFromCarry = 0;
         for (ApplicationItem__c appl : [SELECT Carry_Over_Days_Used__c FROM ApplicationItem__c WHERE Id IN :batch]) {
             totalFromCarry += appl.Carry_Over_Days_Used__c;
         }
-        System.assertEquals(3, totalFromCarry, 'the attribution across the batch adds up to the carry over consumed');
+        System.assertEquals(3, totalFromCarry,
+            'attribution across the batch adds up to exactly the carry over carried in');
     }
 
     @isTest
-    static void halfDayDeductsHalfADay() {
-        ApplicationItem__c appl = request(owner().Id, 'Annual leave', 'AM leave');
+    static void refreshLeaveOnlyTouchesItsOwnRow() {
+        ApplicationItem__c appl = request('Refresh Leave', 'All day');
         insert appl;
-
-        Test.startTest();
         approve(appl);
-        Test.stopTest();
 
-        User u = owner();
-        System.assertEquals(2.5, u.Carry_Over_Days__c, 'AM leave costs half a day');
-        System.assertEquals(0.5, u.Annual_Leave_Used__c, 'half a day is counted as used');
+        System.assertEquals(1, balance('Refresh Leave').Used_Days__c, 'refresh leave draws from its own row');
+        System.assertEquals(0, balance('Annual leave').Used_Days__c, 'the annual row is untouched');
+        System.assertEquals(0, carryAttribution(appl.Id), 'only annual leave attributes to carry over');
     }
 
     @isTest
-    static void balanceIsAllowedToGoNegative() {
-        User u = owner();
-        update new User(Id = u.Id, Carry_Over_Days__c = 0, Annual_Leave_Day__c = 0);
-
-        ApplicationItem__c appl = request(u.Id, 'Annual leave', 'All day');
-        insert appl;
-
-        Test.startTest();
-        approve(appl);
-        Test.stopTest();
-
-        System.assertEquals(-1, owner().Annual_Leave_Day__c,
-            'approval must not be blocked by an empty balance; preventing overspend is a validation rule');
-    }
-
-    @isTest
-    static void refreshLeaveOnlyTouchesRefreshDays() {
-        ApplicationItem__c appl = request(owner().Id, 'Refresh Leave', 'All day');
-        insert appl;
-
-        Test.startTest();
-        approve(appl);
-        Test.stopTest();
-
-        User u = owner();
-        System.assertEquals(1, u.Refresh_Leave_Days__c, 'refresh leave draws from its own pool');
-        System.assertEquals(3, u.Carry_Over_Days__c, 'carry over is not touched');
-        System.assertEquals(12, u.Annual_Leave_Day__c, 'the annual balance is not touched');
-        System.assertEquals(0, u.Annual_Leave_Used__c, 'refresh leave is not counted as annual consumption');
-    }
-
-    @isTest
-    static void sickAndPersonalLeaveIncrementTheirOwnCounters() {
-        Id ownerId = owner().Id;
-        ApplicationItem__c sick = request(ownerId, 'Sick leave', 'All day');
-        ApplicationItem__c personal = request(ownerId, 'Personal leave', 'PM leave');
+    static void sickAndPersonalUseTheirOwnRows() {
+        ApplicationItem__c sick = request('Sick leave', 'All day');
+        ApplicationItem__c personal = request('Personal leave', 'PM leave');
         insert new List<ApplicationItem__c>{ sick, personal };
 
-        Test.startTest();
         sick.Status__c = 'Approved';
         personal.Status__c = 'Approved';
         update new List<ApplicationItem__c>{ sick, personal };
-        Test.stopTest();
 
-        User u = owner();
-        System.assertEquals(1, u.Sick_Leave_Used__c, 'sick leave increments its own counter');
-        System.assertEquals(0.5, u.Personal_Leave_Used__c, 'personal leave increments its own counter');
-        System.assertEquals(12, u.Annual_Leave_Day__c, 'neither touches the annual balance');
-        System.assertEquals(3, u.Carry_Over_Days__c, 'neither touches carry over');
+        System.assertEquals(1, balance('Sick leave').Used_Days__c, 'sick leave uses the sick row');
+        System.assertEquals(0.5, balance('Personal leave').Used_Days__c, 'personal leave uses the personal row');
+        System.assertEquals(0, balance('Annual leave').Used_Days__c, 'neither touches the annual row');
     }
 
     @isTest
     static void statutoryLeaveDeductsNothing() {
-        Id ownerId = owner().Id;
         List<ApplicationItem__c> batch = new List<ApplicationItem__c>{
-            request(ownerId, 'Bereavement leave', 'All day'),
-            request(ownerId, 'Maternity leave', 'All day'),
-            request(ownerId, 'Unpaid leave', 'All day'),
-            request(ownerId, 'Other', 'All day')
+            request('Bereavement leave', 'All day'),
+            request('Maternity leave', 'All day'),
+            request('Unpaid leave', 'All day'),
+            request('Other', 'All day')
         };
         insert batch;
 
-        Test.startTest();
         for (ApplicationItem__c appl : batch) {
             appl.Status__c = 'Approved';
         }
         update batch;
-        Test.stopTest();
 
-        User u = owner();
-        System.assertEquals(12, u.Annual_Leave_Day__c, 'statutory leave leaves the annual balance alone');
-        System.assertEquals(3, u.Carry_Over_Days__c, 'statutory leave leaves carry over alone');
-        System.assertEquals(0, u.Annual_Leave_Used__c, 'statutory leave is not counted as annual consumption');
-        System.assertEquals(0, u.Sick_Leave_Used__c, 'statutory leave does not leak into the sick counter');
+        System.assertEquals(0, balance('Annual leave').Used_Days__c,
+            'types with Deducts_Balance__c false move no balance');
+        System.assertEquals(0, balance('Sick leave').Used_Days__c,
+            'and do not leak into another row');
     }
 
     @isTest
-    static void editingAnApprovedRequestDoesNotDeductAgain() {
-        ApplicationItem__c appl = request(owner().Id, 'Annual leave', 'All day');
+    static void overspendIsAllowedAtApproval() {
+        // 12 entitlement + 3 carry over, 20 days requested
+        Date mon = mondayInTestYear();
+        ApplicationItem__c appl = request('Annual leave', 'All day');
+        appl.Term_From__c = mon;
+        appl.Term_To__c   = mon.addDays(27);
         insert appl;
         approve(appl);
 
-        Test.startTest();
+        System.assert(balance('Annual leave').Used_Days__c > 15,
+            'approval is not blocked by an empty balance; over-balance requests are '
+            + 'caught at creation and re-labelled Leave Without Pay instead');
+    }
+
+    // ---------------------------------------------------------------- guards
+
+    @isTest
+    static void editingAnApprovedRequestDoesNotDeductAgain() {
+        ApplicationItem__c appl = request('Annual leave', 'All day');
+        insert appl;
+        approve(appl);
+
         appl.Remark__c = 'edited after approval';
         update appl;
-        Test.stopTest();
 
-        User u = owner();
-        System.assertEquals(2, u.Carry_Over_Days__c, 'a second save must not deduct a second time');
-        System.assertEquals(1, u.Annual_Leave_Used__c, 'consumption is counted once only');
+        System.assertEquals(1, balance('Annual leave').Used_Days__c,
+            'a second save must not deduct a second time');
     }
 
     @isTest
     static void insertedAsApprovedDeductsOnce() {
-        ApplicationItem__c appl = request(owner().Id, 'Annual leave', 'All day');
+        ApplicationItem__c appl = request('Annual leave', 'All day');
         appl.Status__c = 'Approved';
-
-        Test.startTest();
         insert appl;
-        Test.stopTest();
 
-        System.assertEquals(2, owner().Carry_Over_Days__c,
+        System.assertEquals(1, balance('Annual leave').Used_Days__c,
             'a record created already approved deducts exactly once');
     }
 
     @isTest
     static void pendingAndRejectedRequestsDeductNothing() {
-        Id ownerId = owner().Id;
-        ApplicationItem__c pending = request(ownerId, 'Annual leave', 'All day');
-        ApplicationItem__c rejected = request(ownerId, 'Annual leave', 'All day');
+        ApplicationItem__c pending = request('Annual leave', 'All day');
+        ApplicationItem__c rejected = request('Annual leave', 'All day');
         insert new List<ApplicationItem__c>{ pending, rejected };
 
-        Test.startTest();
         rejected.Status__c = 'Rejected';
         update rejected;
-        Test.stopTest();
 
-        User u = owner();
-        System.assertEquals(3, u.Carry_Over_Days__c, 'nothing is deducted before approval');
-        System.assertEquals(0, u.Annual_Leave_Used__c, 'a rejected request never consumed anything to reverse');
+        System.assertEquals(0, balance('Annual leave').Used_Days__c,
+            'nothing is consumed before approval, and a rejected request never consumed anything');
+    }
+
+    @isTest
+    static void unknownLeaveTypeIsRejected() {
+        // No policy rows at all, so every type is unclassified.
+        ApplicationItemTriggerLogic.policyOverride = new List<Leave_Type_Policy__mdt>();
+
+        ApplicationItem__c appl = request('Annual leave', 'All day');
+        appl.Status__c = 'Approved';
+        try {
+            insert appl;
+            System.assert(false, 'an unclassified leave type must not be approvable');
+        } catch (DmlException e) {
+            System.assert(e.getMessage().contains('Leave Type Policy'),
+                'the error should name the missing policy record: ' + e.getMessage());
+        }
+    }
+
+    @isTest
+    static void missingBalanceRowIsRejected() {
+        delete [SELECT Id FROM Leave_Balance__c
+                WHERE Employee__c = :testUserId() AND Leave_Type__c = 'Annual leave'];
+
+        ApplicationItem__c appl = request('Annual leave', 'All day');
+        appl.Status__c = 'Approved';
+        try {
+            insert appl;
+            System.assert(false, 'approval must not silently succeed with no balance row');
+        } catch (DmlException e) {
+            System.assert(e.getMessage().contains('balance exists'),
+                'the error should say the balance row is missing: ' + e.getMessage());
+        }
     }
 }

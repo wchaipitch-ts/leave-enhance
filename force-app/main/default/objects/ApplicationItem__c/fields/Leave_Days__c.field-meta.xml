@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Leave_Days__c</fullName>
+    <description>Working days requested, calculated in the before-insert trigger from Term_From__c..Term_To__c excluding weekends and Holiday records, with Period_Leave__c applied only to single-day requests. Replaces the No_of_Days__c formula, which is structurally limited to 1 or 0.5 and cannot represent a multi-day request. No_of_Days__c is retained until nothing references it.</description>
+    <label>No. of Days</label>
+    <precision>4</precision>
+    <required>false</required>
+    <scale>1</scale>
+    <type>Number</type>
+    <unique>false</unique>
+</CustomField>

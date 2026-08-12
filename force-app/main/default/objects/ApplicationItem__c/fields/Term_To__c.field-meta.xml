@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Term_To__c</fullName>
+    <description>End date of the leave, inclusive. Blank means a single-day request and is treated as equal to Term_From__c, which keeps every pre-existing record valid. Leave requests may not span a calendar year - see the Leave_Request_No_Year_Span validation rule.</description>
+    <label>Term To</label>
+    <required>false</required>
+    <type>Date</type>
+</CustomField>

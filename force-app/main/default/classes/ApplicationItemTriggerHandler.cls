@@ -9,9 +9,10 @@ public class ApplicationItemTriggerHandler {
      * moves a balance, produces a leave calendar Event, or books a leave Man_hour__c.
      * Every one of those is wrong for overtime.
      *
-     * Without this gate an Overtime Request cannot be approved at all: its
-     * Request_Type__c is not a leave type, so deductLeaveBalance falls through to its
-     * addError branch and blocks the save.
+     * Without this gate an Overtime Request either cannot be approved at all (its
+     * Request_Type__c has no Leave Type Policy row, so deductLeaveBalance raises
+     * addError) or, worse, silently deducts leave when it happens to carry a
+     * leave type.
      *
      * Resolved by developer name rather than a hardcoded Id so the same code runs in
      * every org. If Overtime_Request is ever removed the lookup returns null and every
@@ -33,15 +34,24 @@ public class ApplicationItemTriggerHandler {
     }
 
     /*
-     * LEAVE-13 runs in the before contexts so that Carry_Over_Days_Used__c can be set
-     * on the in-flight record without any DML on ApplicationItem__c.
+     * LEAVE-13 / LEAVE-25 run in the before contexts so that Leave_Days__c and
+     * Carry_Over_Days_Used__c are set on the in-flight record without any DML on
+     * ApplicationItem__c.
+     *
+     * calculateLeaveDays runs over EVERY leave request, not just approved ones, so
+     * the day count is right from Draft onward. It must run before deductLeaveBalance,
+     * which reads the figure it writes.
      */
     public void onBeforeInsert(List<ApplicationItem__c> newList) {
-        logic.deductLeaveBalance(leaveRequestsJustApproved(newList, null));
+        List<ApplicationItem__c> requests = leaveRequests(newList);
+        logic.calculateLeaveDays(requests);
+        logic.deductLeaveBalance(justApproved(requests, null));
     }
 
     public void onBeforeUpdate(List<ApplicationItem__c> newList, Map<Id, ApplicationItem__c> oldMap) {
-        logic.deductLeaveBalance(leaveRequestsJustApproved(newList, oldMap));
+        List<ApplicationItem__c> requests = leaveRequests(newList);
+        logic.calculateLeaveDays(requests);
+        logic.deductLeaveBalance(justApproved(requests, oldMap));
     }
 
     /*
@@ -49,46 +59,51 @@ public class ApplicationItemTriggerHandler {
      * approved row counts as newly approved.
      */
     public void onAfterInsert(List<ApplicationItem__c> newList) {
-        process(leaveRequestsJustApproved(newList, null));
+        process(justApproved(leaveRequests(newList), null));
     }
 
     public void onAfterUpdate(List<ApplicationItem__c> newList, Map<Id, ApplicationItem__c> oldMap) {
-        process(leaveRequestsJustApproved(newList, oldMap));
+        process(justApproved(leaveRequests(newList), oldMap));
     }
 
     /*
-     * Leave Requests crossing INTO Approved, and nothing else.
-     *
-     * The approval transition is what prevents duplicate work: previously any update to
-     * an already-approved record re-fired this path and created a second calendar Event
-     * and a second Man_hour__c — editing the remark was enough to do it. The same check
-     * is what keeps LEAVE-13 from deducting a balance twice, which is why no
-     * Balance_Applied__c flag is needed.
-     *
-     * The record type filter (LEAVE-23) lives here because this method is the single
-     * chokepoint feeding all three side effects. Overtime will need its own approval
-     * path; it does not belong on this one.
+     * Leave Requests only. Overtime will need its own approval path; it does not
+     * belong on this one.
      */
-    private List<ApplicationItem__c> leaveRequestsJustApproved(List<ApplicationItem__c> newList,
-                                                               Map<Id, ApplicationItem__c> oldMap) {
-        List<ApplicationItem__c> justApproved = new List<ApplicationItem__c>();
+    private List<ApplicationItem__c> leaveRequests(List<ApplicationItem__c> newList) {
+        List<ApplicationItem__c> requests = new List<ApplicationItem__c>();
         for (ApplicationItem__c appl : newList) {
-            if (!isLeaveRequest(appl)) {
-                continue;
+            if (isLeaveRequest(appl)) {
+                requests.add(appl);
             }
+        }
+        return requests;
+    }
+
+    /*
+     * Only records crossing INTO Approved qualify. Previously any update to an
+     * already-approved record re-fired this path and created a duplicate calendar
+     * Event and a duplicate Man_hour__c — editing the remark was enough to do it.
+     * The same check is what keeps the deduction from running twice, which is why no
+     * Balance_Applied__c flag is needed.
+     */
+    private List<ApplicationItem__c> justApproved(List<ApplicationItem__c> requests,
+                                                  Map<Id, ApplicationItem__c> oldMap) {
+        List<ApplicationItem__c> approved = new List<ApplicationItem__c>();
+        for (ApplicationItem__c appl : requests) {
             if (appl.Status__c != 'Approved') {
                 continue;
             }
             if (oldMap == null) {
-                justApproved.add(appl);
+                approved.add(appl);
                 continue;
             }
             ApplicationItem__c prior = oldMap.get(appl.Id);
             if (prior != null && prior.Status__c != 'Approved') {
-                justApproved.add(appl);
+                approved.add(appl);
             }
         }
-        return justApproved;
+        return approved;
     }
 
     /*
@@ -96,11 +111,11 @@ public class ApplicationItemTriggerHandler {
      * the previous loop burned a job per row against a 50-job ceiling, and did so
      * even for records that were not approved.
      */
-    private void process(List<ApplicationItem__c> justApproved) {
-        if (justApproved.isEmpty()) {
+    private void process(List<ApplicationItem__c> approved) {
+        if (approved.isEmpty()) {
             return;
         }
-        logic.setLeaveDateTime(justApproved);
-        System.enqueueJob(new createLeaveRecordQueueable(justApproved));
+        logic.setLeaveDateTime(approved);
+        System.enqueueJob(new createLeaveRecordQueueable(approved));
     }
 }

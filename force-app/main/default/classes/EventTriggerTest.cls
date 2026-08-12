@@ -16,7 +16,24 @@ private class EventTriggerTest {
                     LocaleSidKey = 'th'
                 );
         insert user;
-        
+
+        /*
+         * LEAVE-25: the approved request below deducts from Leave_Balance__c, and a
+         * missing balance row is now a hard error rather than a silent approval.
+         */
+        insert new Leave_Balance__c(
+            Employee__c         = user.Id,
+            Leave_Type__c       = 'Annual leave',
+            Leave_Year__c       = System.today().year(),
+            External_Key__c     = user.Id + '-Annual leave-' + System.today().year(),
+            Entitlement_Days__c = 12,
+            Accrual_Method__c   = 'Monthly',
+            Carry_Over_Days__c  = 0,
+            Used_Days__c        = 0,
+            Pending_Days__c     = 0,
+            Status__c           = 'Active'
+        );
+
         ApplicationItem__c appItem = new ApplicationItem__c(
             Request_Type__c = 'Annual leave',
             Period_Leave__c = 'All day',
