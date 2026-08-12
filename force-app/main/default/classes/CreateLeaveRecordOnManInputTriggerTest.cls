@@ -38,7 +38,7 @@ public class CreateLeaveRecordOnManInputTriggerTest {
         insert testProjectAssign;
 
         ApplicationItem__c testApplicationItem = new ApplicationItem__c(
-            Status__c = 'Approved',
+            Status__c = 'Pending',
             OwnerId = user.Id,
             Term_From__c = startDate,
             Period_Leave__c = 'AM leave',
@@ -46,6 +46,10 @@ public class CreateLeaveRecordOnManInputTriggerTest {
             Remark__c = 'Test Remark'
         );
         insert testApplicationItem;
+
+        // Inserted as Pending so the after-insert trigger added by LEAVE-12 does not
+        // also process it. Flipped in memory only, to exercise the logic class alone.
+        testApplicationItem.Status__c = 'Approved';
 
         // Create an instance of the logic class
         CreateLeaveRecordOnManInputTriggerLogic logic = new CreateLeaveRecordOnManInputTriggerLogic();
@@ -82,7 +86,7 @@ public class CreateLeaveRecordOnManInputTriggerTest {
         insert user;
 
         ApplicationItem__c testApplicationItem = new ApplicationItem__c(
-            Status__c = 'Approved',
+            Status__c = 'Pending',
             OwnerId = user.Id,
             Term_From__c = startDate,
             Period_Leave__c = 'AM leave',
@@ -90,6 +94,10 @@ public class CreateLeaveRecordOnManInputTriggerTest {
             Remark__c = 'Test Remark'
         );
         insert testApplicationItem;
+
+        // Inserted as Pending so the after-insert trigger added by LEAVE-12 does not
+        // also process it. Flipped in memory only, to exercise the logic class alone.
+        testApplicationItem.Status__c = 'Approved';
 
         // Create an instance of the logic class
         CreateLeaveRecordOnManInputTriggerLogic logic = new CreateLeaveRecordOnManInputTriggerLogic();
@@ -130,7 +138,7 @@ public class CreateLeaveRecordOnManInputTriggerTest {
         insert testProject;
 
         ApplicationItem__c testApplicationItem = new ApplicationItem__c(
-            Status__c = 'Approved',
+            Status__c = 'Pending',
             OwnerId = user.Id,
             Term_From__c = startDate,
             Period_Leave__c = 'AM leave',
@@ -138,6 +146,10 @@ public class CreateLeaveRecordOnManInputTriggerTest {
             Remark__c = 'Test Remark'
         );
         insert testApplicationItem;
+
+        // Inserted as Pending so the after-insert trigger added by LEAVE-12 does not
+        // also process it. Flipped in memory only, to exercise the logic class alone.
+        testApplicationItem.Status__c = 'Approved';
 
                 // Create an instance of the logic class
                 CreateLeaveRecordOnManInputTriggerLogic logic = new CreateLeaveRecordOnManInputTriggerLogic();
@@ -175,7 +187,7 @@ public class CreateLeaveRecordOnManInputTriggerTest {
         );
         insert testProject;
         ApplicationItem__c testApplicationItem = new ApplicationItem__c(
-            Status__c = 'Approved',
+            Status__c = 'Pending',
             OwnerId = user.Id,
             Term_From__c = startDate,
             Period_Leave__c = 'AM leave',
@@ -183,6 +195,10 @@ public class CreateLeaveRecordOnManInputTriggerTest {
             Remark__c = 'Test Remark'
         );
         insert testApplicationItem;
+
+        // Inserted as Pending so the after-insert trigger added by LEAVE-12 does not
+        // also process it. Flipped in memory only, to exercise the logic class alone.
+        testApplicationItem.Status__c = 'Approved';
         // Create an instance of the logic class
         CreateLeaveRecordOnManInputTriggerLogic logic = new CreateLeaveRecordOnManInputTriggerLogic();
         // Call the method to be tested
