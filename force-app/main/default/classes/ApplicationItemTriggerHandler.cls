@@ -43,9 +43,9 @@ public class ApplicationItemTriggerHandler {
     }
 
     /*
-     * LEAVE-13 / LEAVE-25 run in the before contexts so that Leave_Days__c and
-     * Carry_Over_Days_Used__c are set on the in-flight record without any DML on
-     * ApplicationItem__c.
+     * LEAVE-13 / LEAVE-25 run in the before contexts so that Leave_Days__c,
+     * Carry_Over_Days_Used__c and the balance lookup are set on the in-flight record
+     * without any DML on ApplicationItem__c.
      *
      * calculateLeaveDays runs over EVERY leave request, not just approved ones, so
      * the day count is right from Draft onward. It must run before deductLeaveBalance,
@@ -62,21 +62,11 @@ public class ApplicationItemTriggerHandler {
     }
 
     /*
-     * LEAVE-30. The order of these four is load-bearing:
-     *
-     *   1. calculateLeaveDays  writes Leave_Days__c, which everything below reads.
-     *   2. assess              forecasts the unpaid portion from Leave_Days__c and
-     *                          flags the request for the Managing Director. Must come
-     *                          after step 1 or it measures a stale day count.
-     *   3. stampApproval       records the sign-off. After step 2 so that a Managing
-     *                          Director approving a request whose length changed in
-     *                          this same save signs for the new figure, not the old.
-     *   4. deductLeaveBalance  settles the split for real and moves the balance.
+     * Order matters: calculateLeaveDays writes Leave_Days__c, and deductLeaveBalance
+     * reads it to decide how much balance to move.
      */
     private void beforeSave(List<ApplicationItem__c> requests, Map<Id, ApplicationItem__c> oldMap) {
         logic.calculateLeaveDays(requests);
-        LeaveWithoutPayService.assess(requests, oldMap);
-        LeaveWithoutPayService.stampApproval(requests, oldMap);
         logic.deductLeaveBalance(justApproved(requests, oldMap));
     }
 
@@ -84,7 +74,13 @@ public class ApplicationItemTriggerHandler {
      * LEAVE-12. A record inserted already Approved has no prior state, so every
      * approved row counts as newly approved.
      */
+    /*
+     * LEAVE-33. The split runs after insert, not on approval: the unpaid record has to
+     * point back at a saved parent, and the employee should see what will not be paid
+     * at the moment they save rather than after somebody signs it.
+     */
     public void onAfterInsert(List<ApplicationItem__c> newList) {
+        LeaveSplitService.splitOverBalance(leaveRequests(newList));
         afterSave(newList, null);
     }
 

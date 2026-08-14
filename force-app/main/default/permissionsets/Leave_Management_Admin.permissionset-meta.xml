@@ -90,36 +90,6 @@
     </fieldPermissions>
     <fieldPermissions>
         <editable>true</editable>
-        <field>ApplicationItem__c.LWOP_Days__c</field>
-        <readable>true</readable>
-    </fieldPermissions>
-    <fieldPermissions>
-        <editable>true</editable>
-        <field>ApplicationItem__c.LWOP_Status__c</field>
-        <readable>true</readable>
-    </fieldPermissions>
-    <fieldPermissions>
-        <editable>true</editable>
-        <field>ApplicationItem__c.LWOP_Approved_By__c</field>
-        <readable>true</readable>
-    </fieldPermissions>
-    <fieldPermissions>
-        <editable>true</editable>
-        <field>ApplicationItem__c.LWOP_Approved_On__c</field>
-        <readable>true</readable>
-    </fieldPermissions>
-    <fieldPermissions>
-        <editable>true</editable>
-        <field>ApplicationItem__c.LWOP_Approved_Days__c</field>
-        <readable>true</readable>
-    </fieldPermissions>
-    <fieldPermissions>
-        <editable>false</editable>
-        <field>ApplicationItem__c.Paid_Days__c</field>
-        <readable>true</readable>
-    </fieldPermissions>
-    <fieldPermissions>
-        <editable>true</editable>
         <field>ApplicationItem__c.OT_Start__c</field>
         <readable>true</readable>
     </fieldPermissions>
@@ -131,6 +101,16 @@
     <fieldPermissions>
         <editable>true</editable>
         <field>ApplicationItem__c.Overtime_Hours__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>true</editable>
+        <field>ApplicationItem__c.Leave_Balance__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>true</editable>
+        <field>ApplicationItem__c.Split_From__c</field>
         <readable>true</readable>
     </fieldPermissions>
     <objectPermissions>

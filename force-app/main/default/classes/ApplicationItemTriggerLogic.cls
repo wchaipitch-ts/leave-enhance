@@ -12,6 +12,10 @@ public class ApplicationItemTriggerLogic {
     // The only type with a carry-over bucket, so the only one needing attribution.
     private static final String TYPE_ANNUAL = 'Annual leave';
 
+    // The type LeaveSplitService creates for days beyond the balance. Named here
+    // because it is the one type whose entitlement is granted as it is used.
+    private static final String TYPE_UNPAID = 'Unpaid leave';
+
     // 1900-01-01 was a Monday, so days-since gives 0=Mon .. 5=Sat, 6=Sun.
     private static final Date MONDAY_EPOCH = Date.newInstance(1900, 1, 1);
 
@@ -50,6 +54,12 @@ public class ApplicationItemTriggerLogic {
     /** The active policy for a leave type, or null if it has none. */
     public static Leave_Type_Policy__mdt policyFor(String leaveType) {
         return policies().get(leaveType);
+    }
+
+    /** True for the types LeaveSplitService may cut down: currently Annual and Sick. */
+    private static Boolean countsTowardSplit(ApplicationItem__c appl) {
+        Leave_Type_Policy__mdt policy = policyFor(appl.Request_Type__c);
+        return policy != null && policy.Counts_Toward_LWOP_Check__c == true;
     }
 
     /*
@@ -197,11 +207,10 @@ public class ApplicationItemTriggerLogic {
      * Still runs in a before context so Carry_Over_Days_Used__c lands on the in-flight
      * record without a second DML on ApplicationItem__c.
      *
-     * LEAVE-30: what gets deducted is the PAID portion, not the whole request. For a
-     * type inside the LWOP check, LeaveWithoutPayService.settle splits the request
-     * against the balance still left at this point in the transaction and refuses the
-     * approval outright if the unpaid remainder has not been signed off by the
-     * Managing Director. Every other type is deducted in full, exactly as before.
+     * LEAVE-33: every request is deducted in full again. A request that ran past the
+     * balance was already cut down to what it could afford at insert, by
+     * LeaveSplitService, and the remainder now exists as its own Unpaid leave record
+     * deducting its own balance. There is nothing left here to split.
      */
     public void deductLeaveBalance(List<ApplicationItem__c> approvedList) {
         if (approvedList.isEmpty()) {
@@ -238,7 +247,8 @@ public class ApplicationItemTriggerLogic {
         // for the same person and type cannot read the same figure and both write it.
         Map<String, Leave_Balance__c> balanceByKey = new Map<String, Leave_Balance__c>();
         for (Leave_Balance__c bal : [
-            SELECT Id, External_Key__c, Accrued_Days__c, Carry_Over_Days__c, Used_Days__c
+            SELECT Id, External_Key__c, Entitlement_Days__c, Accrued_Days__c,
+                   Carry_Over_Days__c, Used_Days__c
             FROM Leave_Balance__c
             WHERE External_Key__c IN :keys
             FOR UPDATE
@@ -257,23 +267,34 @@ public class ApplicationItemTriggerLogic {
                 continue;
             }
 
-            if (zeroIfNull(appl.Leave_Days__c) <= 0) {
+            Decimal payable = zeroIfNull(appl.Leave_Days__c);
+            if (payable <= 0) {
                 continue;
             }
 
+            // The row this request drew on, so every balance carries a related list of
+            // what consumed it. Set in the before context, so it costs no extra DML.
+            appl.Leave_Balance__c = bal.Id;
+
             /*
-             * LEAVE-30. Used_Days__c is the running in-transaction figure, so a second
-             * approval in the same batch is split against what the first one left
-             * behind rather than against the balance as it stood on entry.
+             * LEAVE-33 backstop. The split is calculated when the request is saved, so
+             * it reflects the balance at that moment. If two requests were raised while
+             * both looked affordable and the other one was approved first, this one is
+             * now too big and its unpaid half was never created.
              *
-             * A null return means settle has already put an error on the record.
+             * Used_Days__c is the running in-transaction figure, so this also catches
+             * two such approvals arriving in the same batch. Refusing is the point:
+             * the alternative is a balance quietly going negative.
              */
             Decimal available = zeroIfNull(bal.Accrued_Days__c)
                               + zeroIfNull(bal.Carry_Over_Days__c)
                               - zeroIfNull(bal.Used_Days__c);
-            Decimal payable = LeaveWithoutPayService.settle(appl, available);
-            if (payable == null || payable <= 0) {
-                continue; // blocked, or entirely unpaid and so moves no balance
+            if (countsTowardSplit(appl) && payable > available) {
+                appl.addError(appl.Request_Type__c + ': only ' + available
+                    + ' day(s) remain but this request is for ' + payable + '. Raise it '
+                    + 'unapproved first so the days beyond the balance are separated out '
+                    + 'into an Unpaid leave request, then approve both.');
+                continue;
             }
 
             /*
@@ -294,6 +315,18 @@ public class ApplicationItemTriggerLogic {
             }
 
             bal.Used_Days__c = zeroIfNull(bal.Used_Days__c) + payable;
+
+            /*
+             * LEAVE-33 — grant on use. Unpaid leave has no entitlement to draw down, so
+             * deducting it alone would drive Available_Days__c negative and the balance
+             * page would read "-12 available", which means nothing. Raising the
+             * entitlement by the same amount keeps Available at zero and turns the row
+             * into what it actually is: a count of unpaid days taken.
+             */
+            if (TYPE_UNPAID.equals(appl.Request_Type__c)) {
+                bal.Entitlement_Days__c = zeroIfNull(bal.Entitlement_Days__c) + payable;
+            }
+
             touched.put(bal.Id, bal);
         }
 

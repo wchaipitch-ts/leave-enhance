@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Split_From__c</fullName>
+    <deleteConstraint>SetNull</deleteConstraint>
+    <description>Set on an Unpaid leave record created automatically because the original request ran past the employee's balance. Points back at that original. Without it the two halves of one absence look like two unrelated requests, and nobody can tell the unpaid days were not asked for deliberately.</description>
+    <externalId>false</externalId>
+    <inlineHelpText>The original request whose days ran past the available balance. Set automatically.</inlineHelpText>
+    <label>Split From</label>
+    <referenceTo>ApplicationItem__c</referenceTo>
+    <relationshipLabel>Unpaid Continuation</relationshipLabel>
+    <relationshipName>Split_Records</relationshipName>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Lookup</type>
+</CustomField>

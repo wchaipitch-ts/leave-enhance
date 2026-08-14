@@ -74,7 +74,10 @@ private class LeaveDeductionTest {
             balanceRow(u.Id, 'Annual leave',   yr, 12, 'Upfront',     3),
             balanceRow(u.Id, 'Refresh Leave',  yr, 2,  'Anniversary', 0),
             balanceRow(u.Id, 'Sick leave',     yr, 30, 'Upfront',     0),
-            balanceRow(u.Id, 'Personal leave', yr, 3,  'Upfront',     0)
+            balanceRow(u.Id, 'Personal leave', yr, 3,  'Upfront',     0),
+            // LEAVE-33: Unpaid leave now deducts too, so it needs a row like any other
+            // type. Entitlement stays at zero - it is granted as it is used.
+            balanceRow(u.Id, 'Unpaid leave',   yr, 0,  'Upfront',     0)
         };
     }
 
@@ -250,7 +253,6 @@ private class LeaveDeductionTest {
         List<ApplicationItem__c> batch = new List<ApplicationItem__c>{
             request('Bereavement leave', 'All day'),
             request('Maternity leave', 'All day'),
-            request('Unpaid leave', 'All day'),
             request('Other', 'All day')
         };
         insert batch;
@@ -267,14 +269,40 @@ private class LeaveDeductionTest {
     }
 
     @isTest
-    static void overspendBecomesLeaveWithoutPay() {
+    static void unpaidLeaveTakenDirectlyIsCountedToo() {
         /*
-         * LEAVE-30 replaced the old behaviour here. This used to assert that approval
-         * sailed through and drove Used_Days__c past the entitlement; a balance that
-         * could go arbitrarily negative was the bug, not the feature.
+         * LEAVE-33 moved Unpaid leave out of the statutory group above. It now deducts
+         * like any other type, so a day booked deliberately as unpaid lands on the same
+         * row as a day converted by the splitter — one honest total of unpaid days.
+         */
+        ApplicationItem__c appl = request('Unpaid leave', 'All day');
+        insert appl;
+        approve(appl);
+
+        Leave_Balance__c unpaid = [
+            SELECT Used_Days__c, Entitlement_Days__c, Available_Days__c
+            FROM Leave_Balance__c
+            WHERE Employee__c = :testUserId() AND Leave_Type__c = 'Unpaid leave' LIMIT 1
+        ];
+        System.assertEquals(1, unpaid.Used_Days__c, 'the day is counted');
+        System.assertEquals(1, unpaid.Entitlement_Days__c, 'entitlement is granted as it is used');
+        System.assertEquals(0, unpaid.Available_Days__c, 'so the row never reads negative');
+        System.assertEquals(0, balance('Annual leave').Used_Days__c, 'and no paid balance is touched');
+    }
+
+    @isTest
+    static void overspendSplitsIntoAnUnpaidRequest() {
+        /*
+         * This assertion has been rewritten twice, which is worth recording.
          *
-         * 12 entitlement + 3 carry over against a four-week range: the shortfall is
-         * now unpaid days, and unpaid days need the Managing Director.
+         * Originally it asserted that approval sailed through and drove Used_Days__c
+         * past the entitlement — a balance that could go arbitrarily negative was the
+         * bug, not the feature. LEAVE-30 replaced that with a Managing Director gate on
+         * the same record. LEAVE-33 replaced the gate with a split: the request is cut
+         * down to what the balance covers and the remainder becomes its own Unpaid
+         * leave record, which is an ordinary request needing an ordinary approval.
+         *
+         * 12 entitlement + 3 carry over = 15 available, against a four-week range.
          */
         Date mon = mondayInTestYear();
         ApplicationItem__c appl = request('Annual leave', 'All day');
@@ -282,18 +310,27 @@ private class LeaveDeductionTest {
         appl.Term_To__c   = mon.addDays(27);
         insert appl;
 
-        System.assert([SELECT LWOP_Days__c FROM ApplicationItem__c WHERE Id = :appl.Id].LWOP_Days__c > 0,
-            'the days beyond the balance are unpaid');
+        ApplicationItem__c original = [SELECT Leave_Days__c, Term_To__c FROM ApplicationItem__c
+                                       WHERE Id = :appl.Id];
+        System.assertEquals(15, original.Leave_Days__c,
+            'the original is cut down to exactly what the balance covers');
 
-        try {
-            approve(appl);
-            System.assert(false, 'approval must not silently overdraw the balance');
-        } catch (DmlException e) {
-            System.assert(e.getMessage().contains('Managing Director'),
-                'the error should ask for the Leave Without Pay sign-off: ' + e.getMessage());
-        }
-        System.assertEquals(0, balance('Annual leave').Used_Days__c,
-            'a blocked approval leaves the balance alone');
+        ApplicationItem__c unpaid = [SELECT Request_Type__c, Leave_Days__c, Term_From__c, Split_From__c
+                                     FROM ApplicationItem__c WHERE Split_From__c = :appl.Id];
+        System.assertEquals('Unpaid leave', unpaid.Request_Type__c,
+            'the remainder is raised as unpaid leave');
+        System.assert(unpaid.Term_From__c > original.Term_To__c,
+            'the unpaid days are the tail, picking up where the paid ones stop');
+
+        /*
+         * Approved by Id, not by pushing the in-memory copy back. That copy still
+         * carries the end date the employee typed, and saving it would undo the
+         * shortening the split just applied — which the backstop in deductLeaveBalance
+         * then refuses, correctly but confusingly.
+         */
+        update new ApplicationItem__c(Id = appl.Id, Status__c = 'Approved');
+        System.assertEquals(15, balance('Annual leave').Used_Days__c,
+            'approval now empties the balance exactly, never past it');
     }
 
     // ---------------------------------------------------------------- guards

@@ -88,7 +88,7 @@ private class OvertimeRequestTest {
     }
 
     private static ApplicationItem__c reload(Id applId) {
-        return [SELECT Overtime_Hours__c, Leave_Days__c, LWOP_Days__c, Status__c
+        return [SELECT Overtime_Hours__c, Leave_Days__c, Status__c
                 FROM ApplicationItem__c WHERE Id = :applId];
     }
 
