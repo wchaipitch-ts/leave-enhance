@@ -47,6 +47,11 @@ public class ApplicationItemTriggerLogic {
         return policyCache;
     }
 
+    /** The active policy for a leave type, or null if it has none. */
+    public static Leave_Type_Policy__mdt policyFor(String leaveType) {
+        return policies().get(leaveType);
+    }
+
     /*
      * LEAVE-25 — day count for a date range. Runs in the before contexts on every
      * leave request, not only approved ones, so the figure is right from Draft onward.
@@ -139,9 +144,11 @@ public class ApplicationItemTriggerLogic {
      * Still runs in a before context so Carry_Over_Days_Used__c lands on the in-flight
      * record without a second DML on ApplicationItem__c.
      *
-     * Over-spend is deliberately NOT blocked here. Blocking at approval fails the
-     * whole transaction after the fact; the check belongs at creation, where an
-     * over-balance request is re-labelled Leave Without Pay instead (LEAVE-27).
+     * LEAVE-30: what gets deducted is the PAID portion, not the whole request. For a
+     * type inside the LWOP check, LeaveWithoutPayService.settle splits the request
+     * against the balance still left at this point in the transaction and refuses the
+     * approval outright if the unpaid remainder has not been signed off by the
+     * Managing Director. Every other type is deducted in full, exactly as before.
      */
     public void deductLeaveBalance(List<ApplicationItem__c> approvedList) {
         if (approvedList.isEmpty()) {
@@ -178,7 +185,7 @@ public class ApplicationItemTriggerLogic {
         // for the same person and type cannot read the same figure and both write it.
         Map<String, Leave_Balance__c> balanceByKey = new Map<String, Leave_Balance__c>();
         for (Leave_Balance__c bal : [
-            SELECT Id, External_Key__c, Carry_Over_Days__c, Used_Days__c
+            SELECT Id, External_Key__c, Accrued_Days__c, Carry_Over_Days__c, Used_Days__c
             FROM Leave_Balance__c
             WHERE External_Key__c IN :keys
             FOR UPDATE
@@ -197,9 +204,23 @@ public class ApplicationItemTriggerLogic {
                 continue;
             }
 
-            Decimal days = zeroIfNull(appl.Leave_Days__c);
-            if (days <= 0) {
+            if (zeroIfNull(appl.Leave_Days__c) <= 0) {
                 continue;
+            }
+
+            /*
+             * LEAVE-30. Used_Days__c is the running in-transaction figure, so a second
+             * approval in the same batch is split against what the first one left
+             * behind rather than against the balance as it stood on entry.
+             *
+             * A null return means settle has already put an error on the record.
+             */
+            Decimal available = zeroIfNull(bal.Accrued_Days__c)
+                              + zeroIfNull(bal.Carry_Over_Days__c)
+                              - zeroIfNull(bal.Used_Days__c);
+            Decimal payable = LeaveWithoutPayService.settle(appl, available);
+            if (payable == null || payable <= 0) {
+                continue; // blocked, or entirely unpaid and so moves no balance
             }
 
             /*
@@ -216,10 +237,10 @@ public class ApplicationItemTriggerLogic {
                 if (carryRemaining < 0) {
                     carryRemaining = 0;
                 }
-                appl.Carry_Over_Days_Used__c = days <= carryRemaining ? days : carryRemaining;
+                appl.Carry_Over_Days_Used__c = payable <= carryRemaining ? payable : carryRemaining;
             }
 
-            bal.Used_Days__c = zeroIfNull(bal.Used_Days__c) + days;
+            bal.Used_Days__c = zeroIfNull(bal.Used_Days__c) + payable;
             touched.put(bal.Id, bal);
         }
 
@@ -314,8 +335,7 @@ public class ApplicationItemTriggerLogic {
      * Must match the format written by the backfill and the grant engine exactly —
      * see scripts/apex/03_backfill_leave_balances.apex.
      */
-    @TestVisible
-    private static String balanceKey(Id ownerId, String leaveType, Integer year) {
+    public static String balanceKey(Id ownerId, String leaveType, Integer year) {
         return ownerId + '-' + leaveType + '-' + year;
     }
 

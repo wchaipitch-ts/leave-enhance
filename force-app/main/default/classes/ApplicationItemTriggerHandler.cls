@@ -43,14 +43,29 @@ public class ApplicationItemTriggerHandler {
      * which reads the figure it writes.
      */
     public void onBeforeInsert(List<ApplicationItem__c> newList) {
-        List<ApplicationItem__c> requests = leaveRequests(newList);
-        logic.calculateLeaveDays(requests);
-        logic.deductLeaveBalance(justApproved(requests, null));
+        beforeSave(leaveRequests(newList), null);
     }
 
     public void onBeforeUpdate(List<ApplicationItem__c> newList, Map<Id, ApplicationItem__c> oldMap) {
-        List<ApplicationItem__c> requests = leaveRequests(newList);
+        beforeSave(leaveRequests(newList), oldMap);
+    }
+
+    /*
+     * LEAVE-30. The order of these four is load-bearing:
+     *
+     *   1. calculateLeaveDays  writes Leave_Days__c, which everything below reads.
+     *   2. assess              forecasts the unpaid portion from Leave_Days__c and
+     *                          flags the request for the Managing Director. Must come
+     *                          after step 1 or it measures a stale day count.
+     *   3. stampApproval       records the sign-off. After step 2 so that a Managing
+     *                          Director approving a request whose length changed in
+     *                          this same save signs for the new figure, not the old.
+     *   4. deductLeaveBalance  settles the split for real and moves the balance.
+     */
+    private void beforeSave(List<ApplicationItem__c> requests, Map<Id, ApplicationItem__c> oldMap) {
         logic.calculateLeaveDays(requests);
+        LeaveWithoutPayService.assess(requests, oldMap);
+        LeaveWithoutPayService.stampApproval(requests, oldMap);
         logic.deductLeaveBalance(justApproved(requests, oldMap));
     }
 

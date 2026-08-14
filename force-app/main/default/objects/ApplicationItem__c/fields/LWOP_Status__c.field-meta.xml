@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>LWOP_Status__c</fullName>
+    <description>Where the unpaid portion of this request stands with the Managing Director. Driven by LeaveWithoutPayService: set to Pending MD Approval as soon as the balance falls short, and back to Not Required if the request is shortened so the balance covers it again. Only a user holding the Approve Leave Without Pay custom permission may move it to Approved or Rejected.</description>
+    <externalId>false</externalId>
+    <inlineHelpText>Approval state of the unpaid days. Only the Managing Director can approve or reject.</inlineHelpText>
+    <label>LWOP Status</label>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Picklist</type>
+    <valueSet>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value>
+                <fullName>Not Required</fullName>
+                <default>true</default>
+                <label>Not Required</label>
+            </value>
+            <value>
+                <fullName>Pending MD Approval</fullName>
+                <default>false</default>
+                <label>Pending MD Approval</label>
+            </value>
+            <value>
+                <fullName>Approved</fullName>
+                <default>false</default>
+                <label>Approved</label>
+            </value>
+            <value>
+                <fullName>Rejected</fullName>
+                <default>false</default>
+                <label>Rejected</label>
+            </value>
+        </valueSetDefinition>
+    </valueSet>
+</CustomField>

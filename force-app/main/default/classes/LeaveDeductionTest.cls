@@ -63,7 +63,15 @@ private class LeaveDeductionTest {
 
         Integer yr = System.today().year();
         insert new List<Leave_Balance__c>{
-            balanceRow(u.Id, 'Annual leave',   yr, 12, 'Monthly',     3),
+            /*
+             * LEAVE-30: Upfront rather than the production Monthly. Accrued_Days__c is
+             * a formula over TODAY(), so under Monthly the annual balance would be 3
+             * days in January and 15 in December — and now that a shortfall is stopped
+             * at approval, the multi-day tests below would pass or fail depending on
+             * the month the suite ran in. Nothing here asserts on accrual, so pinning
+             * it removes the seasonality without weakening the tests.
+             */
+            balanceRow(u.Id, 'Annual leave',   yr, 12, 'Upfront',     3),
             balanceRow(u.Id, 'Refresh Leave',  yr, 2,  'Anniversary', 0),
             balanceRow(u.Id, 'Sick leave',     yr, 30, 'Upfront',     0),
             balanceRow(u.Id, 'Personal leave', yr, 3,  'Upfront',     0)
@@ -259,18 +267,33 @@ private class LeaveDeductionTest {
     }
 
     @isTest
-    static void overspendIsAllowedAtApproval() {
-        // 12 entitlement + 3 carry over, 20 days requested
+    static void overspendBecomesLeaveWithoutPay() {
+        /*
+         * LEAVE-30 replaced the old behaviour here. This used to assert that approval
+         * sailed through and drove Used_Days__c past the entitlement; a balance that
+         * could go arbitrarily negative was the bug, not the feature.
+         *
+         * 12 entitlement + 3 carry over against a four-week range: the shortfall is
+         * now unpaid days, and unpaid days need the Managing Director.
+         */
         Date mon = mondayInTestYear();
         ApplicationItem__c appl = request('Annual leave', 'All day');
         appl.Term_From__c = mon;
         appl.Term_To__c   = mon.addDays(27);
         insert appl;
-        approve(appl);
 
-        System.assert(balance('Annual leave').Used_Days__c > 15,
-            'approval is not blocked by an empty balance; over-balance requests are '
-            + 'caught at creation and re-labelled Leave Without Pay instead');
+        System.assert([SELECT LWOP_Days__c FROM ApplicationItem__c WHERE Id = :appl.Id].LWOP_Days__c > 0,
+            'the days beyond the balance are unpaid');
+
+        try {
+            approve(appl);
+            System.assert(false, 'approval must not silently overdraw the balance');
+        } catch (DmlException e) {
+            System.assert(e.getMessage().contains('Managing Director'),
+                'the error should ask for the Leave Without Pay sign-off: ' + e.getMessage());
+        }
+        System.assertEquals(0, balance('Annual leave').Used_Days__c,
+            'a blocked approval leaves the balance alone');
     }
 
     // ---------------------------------------------------------------- guards

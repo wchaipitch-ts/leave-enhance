@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>LWOP_Approved_By__c</fullName>
+    <deleteConstraint>SetNull</deleteConstraint>
+    <description>Who approved the unpaid days. Stamped by LeaveWithoutPayService from the running user when LWOP Status moves to Approved, and cleared when it moves away again, so it can never name someone who did not perform the approval. SetNull because Restrict and Cascade are not permitted on a lookup to User.</description>
+    <externalId>false</externalId>
+    <label>LWOP Approved By</label>
+    <referenceTo>User</referenceTo>
+    <relationshipLabel>Leave Without Pay Approvals</relationshipLabel>
+    <relationshipName>LWOP_Approvals</relationshipName>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Lookup</type>
+</CustomField>

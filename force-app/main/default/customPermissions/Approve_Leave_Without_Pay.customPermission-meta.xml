@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomPermission xmlns="http://soap.sforce.com/2006/04/metadata">
+    <description>Held by the Managing Director. Permits moving LWOP Status to Approved or Rejected. A custom permission rather than a hardcoded user Id, so changing who approves is a permission set assignment rather than a deployment.</description>
+    <isLicensed>false</isLicensed>
+    <label>Approve Leave Without Pay</label>
+</CustomPermission>

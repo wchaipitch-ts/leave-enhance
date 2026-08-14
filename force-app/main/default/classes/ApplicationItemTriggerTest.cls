@@ -13,7 +13,13 @@ private class ApplicationItemTriggerTest {
                     TimeZoneSidKey = 'Asia/Bangkok',
                     EmailEncodingKey = 'UTF-8',
                     LanguageLocaleKey = 'th',
-                    LocaleSidKey = 'th'
+                    LocaleSidKey = 'th',
+                    // LEAVE-30: Accrued_Days__c returns zero for an employee with no
+                    // joining date, so without this the balance below holds nothing and
+                    // every request here becomes unpaid days awaiting the Managing
+                    // Director. Nothing in this class is about accrual - it just needs
+                    // an employee the entitlement can attach to.
+                    Start_Date__c = Date.newInstance(2020, 1, 1)
                 );
         insert user;
         // User user = [SELECT Id, ManagerId FROM User WHERE Profile.name = 'EngineerGroupMember' LIMIT 1];
@@ -23,14 +29,22 @@ private class ApplicationItemTriggerTest {
          * row to deduct from — a missing row is a hard error rather than a silent
          * approval against an entitlement that does not exist. Every request below is
          * Annual leave dated today, so one row covers the whole class.
+         *
+         * LEAVE-30: the entitlement is deliberately far larger than any real one, and
+         * Upfront rather than Monthly. A shortfall is now stopped at approval pending
+         * the Managing Director, and bulkApprovalStaysWithinGovernorLimits approves
+         * 200 days in one go — against a true 12-day balance every record past the
+         * first few would be blocked and the test would be measuring the LWOP gate
+         * instead of the governor limits it exists to measure. Upfront also keeps the
+         * balance the same size whatever month the suite runs in.
          */
         insert new Leave_Balance__c(
             Employee__c         = user.Id,
             Leave_Type__c       = 'Annual leave',
             Leave_Year__c       = System.today().year(),
             External_Key__c     = user.Id + '-Annual leave-' + System.today().year(),
-            Entitlement_Days__c = 12,
-            Accrual_Method__c   = 'Monthly',
+            Entitlement_Days__c = 400,
+            Accrual_Method__c   = 'Upfront',
             Carry_Over_Days__c  = 0,
             Used_Days__c        = 0,
             Pending_Days__c     = 0,

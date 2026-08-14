@@ -13,13 +13,22 @@ private class EventTriggerTest {
                     TimeZoneSidKey = 'Asia/Bangkok',
                     EmailEncodingKey = 'UTF-8',
                     LanguageLocaleKey = 'th',
-                    LocaleSidKey = 'th'
+                    LocaleSidKey = 'th',
+                    // LEAVE-30: Accrued_Days__c is zero without a joining date, which
+                    // would turn the approved request below into unpaid days and fail
+                    // the setup before any event assertion runs.
+                    Start_Date__c = Date.newInstance(2020, 1, 1)
                 );
         insert user;
 
         /*
          * LEAVE-25: the approved request below deducts from Leave_Balance__c, and a
          * missing balance row is now a hard error rather than a silent approval.
+         *
+         * LEAVE-30: Upfront rather than Monthly. Accrued_Days__c is a formula over
+         * TODAY(), so a Monthly row holds nothing at all in January — and a request
+         * with no balance behind it is now held back for the Managing Director,
+         * which would fail this test for one month of every twelve.
          */
         insert new Leave_Balance__c(
             Employee__c         = user.Id,
@@ -27,7 +36,7 @@ private class EventTriggerTest {
             Leave_Year__c       = System.today().year(),
             External_Key__c     = user.Id + '-Annual leave-' + System.today().year(),
             Entitlement_Days__c = 12,
-            Accrual_Method__c   = 'Monthly',
+            Accrual_Method__c   = 'Upfront',
             Carry_Over_Days__c  = 0,
             Used_Days__c        = 0,
             Pending_Days__c     = 0,
