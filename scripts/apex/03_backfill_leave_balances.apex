@@ -32,6 +32,17 @@ for (User u : emps) {
         Date carryExp = null, expiry = null;
         Decimal carry = 0;
 
+        /*
+         * Granted_On__c is the grant engine's idempotency guard: blank means "not yet
+         * granted for this year". Leaving it blank here would make the next January 1
+         * run re-grant the whole year and reset Used_Days__c to zero, silently erasing
+         * everyone's consumption. Record when the entitlement was granted, mirroring
+         * what the engine itself would have written.
+         */
+        Date grantedOn = (u.Start_Date__c.year() == YR)
+            ? u.Start_Date__c              // new-hire grant, on the joining date
+            : Date.newInstance(YR, 1, 1);  // annual grant, on January 1
+
         if (p.Leave_Type__c == 'Annual leave') {
             ent      = u.Annual_Leave_Allocated__c;
             used     = u.Annual_Leave_Used__c == null ? 0 : u.Annual_Leave_Used__c;
@@ -60,9 +71,16 @@ for (User u : emps) {
                 ent    = best == null ? 0 : best.Days_Granted__c;
                 used   = ent - (u.Refresh_Leave_Days__c == null ? 0 : u.Refresh_Leave_Days__c);
                 expiry = u.Refresh_Leave_Expiry__c;
+                // Refreshment is granted on the anniversary, not January 1. February 29
+                // joiners are granted on February 28 in a non-leap year.
+                Integer annivDay = (u.Start_Date__c.month() == 2 && u.Start_Date__c.day() == 29
+                                    && !Date.isLeapYear(YR)) ? 28 : u.Start_Date__c.day();
+                grantedOn = Date.newInstance(YR, u.Start_Date__c.month(), annivDay);
                 seeded++;
             } else {
+                // Left blank on purpose so the anniversary grant can still fire.
                 ent = 0;
+                grantedOn = null;
             }
         }
 
@@ -79,6 +97,7 @@ for (User u : emps) {
             Carry_Over_Days__c         = carry,
             Carry_Over_Expiry__c       = carryExp,
             Expiry_Date__c             = expiry,
+            Granted_On__c              = grantedOn,
             Status__c                  = 'Active'
         ));
     }
