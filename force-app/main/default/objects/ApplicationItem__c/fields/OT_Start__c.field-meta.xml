@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>OT_Start__c</fullName>
+    <description>When the overtime began. Overtime Request record type only. Paired with OT End to give Overtime Hours, which is what an approval actually signs off.</description>
+    <externalId>false</externalId>
+    <inlineHelpText>Time the overtime started, for example 18:00.</inlineHelpText>
+    <label>OT Start</label>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Time</type>
+</CustomField>

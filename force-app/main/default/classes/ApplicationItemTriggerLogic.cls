@@ -118,6 +118,59 @@ public class ApplicationItemTriggerLogic {
         return days;
     }
 
+    /*
+     * LEAVE-31 — hours claimed by an overtime request. Runs on every save, not only
+     * approved ones, so the approver sees the figure they are signing off.
+     *
+     * Deliberately separate from the leave day count. Leave measures whole and half
+     * days against an entitlement; overtime measures a clock window, and the two have
+     * no arithmetic in common.
+     */
+    public void calculateOvertimeHours(List<ApplicationItem__c> requests) {
+        for (ApplicationItem__c appl : requests) {
+            appl.Overtime_Hours__c = overtimeHoursPerDay(appl) * overtimeDatesFor(appl).size();
+        }
+    }
+
+    /*
+     * The OT window in hours. Zero when either end is missing or the window is
+     * inverted — both are reported by validation rules, and a negative number here
+     * would quietly subtract from a monthly total.
+     */
+    public static Decimal overtimeHoursPerDay(ApplicationItem__c appl) {
+        if (appl.OT_Start__c == null || appl.OT_End__c == null) {
+            return 0;
+        }
+        Integer minutes = (appl.OT_End__c.hour() * 60 + appl.OT_End__c.minute())
+                        - (appl.OT_Start__c.hour() * 60 + appl.OT_Start__c.minute());
+        return minutes <= 0 ? 0 : Decimal.valueOf(minutes).divide(60, 2);
+    }
+
+    /*
+     * Every calendar day an overtime request covers.
+     *
+     * Unlike workingDaysFor, this skips nothing. A weekend or a public holiday is
+     * exactly when overtime tends to be worked, and dropping those days would pay
+     * people for fewer hours than they put in.
+     */
+    public static List<Date> overtimeDatesFor(ApplicationItem__c appl) {
+        List<Date> days = new List<Date>();
+        if (appl.Term_From__c == null) {
+            return days;
+        }
+        Date endDay = endDateOf(appl);
+        if (endDay < appl.Term_From__c) {
+            return days;
+        }
+        Date cursor = appl.Term_From__c;
+        Integer guard = 0;
+        while (cursor <= endDay && guard++ < MAX_RANGE_DAYS) {
+            days.add(cursor);
+            cursor = cursor.addDays(1);
+        }
+        return days;
+    }
+
     /** The span a batch of requests covers, for a single Holiday query. */
     public static Set<Date> holidaysForBatch(List<ApplicationItem__c> requests) {
         Date rangeStart, rangeEnd;

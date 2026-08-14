@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Overtime_End_After_Start</fullName>
+    <active>true</active>
+    <description>Overtime running past midnight is refused rather than counted as negative hours. Supporting it means deciding which date the hours belong to, so it is blocked until the business says it is needed.</description>
+    <errorConditionFormula>
+        AND(
+          RecordType.DeveloperName = "Overtime_Request",
+          NOT(ISBLANK(OT_Start__c)),
+          NOT(ISBLANK(OT_End__c)),
+          OT_End__c &lt;= OT_Start__c
+        )
+    </errorConditionFormula>
+    <errorDisplayField>OT_End__c</errorDisplayField>
+    <errorMessage>OT End must be later than OT Start. Overtime running past midnight is not supported - raise it as two requests, one per date.</errorMessage>
+</ValidationRule>

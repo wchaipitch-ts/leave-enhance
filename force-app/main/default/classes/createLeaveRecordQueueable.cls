@@ -14,7 +14,11 @@ public with sharing class createLeaveRecordQueueable implements Queueable {
         this.appitems = new List<ApplicationItem__c>{ appitem };
     }
 
+    /*
+     * LEAVE-31: createBookings rather than createLeaveRecords. The batch can now hold
+     * both leave and overtime, and the logic class routes each by record type.
+     */
     public void execute(QueueableContext context) {
-        new CreateLeaveRecordOnManInputTriggerLogic().createLeaveRecords(appitems);
+        new CreateLeaveRecordOnManInputTriggerLogic().createBookings(appitems);
     }
 }

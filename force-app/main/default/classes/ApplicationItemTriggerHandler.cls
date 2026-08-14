@@ -29,8 +29,17 @@ public class ApplicationItemTriggerHandler {
     }
 
     private static Boolean isLeaveRequest(ApplicationItem__c appl) {
-        return OVERTIME_RECORD_TYPE_ID == null
-            || appl.RecordTypeId != OVERTIME_RECORD_TYPE_ID;
+        return !isOvertimeRequest(appl);
+    }
+
+    /*
+     * Public so the Man_hour__c booking can route a mixed batch without resolving the
+     * record type a second time. If Overtime_Request is missing the answer is always
+     * false, which keeps the pre-record-type behaviour of treating everything as leave.
+     */
+    public static Boolean isOvertimeRequest(ApplicationItem__c appl) {
+        return OVERTIME_RECORD_TYPE_ID != null
+            && appl.RecordTypeId == OVERTIME_RECORD_TYPE_ID;
     }
 
     /*
@@ -44,10 +53,12 @@ public class ApplicationItemTriggerHandler {
      */
     public void onBeforeInsert(List<ApplicationItem__c> newList) {
         beforeSave(leaveRequests(newList), null);
+        logic.calculateOvertimeHours(overtimeRequests(newList));
     }
 
     public void onBeforeUpdate(List<ApplicationItem__c> newList, Map<Id, ApplicationItem__c> oldMap) {
         beforeSave(leaveRequests(newList), oldMap);
+        logic.calculateOvertimeHours(overtimeRequests(newList));
     }
 
     /*
@@ -74,21 +85,51 @@ public class ApplicationItemTriggerHandler {
      * approved row counts as newly approved.
      */
     public void onAfterInsert(List<ApplicationItem__c> newList) {
-        process(justApproved(leaveRequests(newList), null));
+        afterSave(newList, null);
     }
 
     public void onAfterUpdate(List<ApplicationItem__c> newList, Map<Id, ApplicationItem__c> oldMap) {
-        process(justApproved(leaveRequests(newList), oldMap));
+        afterSave(newList, oldMap);
     }
 
     /*
-     * Leave Requests only. Overtime will need its own approval path; it does not
-     * belong on this one.
+     * LEAVE-31. Both kinds of request book a Man_hour__c on approval, so both travel
+     * in the same Queueable and the logic class routes each by record type. Only leave
+     * produces a calendar Event: an overtime claim is a record of hours already
+     * worked, not an absence anyone needs to see blocked out in a diary.
+     */
+    private void afterSave(List<ApplicationItem__c> newList, Map<Id, ApplicationItem__c> oldMap) {
+        List<ApplicationItem__c> approvedLeave = justApproved(leaveRequests(newList), oldMap);
+        List<ApplicationItem__c> approvedOvertime = justApproved(overtimeRequests(newList), oldMap);
+
+        if (!approvedLeave.isEmpty()) {
+            logic.setLeaveDateTime(approvedLeave);
+        }
+
+        List<ApplicationItem__c> toBook = new List<ApplicationItem__c>();
+        toBook.addAll(approvedLeave);
+        toBook.addAll(approvedOvertime);
+        process(toBook);
+    }
+
+    /*
+     * Leave Requests: everything that is not explicitly an Overtime Request, so a
+     * record on the Master record type is treated as leave.
      */
     private List<ApplicationItem__c> leaveRequests(List<ApplicationItem__c> newList) {
         List<ApplicationItem__c> requests = new List<ApplicationItem__c>();
         for (ApplicationItem__c appl : newList) {
             if (isLeaveRequest(appl)) {
+                requests.add(appl);
+            }
+        }
+        return requests;
+    }
+
+    private List<ApplicationItem__c> overtimeRequests(List<ApplicationItem__c> newList) {
+        List<ApplicationItem__c> requests = new List<ApplicationItem__c>();
+        for (ApplicationItem__c appl : newList) {
+            if (!isLeaveRequest(appl)) {
                 requests.add(appl);
             }
         }
@@ -130,7 +171,6 @@ public class ApplicationItemTriggerHandler {
         if (approved.isEmpty()) {
             return;
         }
-        logic.setLeaveDateTime(approved);
         System.enqueueJob(new createLeaveRecordQueueable(approved));
     }
 }
