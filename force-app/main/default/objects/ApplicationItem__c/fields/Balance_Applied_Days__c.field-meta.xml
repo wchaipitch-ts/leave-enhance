@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Balance_Applied_Days__c</fullName>
+    <description>Exactly how many days this request took out of its balance, stamped at approval and cleared when the approval is undone. Reversal gives back this figure rather than recalculating from Leave_Days__c, which can be edited after approval and then no longer matches what was actually deducted. Blank means nothing has been applied.</description>
+    <externalId>false</externalId>
+    <inlineHelpText>Days actually deducted from the balance. Set on approval, cleared if the approval is undone. Do not edit.</inlineHelpText>
+    <label>Balance Applied Days</label>
+    <precision>4</precision>
+    <required>false</required>
+    <scale>1</scale>
+    <trackTrending>false</trackTrending>
+    <type>Number</type>
+    <unique>false</unique>
+</CustomField>

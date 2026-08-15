@@ -317,6 +317,13 @@ public class ApplicationItemTriggerLogic {
             bal.Used_Days__c = zeroIfNull(bal.Used_Days__c) + payable;
 
             /*
+             * LEAVE-34. What was actually taken, recorded on the request. Reversal
+             * gives back this figure rather than recomputing from Leave_Days__c, which
+             * can be edited after approval and then no longer matches the deduction.
+             */
+            appl.Balance_Applied_Days__c = payable;
+
+            /*
              * LEAVE-33 — grant on use. Unpaid leave has no entitlement to draw down, so
              * deducting it alone would drive Available_Days__c negative and the balance
              * page would read "-12 available", which means nothing. Raising the

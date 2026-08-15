@@ -59,6 +59,9 @@ public class ApplicationItemTriggerHandler {
     public void onBeforeUpdate(List<ApplicationItem__c> newList, Map<Id, ApplicationItem__c> oldMap) {
         beforeSave(leaveRequests(newList), oldMap);
         logic.calculateOvertimeHours(overtimeRequests(newList));
+        // LEAVE-34. Entering and leaving Approved are disjoint sets, so this cannot
+        // collide with the deduction above.
+        LeaveReversalService.restoreBalances(justUnapproved(newList, oldMap));
     }
 
     /*
@@ -86,6 +89,40 @@ public class ApplicationItemTriggerHandler {
 
     public void onAfterUpdate(List<ApplicationItem__c> newList, Map<Id, ApplicationItem__c> oldMap) {
         afterSave(newList, oldMap);
+
+        /*
+         * LEAVE-34. Both run in the after context on purpose. EventTriggerLogic refuses
+         * a delete while the request still reads Approved; by here it reads Rejected and
+         * the guard lets it through. Promotion likewise needs the freed balance to have
+         * been written, which happened in the before context above.
+         */
+        Set<Id> unapproved = idsOf(justUnapproved(newList, oldMap));
+        if (!unapproved.isEmpty()) {
+            LeaveReversalService.clearBookings(unapproved);
+            LeaveReversalService.promoteUnpaidSiblings(unapproved);
+        }
+    }
+
+    /*
+     * LEAVE-34. Deleting an approved request has to give the balance back too. The
+     * trigger declared after delete from the beginning but never routed it, so until
+     * now a delete silently kept the days spent.
+     */
+    public void onBeforeDelete(List<ApplicationItem__c> oldList) {
+        // The lookup from Man_hour__c is nulled as part of the delete, so the rows have
+        // to be identified while it still points somewhere.
+        LeaveReversalService.rememberBookingsOf(oldList);
+    }
+
+    public void onAfterDelete(List<ApplicationItem__c> oldList) {
+        List<ApplicationItem__c> approved = new List<ApplicationItem__c>();
+        for (ApplicationItem__c appl : oldList) {
+            if (appl.Status__c == 'Approved') {
+                approved.add(appl);
+            }
+        }
+        LeaveReversalService.restoreBalancesForDeleted(approved);
+        LeaveReversalService.clearBookings(new Map<Id, ApplicationItem__c>(oldList).keySet());
     }
 
     /*
@@ -139,6 +176,30 @@ public class ApplicationItemTriggerHandler {
      * The same check is what keeps the deduction from running twice, which is why no
      * Balance_Applied__c flag is needed.
      */
+    /*
+     * LEAVE-34. The mirror of justApproved: records crossing OUT of Approved. Only a
+     * transition counts, so editing an already-rejected record cannot give the days
+     * back a second time.
+     */
+    private List<ApplicationItem__c> justUnapproved(List<ApplicationItem__c> newList,
+                                                    Map<Id, ApplicationItem__c> oldMap) {
+        List<ApplicationItem__c> leaving = new List<ApplicationItem__c>();
+        if (oldMap == null) {
+            return leaving;
+        }
+        for (ApplicationItem__c appl : newList) {
+            ApplicationItem__c prior = oldMap.get(appl.Id);
+            if (prior != null && prior.Status__c == 'Approved' && appl.Status__c != 'Approved') {
+                leaving.add(appl);
+            }
+        }
+        return leaving;
+    }
+
+    private Set<Id> idsOf(List<ApplicationItem__c> records) {
+        return new Map<Id, ApplicationItem__c>(records).keySet();
+    }
+
     private List<ApplicationItem__c> justApproved(List<ApplicationItem__c> requests,
                                                   Map<Id, ApplicationItem__c> oldMap) {
         List<ApplicationItem__c> approved = new List<ApplicationItem__c>();

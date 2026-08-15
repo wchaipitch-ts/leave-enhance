@@ -255,7 +255,9 @@ public class CreateLeaveRecordOnManInputTriggerLogic {
                 Performed_Hours__c  = booking.hours,
                 ProjectAssign_No__c = assign.Id,
                 Work__c             = booking.work,
-                Remark__c           = booking.appl.Remark__c
+                Remark__c           = booking.appl.Remark__c,
+                // LEAVE-34: so undoing an approval can remove exactly the rows it made.
+                Application_Item__c = booking.appl.Id
             ));
         }
         if (!manHours.isEmpty()) {

@@ -40,11 +40,25 @@ public without sharing class LeaveSplitService {
      * Runs after insert, because the unpaid record has to point back at a saved parent.
      */
     public static void splitOverBalance(List<ApplicationItem__c> newRecords) {
+        evaluate(newRecords, false);
+    }
+
+    /*
+     * LEAVE-34. Re-measures a record that was itself the unpaid half of an earlier
+     * split and has just been promoted back to a paid type, because the paid half was
+     * refused and gave its balance back. The Split_From__c guard is lifted for this
+     * path only — on insert it is what stops a tail splitting the moment it is created.
+     */
+    public static void reevaluate(List<ApplicationItem__c> records) {
+        evaluate(records, true);
+    }
+
+    private static void evaluate(List<ApplicationItem__c> newRecords, Boolean allowTails) {
         List<ApplicationItem__c> candidates = new List<ApplicationItem__c>();
         Set<String> keys = new Set<String>();
 
         for (ApplicationItem__c appl : newRecords) {
-            if (!isSplittable(appl)) {
+            if (!isSplittable(appl, allowTails)) {
                 continue;
             }
             candidates.add(appl);
@@ -149,12 +163,13 @@ public without sharing class LeaveSplitService {
         return (base.length() > room ? base.substring(0, room) : base) + suffix;
     }
 
-    private static Boolean isSplittable(ApplicationItem__c appl) {
+    private static Boolean isSplittable(ApplicationItem__c appl, Boolean allowTails) {
         if (handled.contains(appl.Id)) {
             return false;
         }
-        // The unpaid half of an earlier split, which by definition cannot split again.
-        if (appl.Split_From__c != null) {
+        // The unpaid half of an earlier split. On insert it never splits again; after a
+        // promotion it must, which is what allowTails is for.
+        if (appl.Split_From__c != null && !allowTails) {
             return false;
         }
         if (appl.Term_From__c == null || zeroIfNull(appl.Leave_Days__c) <= 0) {

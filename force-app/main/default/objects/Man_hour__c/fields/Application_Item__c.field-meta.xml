@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Application_Item__c</fullName>
+    <deleteConstraint>SetNull</deleteConstraint>
+    <description>The leave or overtime request this booking came from. Added so that undoing an approval can find and remove exactly the rows it created, rather than guessing from the date and remark and risking someone else's timesheet entry. Blank on rows booked by hand or created before this field existed.</description>
+    <externalId>false</externalId>
+    <inlineHelpText>The request that generated this booking. Blank if it was entered by hand.</inlineHelpText>
+    <label>Application Item</label>
+    <referenceTo>ApplicationItem__c</referenceTo>
+    <relationshipLabel>Man Hours</relationshipLabel>
+    <relationshipName>Man_Hours</relationshipName>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Lookup</type>
+</CustomField>

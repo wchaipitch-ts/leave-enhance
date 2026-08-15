@@ -1,4 +1,4 @@
-trigger ApplicationItemTrigger on ApplicationItem__c (before insert, before update, after insert, after update, after delete) {
+trigger ApplicationItemTrigger on ApplicationItem__c (before insert, before update, before delete, after insert, after update, after delete) {
     ApplicationItemTriggerHandler handler = new ApplicationItemTriggerHandler();
 
     // LEAVE-13: balance deduction runs before save, so the bucket split is written to
@@ -17,5 +17,15 @@ trigger ApplicationItemTrigger on ApplicationItem__c (before insert, before upda
     }
     if (Trigger.isAfter && Trigger.isUpdate) {
         handler.onAfterUpdate(Trigger.new, Trigger.oldMap);
+    }
+
+    // LEAVE-34: after delete was declared from the start but never routed, so deleting
+    // an approved request left its balance spent and its bookings orphaned. Before
+    // delete is needed too, to note the Man_hour__c rows while their lookup still holds.
+    if (Trigger.isBefore && Trigger.isDelete) {
+        handler.onBeforeDelete(Trigger.old);
+    }
+    if (Trigger.isAfter && Trigger.isDelete) {
+        handler.onAfterDelete(Trigger.old);
     }
 }
