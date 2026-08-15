@@ -155,24 +155,30 @@ private class ApplicationItemTriggerTest {
 
     /*
      * Editing an already-approved record used to re-run the whole path and create a
-     * second Event and a second Man_hour__c. Only a transition INTO Approved counts.
+     * second Event and a second Man_hour__c. The transition guard fixed the duplication
+     * in LEAVE-12; LEAVE-35 then closed the edit off altogether, because it also
+     * rewrote the day count without moving the balance.
      */
     @IsTest
-    private static void editingAnApprovedRecordDoesNotDuplicate() {
+    private static void anApprovedRecordIsLockedAgainstEditing() {
         ApplicationItem__c appl = [SELECT Id, Status__c FROM ApplicationItem__c LIMIT 1];
         appl.Status__c = 'Approved';
         update appl;
 
         Integer eventsAfterApproval = [SELECT COUNT() FROM Event WHERE WhatId = :appl.Id];
+        System.assertEquals(1, eventsAfterApproval, 'approval creates exactly one event');
 
         Test.startTest();
-        appl.Remark__c = 'Edited after approval';
-        update appl;
+        try {
+            update new ApplicationItem__c(Id = appl.Id, Remark__c = 'Edited after approval');
+            System.assert(false, 'an approved record must not be editable');
+        } catch (DmlException e) {
+            System.assert(e.getMessage().contains('cannot be changed'), e.getMessage());
+        }
         Test.stopTest();
 
-        System.assertEquals(1, eventsAfterApproval, 'approval creates exactly one event');
         System.assertEquals(eventsAfterApproval, [SELECT COUNT() FROM Event WHERE WhatId = :appl.Id],
-            'editing an approved record must not create a second event');
+            'and no second event appears');
     }
 
     /*

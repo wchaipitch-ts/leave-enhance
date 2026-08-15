@@ -336,16 +336,38 @@ private class LeaveDeductionTest {
     // ---------------------------------------------------------------- guards
 
     @isTest
-    static void editingAnApprovedRequestDoesNotDeductAgain() {
+    static void anApprovedRequestCannotBeEdited() {
+        /*
+         * LEAVE-35 closed this off entirely. It used to assert that a second save did
+         * not deduct a second time, which was true but not enough: the edit still
+         * rewrote Leave_Days__c without touching the balance, so the record and the
+         * balance drifted apart. An approved request is now settled and refuses changes.
+         */
         ApplicationItem__c appl = request('Annual leave', 'All day');
         insert appl;
         approve(appl);
 
-        appl.Remark__c = 'edited after approval';
-        update appl;
+        try {
+            update new ApplicationItem__c(Id = appl.Id, Remark__c = 'edited after approval');
+            System.assert(false, 'an approved request must not be editable');
+        } catch (DmlException e) {
+            System.assert(e.getMessage().contains('cannot be changed'),
+                'the error should say the request is settled: ' + e.getMessage());
+        }
+        System.assertEquals(1, balance('Annual leave').Used_Days__c, 'and the balance is untouched');
+    }
 
-        System.assertEquals(1, balance('Annual leave').Used_Days__c,
-            'a second save must not deduct a second time');
+    @isTest
+    static void anApprovedRequestCanStillBeRejected() {
+        ApplicationItem__c appl = request('Annual leave', 'All day');
+        insert appl;
+        approve(appl);
+
+        // The one change the lock allows, because it reverses everything behind it.
+        update new ApplicationItem__c(Id = appl.Id, Status__c = 'Rejected');
+
+        System.assertEquals(0, balance('Annual leave').Used_Days__c,
+            'rejecting is the way out, and it gives the day back');
     }
 
     @isTest

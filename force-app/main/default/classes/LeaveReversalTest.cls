@@ -112,20 +112,30 @@ private class LeaveReversalTest {
     }
 
     @isTest
-    static void stretchingAnApprovedRequestDoesNotMoveTheAppliedFigure() {
+    static void stretchingAnApprovedRequestIsRefused() {
         useTestPolicies();
         ApplicationItem__c a = raise('Annual leave', 1, 'Pending');
         insert a;
         update new ApplicationItem__c(Id = a.Id, Status__c = 'Approved');
 
-        // The day count is rewritten on every save; the applied figure must not be.
+        /*
+         * This was the drift LEAVE-34 made safe and LEAVE-35 removed. Stretching an
+         * approved request rewrote Leave_Days__c without deducting the extra days, so
+         * the record claimed more absence than the balance had paid for. The applied
+         * figure stayed honest, which is what made reversal correct — but the record
+         * itself was still wrong, so the edit is now refused outright.
+         */
         List<Date> days = nWorkingDays(Date.newInstance(testYear(), 3, 2), 4);
-        update new ApplicationItem__c(Id = a.Id, Term_To__c = days[3]);
+        try {
+            update new ApplicationItem__c(Id = a.Id, Term_To__c = days[3]);
+            System.assert(false, 'an approved request must not be stretched');
+        } catch (DmlException e) {
+            System.assert(e.getMessage().contains('cannot be changed'), e.getMessage());
+        }
 
         ApplicationItem__c after = reload(a.Id);
-        System.assertEquals(4, after.Leave_Days__c, 'the day count follows the dates');
-        System.assertEquals(1, after.Balance_Applied_Days__c,
-            'but only one day was ever deducted, so only one can be given back');
+        System.assertEquals(1, after.Leave_Days__c, 'the day count is as approved');
+        System.assertEquals(1, after.Balance_Applied_Days__c, 'and matches what was deducted');
     }
 
     // ------------------------------------------------------------------ rejection

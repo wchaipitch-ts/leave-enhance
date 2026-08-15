@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Approved_Request_Is_Locked</fullName>
+    <active>true</active>
+    <description>An approved request is settled: its balance is spent and its bookings exist. Editing it rewrote the day count without re-deducting, so record and balance drifted apart. Rejecting is allowed and reverses everything; deleting is too.</description>
+    <errorConditionFormula>
+        AND(
+          NOT(ISNEW()),
+          ISPICKVAL(PRIORVALUE(Status__c), "Approved"),
+          NOT(ISPICKVAL(Status__c, "Rejected"))
+        )
+    </errorConditionFormula>
+    <errorMessage>This request has been approved and cannot be changed. Reject it to release the balance and clear its calendar and timesheet entries, then raise a new request - or delete it.</errorMessage>
+</ValidationRule>

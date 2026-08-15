@@ -248,7 +248,10 @@ private class OvertimeRequestTest {
     }
 
     @isTest
-    static void editingAnApprovedRequestDoesNotBookTwice() {
+    static void anApprovedOvertimeClaimIsLockedToo() {
+        // LEAVE-35 locks approved requests of either record type. An overtime claim
+        // whose hours could be edited after approval is a claim for whatever the
+        // claimant last typed.
         ApplicationItem__c appl = overtimeRequest();
         insert appl;
 
@@ -256,11 +259,16 @@ private class OvertimeRequestTest {
         approve(appl);
         Test.stopTest();
 
-        appl.Remark__c = 'edited after approval';
-        update appl;
+        try {
+            update new ApplicationItem__c(Id = appl.Id,
+                OT_End__c = Time.newInstance(23, 0, 0, 0));
+            System.assert(false, 'an approved overtime claim must not be editable');
+        } catch (DmlException e) {
+            System.assert(e.getMessage().contains('cannot be changed'), e.getMessage());
+        }
 
-        System.assertEquals(1, overtimeManHours().size(),
-            'only the transition into Approved books anything');
+        System.assertEquals(3, reload(appl.Id).Overtime_Hours__c, 'the hours stand as approved');
+        System.assertEquals(1, overtimeManHours().size(), 'and nothing is booked twice');
     }
 
     // ------------------------------------------------------------------ summary
