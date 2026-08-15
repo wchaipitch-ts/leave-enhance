@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ApprovalProcess xmlns="http://soap.sforce.com/2006/04/metadata">
+    <active>true</active>
+    <allowRecall>false</allowRecall>
+    <allowedSubmitters>
+        <type>owner</type>
+    </allowedSubmitters>
+    <approvalPageFields>
+        <field>Name</field>
+        <field>Owner</field>
+        <field>Request_Type__c</field>
+        <field>Period_Leave__c</field>
+        <field>Term_From__c</field>
+        <field>Term_To__c</field>
+        <field>Leave_Days__c</field>
+        <field>Remark__c</field>
+    </approvalPageFields>
+    <approvalStep>
+        <allowDelegate>false</allowDelegate>
+        <assignedApprover>
+            <approver>
+                <type>userHierarchyField</type>
+            </approver>
+        </assignedApprover>
+        <description>The absence itself. Approving here no longer stamps the record Approved - that moved to the process level so an unpaid request is not deducted and booked before the Managing Director has seen it.</description>
+        <label>Manager Approval</label>
+        <name>Manager_Approval</name>
+    </approvalStep>
+    <approvalStep>
+        <allowDelegate>false</allowDelegate>
+        <assignedApprover>
+            <approver>
+                <name>yuta.kuribayashi@terrasky.co.th.dev5</name>
+                <type>user</type>
+            </approver>
+            <whenMultipleApprovers>FirstResponse</whenMultipleApprovers>
+        </assignedApprover>
+        <description>LEAVE-36: whether a day goes unpaid is the Managing Director&apos;s call. Anything that is not Unpaid leave fails this step&apos;s criteria and is approved without reaching the MD. Note the approver is a named user - the username carries a sandbox suffix and must be repointed before this deploys anywhere else.</description>
+        <entryCriteria>
+            <criteriaItems>
+                <field>ApplicationItem__c.Request_Type__c</field>
+                <operation>equals</operation>
+                <value>Unpaid leave</value>
+            </criteriaItems>
+        </entryCriteria>
+        <label>Managing Director Approval</label>
+        <name>Managing_Director_Approval</name>
+        <rejectBehavior>
+            <type>RejectRequest</type>
+        </rejectBehavior>
+    </approvalStep>
+    <description>LEAVE-36. Replaces Appli_Leave_Request_Approval_Process, which could not take a second step once activated. The old process is deactivated rather than deleted so the approval history on existing records survives.</description>
+    <emailTemplate>ApplicationItem_Approval/Leave_Request_Email_Template</emailTemplate>
+    <enableMobileDeviceAccess>false</enableMobileDeviceAccess>
+    <entryCriteria>
+        <criteriaItems>
+            <field>ApplicationItem__c.Status__c</field>
+            <operation>equals</operation>
+            <value>Draft</value>
+        </criteriaItems>
+    </entryCriteria>
+    <finalApprovalActions>
+        <action>
+            <name>Leave_Request_Status_to_Approved</name>
+            <type>FieldUpdate</type>
+        </action>
+        <action>
+            <name>Leave_Request_Status_to_Approved_Email_Alert</name>
+            <type>Alert</type>
+        </action>
+    </finalApprovalActions>
+    <finalApprovalRecordLock>true</finalApprovalRecordLock>
+    <finalRejectionActions>
+        <action>
+            <name>Leave_Request_Status_to_Rejected</name>
+            <type>Alert</type>
+        </action>
+        <action>
+            <name>Leave_Request_Status_to_Rejected</name>
+            <type>FieldUpdate</type>
+        </action>
+    </finalRejectionActions>
+    <finalRejectionRecordLock>true</finalRejectionRecordLock>
+    <initialSubmissionActions>
+        <action>
+            <name>Leave_Request_Status_Pending</name>
+            <type>FieldUpdate</type>
+        </action>
+    </initialSubmissionActions>
+    <label>Appli Leave Request Approval Process v2</label>
+    <nextAutomatedApprover>
+        <useApproverFieldOfRecordOwner>false</useApproverFieldOfRecordOwner>
+        <userHierarchyField>Manager</userHierarchyField>
+    </nextAutomatedApprover>
+    <processOrder>2</processOrder>
+    <recordEditability>AdminOnly</recordEditability>
+    <showApprovalHistory>true</showApprovalHistory>
+</ApprovalProcess>
