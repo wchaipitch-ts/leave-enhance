@@ -308,4 +308,110 @@ private class LeaveSplitTest {
         }
         System.assertEquals(3, balance('Annual leave').Used_Days__c, 'only the first was taken');
     }
+
+    // -------------------------------------------------------- LEAVE-37, split on edit
+
+    /*
+     * The reported bug. Saving a request and setting its end date afterwards - which is
+     * what filling the form in two passes gives you - left a request longer than the
+     * balance with no unpaid half, and it could then never be approved.
+     */
+    @isTest
+    static void wideningASavedRequestSplitsIt() {
+        useTestPolicies();
+        List<Date> days = nWorkingDays(Date.newInstance(testYear(), 3, 2), 8);
+
+        ApplicationItem__c appl = new ApplicationItem__c(
+            Request_Type__c = 'Annual leave', Period_Leave__c = 'All day',
+            Term_From__c = days[0], Remark__c = 'saved first',
+            Status__c = 'Pending', OwnerId = employeeId());
+        insert appl;
+        System.assertEquals(0, continuationOf(appl.Id).size(), 'one day is affordable');
+
+        Test.startTest();
+        update new ApplicationItem__c(Id = appl.Id, Term_To__c = days[7]);
+        Test.stopTest();
+
+        System.assertEquals(days[4], reload(appl.Id).Term_To__c,
+            'cut back to the five days the balance covers');
+        System.assertEquals(5, reload(appl.Id).Leave_Days__c);
+
+        List<ApplicationItem__c> tail = continuationOf(appl.Id);
+        System.assertEquals(1, tail.size(), 'the widened days become an unpaid request');
+        System.assertEquals('Unpaid leave', tail[0].Request_Type__c);
+        System.assertEquals(days[5], tail[0].Term_From__c, 'picking up the day after the paid half');
+        System.assertEquals(days[7], tail[0].Term_To__c);
+        System.assertEquals(3, tail[0].Leave_Days__c);
+    }
+
+    /*
+     * Widening something already split must move the continuation, not raise a second
+     * one beside it - two unpaid tails on one absence would both have to be approved.
+     */
+    @isTest
+    static void wideningAnAlreadySplitRequestReplacesItsContinuation() {
+        useTestPolicies();
+        List<Date> days = nWorkingDays(Date.newInstance(testYear(), 3, 2), 12);
+
+        ApplicationItem__c appl = raise('Annual leave', 8, 'Pending');
+        insert appl;
+        System.assertEquals(1, continuationOf(appl.Id).size(), 'split on insert as before');
+
+        Test.startTest();
+        update new ApplicationItem__c(Id = appl.Id, Term_To__c = days[11]);
+        Test.stopTest();
+
+        List<ApplicationItem__c> tail = continuationOf(appl.Id);
+        System.assertEquals(1, tail.size(), 'still exactly one continuation');
+        System.assertEquals(days[5], tail[0].Term_From__c, 'still starting where the paid half ends');
+        System.assertEquals(days[11], tail[0].Term_To__c, 'and now reaching the new end date');
+        System.assertEquals(7, tail[0].Leave_Days__c);
+        System.assertEquals(days[4], reload(appl.Id).Term_To__c, 'the paid half is unchanged');
+    }
+
+    /*
+     * Rebuilding a family deletes its continuation first, so an edit that does not
+     * change the shape of the request must not reach that code at all.
+     */
+    @isTest
+    static void editingTheRemarkLeavesTheSplitAlone() {
+        useTestPolicies();
+        ApplicationItem__c appl = raise('Annual leave', 8, 'Pending');
+        insert appl;
+        ApplicationItem__c before = continuationOf(appl.Id)[0];
+
+        Test.startTest();
+        update new ApplicationItem__c(Id = appl.Id, Remark__c = 'fixed a typo');
+        Test.stopTest();
+
+        List<ApplicationItem__c> tail = continuationOf(appl.Id);
+        System.assertEquals(1, tail.size(), 'the continuation survives an unrelated edit');
+        System.assertEquals(before.Id, tail[0].Id, 'and is the same record, not a rebuild');
+        System.assertEquals(before.Term_To__c, tail[0].Term_To__c);
+    }
+
+    /*
+     * An approved continuation has spent balance and booked its days. Rebuilding it
+     * would unpick both, so the family is left intact and the edit is refused later.
+     */
+    @isTest
+    static void anApprovedContinuationIsNotRebuilt() {
+        useTestPolicies();
+        List<Date> days = nWorkingDays(Date.newInstance(testYear(), 3, 2), 12);
+
+        ApplicationItem__c appl = raise('Annual leave', 8, 'Pending');
+        insert appl;
+        ApplicationItem__c tail = continuationOf(appl.Id)[0];
+        update new ApplicationItem__c(Id = tail.Id, Status__c = 'Approved');
+
+        Test.startTest();
+        update new ApplicationItem__c(Id = appl.Id, Term_To__c = days[11]);
+        Test.stopTest();
+
+        List<ApplicationItem__c> after = continuationOf(appl.Id);
+        System.assertEquals(1, after.size(), 'no second continuation is raised');
+        System.assertEquals(tail.Id, after[0].Id, 'and the approved one is still there');
+        System.assertEquals('Approved', after[0].Status__c);
+        System.assertEquals(days[7], after[0].Term_To__c, 'with the dates it was approved for');
+    }
 }

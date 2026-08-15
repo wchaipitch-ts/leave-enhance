@@ -101,6 +101,10 @@ public class ApplicationItemTriggerHandler {
             LeaveReversalService.clearBookings(unapproved);
             LeaveReversalService.promoteUnpaidSiblings(unapproved);
         }
+
+        // LEAVE-37. A request widened after it was saved has to be divided again; on
+        // insert alone it kept the new day count and never grew an unpaid half.
+        LeaveSplitService.resplitOnEdit(reshapedRequests(newList, oldMap));
     }
 
     /*
@@ -198,6 +202,41 @@ public class ApplicationItemTriggerHandler {
 
     private Set<Id> idsOf(List<ApplicationItem__c> records) {
         return new Map<Id, ApplicationItem__c>(records).keySet();
+    }
+
+    /*
+     * LEAVE-37. Requests whose shape changed on an edit, so the split can be measured
+     * again. Scoped to the four fields that can change how many days are being asked
+     * for - the split is not re-run because somebody fixed a typo in the remark, which
+     * matters because rebuilding a family deletes the continuation first.
+     *
+     * Approved records are excluded because LEAVE-35 forbids editing them at all, and
+     * Rejected ones because a refused request has nothing left to divide. That also
+     * keeps this disjoint from promoteUnpaidSiblings, which handles the records
+     * leaving Approved.
+     */
+    private List<ApplicationItem__c> reshapedRequests(List<ApplicationItem__c> newList,
+                                                      Map<Id, ApplicationItem__c> oldMap) {
+        List<ApplicationItem__c> reshaped = new List<ApplicationItem__c>();
+        if (oldMap == null) {
+            return reshaped;
+        }
+        for (ApplicationItem__c appl : leaveRequests(newList)) {
+            if (appl.Status__c == 'Approved' || appl.Status__c == 'Rejected') {
+                continue;
+            }
+            ApplicationItem__c prior = oldMap.get(appl.Id);
+            if (prior == null) {
+                continue;
+            }
+            if (prior.Term_From__c != appl.Term_From__c
+                || prior.Term_To__c != appl.Term_To__c
+                || prior.Request_Type__c != appl.Request_Type__c
+                || prior.Period_Leave__c != appl.Period_Leave__c) {
+                reshaped.add(appl);
+            }
+        }
+        return reshaped;
     }
 
     private List<ApplicationItem__c> justApproved(List<ApplicationItem__c> requests,

@@ -26,6 +26,7 @@
 public without sharing class LeaveSplitService {
 
     @TestVisible private static final String TYPE_UNPAID = 'Unpaid leave';
+    private static final String STATUS_APPROVED = 'Approved';
 
     /*
      * Records this run has already split, or created by splitting. Shortening the
@@ -34,6 +35,14 @@ public without sharing class LeaveSplitService {
      * within its balance.
      */
     @TestVisible private static Set<Id> handled = new Set<Id>();
+
+    /*
+     * True while this class is performing its own DML. Shortening the parent and
+     * inserting the continuation both re-enter the trigger, and the shortening in
+     * particular looks exactly like somebody editing the end date. Without this, an
+     * edit-driven re-split would treat the split's own writes as a fresh edit.
+     */
+    private static Boolean rebuilding = false;
 
     /**
      * Splits any newly created leave request whose days run past the balance.
@@ -50,10 +59,83 @@ public without sharing class LeaveSplitService {
      * path only — on insert it is what stops a tail splitting the moment it is created.
      */
     public static void reevaluate(List<ApplicationItem__c> records) {
-        evaluate(records, true);
+        evaluate(records, true, null);
+    }
+
+    /**
+     * LEAVE-37. Re-splits a request whose shape changed after it was saved.
+     *
+     * The split used to run on insert alone, so a request saved with no end date and
+     * widened afterwards - which is what filling the form in two passes gives you -
+     * kept its recalculated day count and never grew an unpaid half. It could then
+     * never be approved either: deductLeaveBalance refused it for exceeding the
+     * balance and told the approver to have it split, which nothing would do.
+     *
+     * Where a split already happened, the continuation it produced is superseded
+     * rather than left beside a new one. That deletion is deliberately not performed
+     * here: evaluate removes each parent's continuation only if it goes on to build a
+     * replacement, so an edit that no longer needs splitting cannot silently drop the
+     * unpaid days that were already agreed.
+     */
+    public static void resplitOnEdit(List<ApplicationItem__c> records) {
+        if (rebuilding) {
+            return; // our own shortening update, not somebody moving the dates
+        }
+        List<ApplicationItem__c> candidates = new List<ApplicationItem__c>();
+        for (ApplicationItem__c appl : records) {
+            /*
+             * A deliberate edit supersedes any split already performed on the record in
+             * this transaction, so the re-entry guard is lifted for it. What stops the
+             * split's own writes coming back round is `rebuilding`, above.
+             */
+            handled.remove(appl.Id);
+            if (isSplittable(appl, false)) {
+                candidates.add(appl);
+            }
+        }
+        if (candidates.isEmpty()) {
+            return;
+        }
+
+        Map<Id, List<ApplicationItem__c>> supersededByParent = new Map<Id, List<ApplicationItem__c>>();
+        Set<Id> hasApprovedTail = new Set<Id>();
+        for (ApplicationItem__c sib : [
+            SELECT Id, Split_From__c, Status__c
+            FROM ApplicationItem__c
+            WHERE Split_From__c IN :new Map<Id, ApplicationItem__c>(candidates).keySet()
+        ]) {
+            /*
+             * An approved continuation has already spent balance and booked its days.
+             * Rebuilding it would unpick both behind the approver's back, so the whole
+             * family is left alone and the edit is refused at approval instead.
+             */
+            if (STATUS_APPROVED.equals(sib.Status__c)) {
+                hasApprovedTail.add(sib.Split_From__c);
+                continue;
+            }
+            if (!supersededByParent.containsKey(sib.Split_From__c)) {
+                supersededByParent.put(sib.Split_From__c, new List<ApplicationItem__c>());
+            }
+            supersededByParent.get(sib.Split_From__c).add(sib);
+        }
+
+        List<ApplicationItem__c> toEvaluate = new List<ApplicationItem__c>();
+        for (ApplicationItem__c appl : candidates) {
+            if (!hasApprovedTail.contains(appl.Id)) {
+                toEvaluate.add(appl);
+            }
+        }
+        if (!toEvaluate.isEmpty()) {
+            evaluate(toEvaluate, false, supersededByParent);
+        }
     }
 
     private static void evaluate(List<ApplicationItem__c> newRecords, Boolean allowTails) {
+        evaluate(newRecords, allowTails, null);
+    }
+
+    private static void evaluate(List<ApplicationItem__c> newRecords, Boolean allowTails,
+                                 Map<Id, List<ApplicationItem__c>> supersededByParent) {
         List<ApplicationItem__c> candidates = new List<ApplicationItem__c>();
         Set<String> keys = new Set<String>();
 
@@ -84,6 +166,9 @@ public without sharing class LeaveSplitService {
         List<ApplicationItem__c> toShorten = new List<ApplicationItem__c>();
         List<ApplicationItem__c> unpaidRecords = new List<ApplicationItem__c>();
         List<ApplicationItem__c> toConvert = new List<ApplicationItem__c>();
+        // Continuations from an earlier split of a parent being rebuilt below. Only the
+        // ones whose parent actually gets a replacement are collected.
+        List<ApplicationItem__c> superseded = new List<ApplicationItem__c>();
 
         for (ApplicationItem__c appl : candidates) {
             Decimal available = availableByKey.get(ApplicationItemTriggerLogic.balanceKey(
@@ -111,6 +196,7 @@ public without sharing class LeaveSplitService {
                  * they asked for on exactly the dates they asked for.
                  */
                 toConvert.add(new ApplicationItem__c(Id = appl.Id, Request_Type__c = TYPE_UNPAID));
+                addSuperseded(superseded, supersededByParent, appl.Id);
                 handled.add(appl.Id);
                 continue;
             }
@@ -123,17 +209,31 @@ public without sharing class LeaveSplitService {
             toShorten.add(new ApplicationItem__c(
                 Id = appl.Id, Term_To__c = workingDays[paidDays - 1]));
             unpaidRecords.add(unpaidContinuation(appl, workingDays[paidDays]));
+            addSuperseded(superseded, supersededByParent, appl.Id);
             handled.add(appl.Id);
         }
 
-        if (!toConvert.isEmpty()) {
-            update toConvert;
-        }
-        if (!toShorten.isEmpty()) {
-            update toShorten;
-        }
-        if (!unpaidRecords.isEmpty()) {
-            insert unpaidRecords;
+        // Saved and restored rather than simply cleared, so a nested evaluate cannot
+        // lift the guard while an outer one is still writing.
+        Boolean wasRebuilding = rebuilding;
+        rebuilding = true;
+        try {
+            // Before the replacements, so the old continuation and the new one never
+            // occupy the same dates.
+            if (!superseded.isEmpty()) {
+                delete superseded;
+            }
+            if (!toConvert.isEmpty()) {
+                update toConvert;
+            }
+            if (!toShorten.isEmpty()) {
+                update toShorten;
+            }
+            if (!unpaidRecords.isEmpty()) {
+                insert unpaidRecords;
+            }
+        } finally {
+            rebuilding = wasRebuilding;
         }
     }
 
@@ -180,6 +280,13 @@ public without sharing class LeaveSplitService {
         }
         Leave_Type_Policy__mdt policy = ApplicationItemTriggerLogic.policyFor(appl.Request_Type__c);
         return policy != null && policy.Counts_Toward_LWOP_Check__c == true;
+    }
+
+    private static void addSuperseded(List<ApplicationItem__c> collector,
+                                      Map<Id, List<ApplicationItem__c>> byParent, Id parentId) {
+        if (byParent != null && byParent.containsKey(parentId)) {
+            collector.addAll(byParent.get(parentId));
+        }
     }
 
     private static Decimal zeroIfNull(Decimal value) {
