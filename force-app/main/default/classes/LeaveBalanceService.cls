@@ -42,6 +42,11 @@ public without sharing class LeaveBalanceService {
         @AuraEnabled public Date expiryDate;
         @AuraEnabled public Date carryOverExpiry;
         /*
+         * When the entitlement was handed over. Refreshment leave lives for a month from
+         * this date, so a card showing the expiry needs the start of the window too.
+         */
+        @AuraEnabled public Date grantedOn;
+        /*
          * False when the type is configured to show but the grant job has not created
          * a row yet. The row still comes back, at zero, so a missing entitlement shows
          * up on the page as a zero instead of vanishing from it.
@@ -66,7 +71,7 @@ public without sharing class LeaveBalanceService {
         for (Leave_Balance__c bal : [
             SELECT Leave_Type__c, Entitlement_Days__c, Accrued_Days__c, Carry_Over_Days__c,
                    Used_Days__c, Available_Days__c, Is_Locked__c, Lock_Reason__c,
-                   Expiry_Date__c, Carry_Over_Expiry__c
+                   Expiry_Date__c, Carry_Over_Expiry__c, Granted_On__c
             FROM Leave_Balance__c
             WHERE Employee__c = :target AND Leave_Year__c = :year
         ]) {
@@ -156,6 +161,7 @@ public without sharing class LeaveBalanceService {
         view.lockReason      = bal.Lock_Reason__c;
         view.expiryDate      = bal.Expiry_Date__c;
         view.carryOverExpiry = bal.Carry_Over_Expiry__c;
+        view.grantedOn       = bal.Granted_On__c;
         return view;
     }
 

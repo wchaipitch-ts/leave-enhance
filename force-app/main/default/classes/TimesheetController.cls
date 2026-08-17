@@ -96,9 +96,14 @@ public without sharing class TimesheetController {
             Date startDateTemp = Date.newInstance(tempDate.year(), tempDate.month(), 1);
             Date endDateTemp = Date.newInstance(tempDate.year(), tempDate.month(), numberOfDays);
 
+            // Anything that overlaps the month, not just what starts inside it: a range
+            // beginning in the previous month still covers days on this screen. A blank
+            // Term_To__c is a single-day request, so it is matched on Term_From__c alone
+            // — same convention as ApplicationItemTriggerLogic.endDateOf.
             List<ApplicationItem__c> applicationItem = [SELECT Id,
                                                                 Name,
                                                                 Term_From__c,
+                                                                Term_To__c,
                                                                 Request_Type__c,
                                                                 Period_Leave__c,
                                                                 Remark__c,
@@ -108,8 +113,10 @@ public without sharing class TimesheetController {
                                                             FROM ApplicationItem__c
                                                             WHERE OwnerId =:user
                                                                 AND Status__c != 'Rejected'
-                                                                AND Term_From__c >= :startDateTemp
                                                                 AND Term_From__c <= :endDateTemp
+                                                                AND (Term_To__c >= :startDateTemp
+                                                                    OR (Term_To__c = null
+                                                                        AND Term_From__c >= :startDateTemp))
                                                             ORDER BY Term_From__c ASC
                                                         ];
             return applicationItem;
@@ -261,5 +268,148 @@ public without sharing class TimesheetController {
             System.debug(e.getMessage());
             return e.getMessage();
         }
+    }
+
+    // ==================================================================== LEAVE-38
+    /*
+     * One call for everything the leave cards and the Leave Balance page need.
+     *
+     * The screens previously assembled themselves from getUserInfo plus a balance call
+     * plus an overtime call, which is three round trips for one render and three chances
+     * to show figures from different moments. getLeaveOverview returns the lot.
+     *
+     * Nothing above this line changed. getUserInfo still returns
+     * User.Annual_Leave_Day__c, and anything still reading it keeps working until it is
+     * moved across.
+     *
+     * The work is delegated rather than reimplemented: LeaveBalanceService owns the
+     * balance rules and, importantly, the permission check that decides whether you may
+     * look at somebody else's figures. Querying Leave_Balance__c directly from here
+     * would bypass it.
+     */
+
+    public class EmployeeSummary {
+        @AuraEnabled public Id      userId;
+        @AuraEnabled public String  name;
+        @AuraEnabled public String  employeeNumber;
+        @AuraEnabled public String  title;
+        @AuraEnabled public String  department;
+        @AuraEnabled public String  managerName;
+        @AuraEnabled public String  photoUrl;
+        @AuraEnabled public Date    startDate;
+        @AuraEnabled public Date    probationEndDate;
+        /** Annual and Refreshment are withheld while true. Sick leave never is. */
+        @AuraEnabled public Boolean onProbation;
+    }
+
+    public class LeaveOverview {
+        @AuraEnabled public EmployeeSummary employee;
+        @AuraEnabled public Integer year;
+        @AuraEnabled public Integer month;
+        /** Newest first, for the year picker. */
+        @AuraEnabled public List<Integer> availableYears;
+        /** Every type set to appear on the balance page, in policy sort order. */
+        @AuraEnabled public List<LeaveBalanceService.LeaveBalanceView> balances;
+        /** Approved overtime for the requested month only. */
+        @AuraEnabled public Decimal overtimeHours;
+        /*
+         * The next service anniversary. Refreshment leave is granted on it - not on
+         * 1 January, which is what the current card assumes and is only ever right for
+         * a 1 January joiner.
+         */
+        @AuraEnabled public Date nextRefreshmentGrant;
+        /*
+         * Duplicated out of `balances` on purpose. This single figure is what the
+         * timesheet card shows, and it is what replaces User.Annual_Leave_Day__c, so
+         * lifting it here keeps that swap to one line.
+         */
+        @AuraEnabled public Decimal annualAvailable;
+    }
+
+    /**
+     * @param employeeId whose figures; null means the running user
+     * @param year       leave year; null means the current one
+     * @param month      1-12, for the overtime total; null means the current month
+     */
+    @AuraEnabled(cacheable=true)
+    public static LeaveOverview getLeaveOverview(Id employeeId, Integer year, Integer month) {
+        /*
+         * Deliberately not wrapped in the catch-and-return-null used above. A refused
+         * lookup has to reach the user as a message about permission; swallowed, it
+         * renders as an empty card and looks like missing data.
+         */
+        Date today = System.today();
+        Id target = employeeId == null ? UserInfo.getUserId() : employeeId;
+        Integer yr = year == null ? today.year() : year;
+        Integer mo = month == null ? today.month() : month;
+
+        LeaveOverview overview = new LeaveOverview();
+        overview.year = yr;
+        overview.month = mo;
+        overview.balances = LeaveBalanceService.getBalances(target, yr);
+        overview.availableYears = LeaveBalanceService.getAvailableYears(target);
+        overview.overtimeHours = OvertimeSummaryService.getApprovedOvertimeHours(target, yr, mo);
+        overview.employee = employeeSummary(target, today);
+        overview.nextRefreshmentGrant =
+            nextAnniversary(overview.employee.startDate, today);
+        overview.annualAvailable = availableFor(overview.balances, 'Annual leave');
+        return overview;
+    }
+
+    private static EmployeeSummary employeeSummary(Id target, Date today) {
+        EmployeeSummary summary = new EmployeeSummary();
+        for (User usr : [
+            SELECT Id, Name, EmployeeNumber, Title, Department, Manager.Name,
+                   MediumPhotoUrl, Start_Date__c, Probation_End_Date__c
+            FROM User WHERE Id = :target LIMIT 1
+        ]) {
+            summary.userId           = usr.Id;
+            summary.name             = usr.Name;
+            summary.employeeNumber   = usr.EmployeeNumber;
+            summary.title            = usr.Title;
+            summary.department       = usr.Department;
+            summary.managerName      = usr.Manager.Name;
+            summary.photoUrl         = usr.MediumPhotoUrl;
+            summary.startDate        = usr.Start_Date__c;
+            summary.probationEndDate = usr.Probation_End_Date__c;
+            summary.onProbation      = usr.Probation_End_Date__c != null
+                                       && usr.Probation_End_Date__c >= today;
+        }
+        if (summary.userId == null) {
+            summary.userId = target;
+            summary.onProbation = false;
+        }
+        return summary;
+    }
+
+    private static Decimal availableFor(List<LeaveBalanceService.LeaveBalanceView> balances,
+                                        String leaveType) {
+        for (LeaveBalanceService.LeaveBalanceView view : balances) {
+            if (leaveType.equals(view.leaveType)) {
+                return view.available;
+            }
+        }
+        return 0;
+    }
+
+    /*
+     * The next time this employee's joining day comes round, today included. February 29
+     * joiners fall on the 28th in a common year, which is the same concession the grant
+     * engine makes so the anniversary is never skipped entirely.
+     */
+    private static Date nextAnniversary(Date startDate, Date today) {
+        if (startDate == null) {
+            return null;
+        }
+        Date thisYear = anniversaryIn(startDate, today.year());
+        return thisYear >= today ? thisYear : anniversaryIn(startDate, today.year() + 1);
+    }
+
+    private static Date anniversaryIn(Date startDate, Integer yr) {
+        Integer day = startDate.day();
+        if (startDate.month() == 2 && day == 29 && !Date.isLeapYear(yr)) {
+            day = 28;
+        }
+        return Date.newInstance(yr, startDate.month(), day);
     }
 }
