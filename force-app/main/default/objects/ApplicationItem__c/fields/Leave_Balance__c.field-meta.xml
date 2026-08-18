@@ -3,7 +3,6 @@
     <fullName>Leave_Balance__c</fullName>
     <deleteConstraint>SetNull</deleteConstraint>
     <description>The balance row this request draws on, stamped when it is approved. Gives every Leave Balance record a related list of the requests that consumed it. Resolved from owner, leave type and year - the same key the deduction uses - so the link and the arithmetic can never point at different rows.</description>
-    <externalId>false</externalId>
     <inlineHelpText>The leave balance this request was deducted from. Set automatically on approval.</inlineHelpText>
     <label>Leave Balance</label>
     <referenceTo>Leave_Balance__c</referenceTo>

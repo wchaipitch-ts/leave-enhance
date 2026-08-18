@@ -398,7 +398,36 @@ public with sharing class LeaveManagementControllerTest {
         System.assertEquals(1, r.Entitlement_Days__c,
             'the two unused days are wiped; the one taken remains accounted for');
         System.assertEquals(0, r.Available_Days__c, 'nothing is left to use');
-        System.assertEquals(null, r.Expiry_Date__c, 'the expiry date is cleared');
+        System.assertEquals(Date.newInstance(2026, 4, 15), r.Expiry_Date__c,
+            'the expiry date is retained as the date the grant lapsed');
+    }
+
+    /*
+     * The retained expiry date keeps matching the sweep's query on every later run.
+     * Guards against the row being rewritten once there is nothing left to drop —
+     * a re-upsert every night would also mean a log file every night.
+     */
+    @isTest
+    static void lapsedRefreshmentIsNotRewrittenOnLaterRuns() {
+        useFixtures();
+        Test.startTest();
+        LeaveManagementController.runDaily(Date.newInstance(2026, 3, 15));   // grant, expires Apr 15
+        LeaveManagementController.runDaily(Date.newInstance(2026, 4, 16));   // sweeps it to zero
+
+        // No fixture has a May anniversary and no row carries an expiry between these
+        // dates, so a run on May 20 has nothing legitimate to write. Any DML here would
+        // be the lapsed row being pointlessly re-upserted.
+        Integer dmlBefore = Limits.getDmlRows();
+        LeaveManagementController.runDaily(Date.newInstance(2026, 5, 20));
+        Integer dmlAfter = Limits.getDmlRows();
+        Test.stopTest();
+
+        System.assertEquals(dmlBefore, dmlAfter, 'the later run must write nothing');
+
+        Leave_Balance__c r = row('Anniv3', REFRESH, GRANT_YEAR);
+        System.assertEquals(0, r.Entitlement_Days__c, 'still zero');
+        System.assertEquals(Date.newInstance(2026, 4, 15), r.Expiry_Date__c,
+            'the lapse date still stands');
     }
 
     @isTest

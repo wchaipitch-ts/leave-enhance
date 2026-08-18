@@ -223,6 +223,20 @@ public without sharing class LeaveBalanceService {
         return policy.Sort_Order__c == null ? 9999 : policy.Sort_Order__c;
     }
 
+    /**
+     * LEAVE-39. Resolves whose figures are being asked for and refuses if the caller may
+     * not see them. Returns the resolved employee, so a caller can use it in place of
+     * working the target out for itself.
+     *
+     * Public so another entry point can be gated on the same rule explicitly, rather
+     * than relying on a balance call happening to run first and throw on its way past.
+     * The permission-set list lives here and only here; a second copy elsewhere would
+     * drift the first time one of them was changed.
+     */
+    public static Id assertCanView(Id employeeId) {
+        return resolveAndAuthorise(employeeId);
+    }
+
     private static Id resolveAndAuthorise(Id employeeId) {
         Id target = employeeId == null ? UserInfo.getUserId() : employeeId;
         if (target != UserInfo.getUserId() && !canViewOthers()) {

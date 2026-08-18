@@ -41,7 +41,17 @@ private class LeaveReversalTest {
             new Leave_Type_Policy__mdt(Leave_Type__c = 'Annual leave', Active__c = true,
                 Deducts_Balance__c = true, Counts_Toward_LWOP_Check__c = true),
             new Leave_Type_Policy__mdt(Leave_Type__c = 'Unpaid leave', Active__c = true,
-                Deducts_Balance__c = true, Counts_Toward_LWOP_Check__c = false)
+                Deducts_Balance__c = true, Counts_Toward_LWOP_Check__c = false,
+                Grants_On_Use__c = true),
+            /*
+             * A statutory type, to prove the unwind follows the flag rather than the
+             * Unpaid leave name it used to be hardcoded to. Counts_Toward_LWOP_Check__c
+             * stays false: a type with no pool cannot run short, and making it splittable
+             * would send every request straight to Unpaid leave instead.
+             */
+            new Leave_Type_Policy__mdt(Leave_Type__c = 'Bereavement leave', Active__c = true,
+                Deducts_Balance__c = true, Counts_Toward_LWOP_Check__c = false,
+                Grants_On_Use__c = true)
         };
     }
 
@@ -63,7 +73,8 @@ private class LeaveReversalTest {
         Integer yr = System.today().year();
         insert new List<Leave_Balance__c>{
             row(u.Id, 'Annual leave', yr, 5),
-            row(u.Id, 'Unpaid leave', yr, 0)
+            row(u.Id, 'Unpaid leave', yr, 0),
+            row(u.Id, 'Bereavement leave', yr, 0)
         };
     }
 
@@ -276,6 +287,53 @@ private class LeaveReversalTest {
         System.assertEquals(0, unpaid.Entitlement_Days__c,
             'and so does the entitlement, or the row becomes free unpaid days to spend');
         System.assertEquals(0, unpaid.Available_Days__c, 'leaving the row exactly where it started');
+    }
+
+    /*
+     * The delete path for a grant-on-use type. Both sides have to come back: leaving the
+     * entitlement standing would leave the row reading one accrued, available day of
+     * Bereavement leave that nobody granted, because Accrued_Days__c is a formula over
+     * the entitlement this wrote.
+     */
+    @isTest
+    static void deletingGrantOnUseLeaveUnwindsBothSides() {
+        useTestPolicies();
+        ApplicationItem__c a = raise('Bereavement leave', 2, 'Pending');
+        insert a;
+
+        Test.startTest();
+        update new ApplicationItem__c(Id = a.Id, Status__c = 'Approved');
+        Test.stopTest();
+
+        Leave_Balance__c taken = balance('Bereavement leave');
+        System.assertEquals(2, taken.Used_Days__c, 'the days are counted');
+        System.assertEquals(2, taken.Entitlement_Days__c, 'and granted as they are used');
+        System.assertEquals(0, taken.Available_Days__c, 'so the row never reads negative');
+
+        delete a;
+
+        Leave_Balance__c restored = balance('Bereavement leave');
+        System.assertEquals(0, restored.Used_Days__c, 'the days come back');
+        System.assertEquals(0, restored.Entitlement_Days__c,
+            'and so does the entitlement, or the row becomes free days to spend');
+        System.assertEquals(0, restored.Available_Days__c, 'leaving the row where it started');
+    }
+
+    /** The same unwind on rejection, which reaches restoreBalances by a different route. */
+    @isTest
+    static void rejectingGrantOnUseLeaveUnwindsBothSides() {
+        useTestPolicies();
+        ApplicationItem__c a = raise('Bereavement leave', 2, 'Pending');
+        insert a;
+
+        Test.startTest();
+        update new ApplicationItem__c(Id = a.Id, Status__c = 'Approved');
+        update new ApplicationItem__c(Id = a.Id, Status__c = 'Rejected');
+        Test.stopTest();
+
+        Leave_Balance__c restored = balance('Bereavement leave');
+        System.assertEquals(0, restored.Used_Days__c, 'the days come back');
+        System.assertEquals(0, restored.Entitlement_Days__c, 'and the entitlement with them');
     }
 
     // ------------------------------------------------------------------ promotion

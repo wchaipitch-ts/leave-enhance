@@ -12,10 +12,6 @@ public class ApplicationItemTriggerLogic {
     // The only type with a carry-over bucket, so the only one needing attribution.
     private static final String TYPE_ANNUAL = 'Annual leave';
 
-    // The type LeaveSplitService creates for days beyond the balance. Named here
-    // because it is the one type whose entitlement is granted as it is used.
-    private static final String TYPE_UNPAID = 'Unpaid leave';
-
     // 1900-01-01 was a Monday, so days-since gives 0=Mon .. 5=Sat, 6=Sun.
     private static final Date MONDAY_EPOCH = Date.newInstance(1900, 1, 1);
 
@@ -259,6 +255,9 @@ public class ApplicationItemTriggerLogic {
         Map<Id, Leave_Balance__c> touched = new Map<Id, Leave_Balance__c>();
 
         for (ApplicationItem__c appl : deductible) {
+            // Non-null for everything in `deductible`: the loop above refuses a request
+            // whose type has no active policy before it can get this far.
+            Leave_Type_Policy__mdt policy = policyByType.get(appl.Request_Type__c);
             String key = balanceKey(appl.OwnerId, appl.Request_Type__c, appl.Term_From__c.year());
             Leave_Balance__c bal = balanceByKey.get(key);
             if (bal == null) {
@@ -324,13 +323,20 @@ public class ApplicationItemTriggerLogic {
             appl.Balance_Applied_Days__c = payable;
 
             /*
-             * LEAVE-33 — grant on use. Unpaid leave has no entitlement to draw down, so
-             * deducting it alone would drive Available_Days__c negative and the balance
-             * page would read "-12 available", which means nothing. Raising the
-             * entitlement by the same amount keeps Available at zero and turns the row
-             * into what it actually is: a count of unpaid days taken.
+             * LEAVE-33 — grant on use. Some types have no annual pool to draw down:
+             * unpaid leave, and the statutory types that are an entitlement per occasion
+             * rather than an allowance. Deducting one of those alone would drive
+             * Available_Days__c negative and the balance page would read "-12 available",
+             * which means nothing. Raising the entitlement by the same amount keeps
+             * Available at zero and turns the row into what it actually is: a count of
+             * the days taken.
+             *
+             * Decided by the policy rather than by a hardcoded Unpaid leave check, so
+             * classifying a new type stays a Custom Metadata row rather than a
+             * deployment — the same reason Deducts_Balance__c replaced the old
+             * NON_DEDUCTING_TYPES set.
              */
-            if (TYPE_UNPAID.equals(appl.Request_Type__c)) {
+            if (policy.Grants_On_Use__c == true) {
                 bal.Entitlement_Days__c = zeroIfNull(bal.Entitlement_Days__c) + payable;
             }
 

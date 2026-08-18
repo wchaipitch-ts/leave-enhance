@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Total_Leave_Available__c</fullName>
+    <description>Total annual leave available: current year plus carry over. Refresh, sick and personal leave are deliberately excluded, as they are drawn from separately.</description>
+    <externalId>false</externalId>
+    <formula>BLANKVALUE(Annual_Leave_Day__c, 0) + BLANKVALUE(Carry_Over_Days__c, 0)</formula>
+    <formulaTreatBlanksAs>BlankAsZero</formulaTreatBlanksAs>
+    <label>Total Leave Available</label>
+    <precision>18</precision>
+    <required>false</required>
+    <scale>1</scale>
+    <trackHistory>false</trackHistory>
+    <type>Number</type>
+    <unique>false</unique>
+</CustomField>

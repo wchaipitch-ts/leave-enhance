@@ -3,9 +3,8 @@
     <fullName>Leave_Request_Probation_Block</fullName>
     <active>true</active>
     <description>Annual and Refreshment leave are locked during probation. Sick and statutory leave are not blocked - Thai law mandates paid sick leave. Scoped to saves that create or reshape the request, so it cannot block unrelated edits to historical records.</description>
-    <errorConditionFormula>
-        AND(
-          RecordType.DeveloperName &lt;&gt; "Overtime_Request",
+    <errorConditionFormula>AND(
+          RecordType.DeveloperName &lt;&gt; &quot;Overtime_Request&quot;,
           OR(
             ISNEW(),
             ISCHANGED(Request_Type__c),
@@ -14,13 +13,12 @@
             ISCHANGED(Status__c)
           ),
           OR(
-            ISPICKVAL(Request_Type__c, "Annual leave"),
-            ISPICKVAL(Request_Type__c, "Refresh Leave")
+            ISPICKVAL(Request_Type__c, &quot;Annual leave&quot;),
+            ISPICKVAL(Request_Type__c, &quot;Refresh Leave&quot;)
           ),
           NOT(ISBLANK(Owner:User.Probation_End_Date__c)),
           Term_From__c &lt;= Owner:User.Probation_End_Date__c
-        )
-    </errorConditionFormula>
+        )</errorConditionFormula>
     <errorDisplayField>Term_From__c</errorDisplayField>
     <errorMessage>Annual and Refreshment leave are not available during the probation period. Accrued leave becomes available once probation is complete.</errorMessage>
 </ValidationRule>

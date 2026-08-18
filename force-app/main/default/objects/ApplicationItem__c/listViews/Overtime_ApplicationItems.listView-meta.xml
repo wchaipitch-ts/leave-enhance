@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ListView xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Overtime_ApplicationItems</fullName>
+    <columns>NAME</columns>
+    <columns>OT_Start__c</columns>
+    <columns>OT_End__c</columns>
+    <columns>Overtime_Hours__c</columns>
+    <filterScope>Everything</filterScope>
+    <filters>
+        <field>RECORDTYPE</field>
+        <operation>equals</operation>
+        <value>ApplicationItem__c.Overtime_Request</value>
+    </filters>
+    <label>Overtime ApplicationItems</label>
+</ListView>

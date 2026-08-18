@@ -2,9 +2,10 @@
 <CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>Is_Locked__c</fullName>
     <description>True while the employee is in probation and this type is probation-locked.</description>
-    <label>Is Locked</label>
     <formula>AND( Locked_During_Probation__c, NOT(ISBLANK(Employee__r.Probation_End_Date__c)), Employee__r.Probation_End_Date__c &gt;= TODAY() )</formula>
     <formulaTreatBlanksAs>BlankAsZero</formulaTreatBlanksAs>
-    <required>false</required>
+    <label>Is Locked</label>
+    <trackHistory>false</trackHistory>
+    <trackTrending>false</trackTrending>
     <type>Checkbox</type>
 </CustomField>

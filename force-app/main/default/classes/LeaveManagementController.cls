@@ -231,6 +231,17 @@ public with sharing class LeaveManagementController implements Schedulable {
      * Refreshment works the same way against Entitlement_Days__c: granted on the
      * anniversary, and whatever is not used within the window is wiped.
      *
+     * Expiry_Date__c is deliberately NOT cleared once the window has closed: it is the
+     * date the grant lapsed, and HR needs to see it on a zeroed row. Carry_Over_Expiry__c
+     * is still cleared, so the two branches differ.
+     *
+     * Because the window date survives, this query keeps matching the row on every
+     * later run. Nothing is staged on those runs — a row is only written when there is
+     * an unused portion left to drop, which is false the moment the first sweep has
+     * done its work. That conditional staging is what replaces the old null-out as the
+     * re-processing guard; without it every lapsed row would be re-upserted nightly and
+     * would keep writing a log file forever.
+     *
      * Expired days are simply lost; nothing is paid out.
      */
     private static void expireLeave(Date today, Map<String, Leave_Balance__c> staged,
@@ -257,7 +268,7 @@ public with sharing class LeaveManagementController implements Schedulable {
             Boolean windowExpired = row.Expiry_Date__c != null && row.Expiry_Date__c < today;
             if (!carryExpired && !windowExpired) continue;
 
-            staged.put(row.External_Key__c, row);
+            Boolean lapsed = false;
 
             if (carryExpired) {
                 Decimal carriedIn = zeroIfNull(row.Carry_Over_Days__c);
@@ -270,20 +281,25 @@ public with sharing class LeaveManagementController implements Schedulable {
                 }
                 row.Carry_Over_Days__c   = consumed;
                 row.Carry_Over_Expiry__c = null;
+                lapsed = true;
             }
 
             if (windowExpired) {
                 Decimal granted  = zeroIfNull(row.Entitlement_Days__c);
                 Decimal used     = zeroIfNull(row.Used_Days__c);
                 Decimal consumed = granted < used ? granted : used;
+                // Already swept on an earlier run: nothing left to drop, so the row is
+                // left alone and Expiry_Date__c keeps standing as the lapse date.
                 if (granted > consumed) {
                     logDetails.add('EXPIRE  ' + row.Employee__r.Name
                         + ' | ' + row.Leave_Type__c + ' lapsed=' + (granted - consumed)
                         + ' of ' + granted + ' on ' + row.Expiry_Date__c);
+                    row.Entitlement_Days__c = consumed;
+                    lapsed = true;
                 }
-                row.Entitlement_Days__c = consumed;
-                row.Expiry_Date__c      = null;
             }
+
+            if (lapsed) staged.put(row.External_Key__c, row);
         }
     }
 

@@ -3,14 +3,12 @@
     <fullName>Leave_Request_Period_Single_Day_Only</fullName>
     <active>true</active>
     <description>AM or PM across a multi-day range is meaningless. calculateLeaveDays already ignores Period_Leave__c on a range and counts whole days; this stops the employee believing otherwise.</description>
-    <errorConditionFormula>
-        AND(
-          RecordType.DeveloperName &lt;&gt; "Overtime_Request",
+    <errorConditionFormula>AND(
+          RecordType.DeveloperName &lt;&gt; &quot;Overtime_Request&quot;,
           NOT(ISBLANK(Term_To__c)),
           Term_To__c &lt;&gt; Term_From__c,
-          NOT(ISPICKVAL(Period_Leave__c, "All day"))
-        )
-    </errorConditionFormula>
+          NOT(ISPICKVAL(Period_Leave__c, &quot;All day&quot;))
+        )</errorConditionFormula>
     <errorDisplayField>Period_Leave__c</errorDisplayField>
     <errorMessage>A half-day period can only be chosen for a single-day request. Set Period Leave to All day, or clear the end date.</errorMessage>
 </ValidationRule>

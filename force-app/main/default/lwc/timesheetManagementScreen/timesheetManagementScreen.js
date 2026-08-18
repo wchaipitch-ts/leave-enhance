@@ -24,7 +24,7 @@ import TimeLeaveSecondHalf from '@salesforce/label/c.TimeLeaveSecondHalf';
 const ONE_HOUR = 3600000;
 const ONE_MINUTE = 60000;
 
-export default class ManHourInputScreen extends NavigationMixin(LightningElement) {
+export default class timesheetManagementScreen extends NavigationMixin(LightningElement) {
 	// Default Screen Factor
 	@track isShowLog = true;
 	@track isLoading = false;
@@ -562,6 +562,26 @@ export default class ManHourInputScreen extends NavigationMixin(LightningElement
 		return timesheetDataList;
 	}
 
+	/*
+	 * Which days a request actually covers. Mirrors ApplicationItemTriggerLogic.workingDaysFor
+	 * so the screen and the server agree: a range skips weekends and holidays, while a
+	 * single-day request is taken at face value even on a weekend. Blank Term_To__c means
+	 * a single day.
+	 *
+	 * Dates are the ISO YYYY-MM-DD strings both sides already use, so they compare
+	 * directly and no Date parsing (and no timezone shift) is involved. Leave may not
+	 * span a calendar year - enforced by the Leave_Request_No_Year_Span validation rule.
+	 */
+	isCoveredByLeave(timesheetData, leaveRequeste) {
+		const from = leaveRequeste.Term_From__c;
+		const to = leaveRequeste.Term_To__c ? leaveRequeste.Term_To__c : from;
+		if (!from || to < from) return false;
+
+		if (from === to) return timesheetData.date === from;
+		if (timesheetData.date < from || timesheetData.date > to) return false;
+		return !timesheetData.isweekend && !timesheetData.isholiday;
+	}
+
 	async setLeaveRequestes(timesheetDataList) {
 		if (this.isShowLog) console.log('setLeaveRequestes Start!');
 
@@ -570,7 +590,7 @@ export default class ManHourInputScreen extends NavigationMixin(LightningElement
 				timesheetDataList.map((timesheetData) => {
 					for (var i in leaveRequestes) {
 						var leaveRequeste = leaveRequestes[i];
-						if (timesheetData.date === leaveRequeste.Term_From__c) {
+						if (this.isCoveredByLeave(timesheetData, leaveRequeste)) {
 							if (leaveRequeste.Status__c == 'Approved') {
 								timesheetData.isapprovedleave = true;
 								timesheetData.ispendingleave = false;

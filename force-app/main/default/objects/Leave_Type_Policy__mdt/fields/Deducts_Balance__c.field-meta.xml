@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>Deducts_Balance__c</fullName>
+    <defaultValue>false</defaultValue>
     <description>Replaces the hardcoded NON_DEDUCTING_TYPES set in ApplicationItemTriggerLogic. False means the request is recorded but moves no balance.</description>
     <fieldManageability>DeveloperControlled</fieldManageability>
     <label>Deducts Balance</label>
-    <defaultValue>false</defaultValue>
     <type>Checkbox</type>
 </CustomField>

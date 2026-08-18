@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>Locked_During_Probation__c</fullName>
-    <description>Copied from the policy. Drives Is_Locked__c.</description>
-    <label>Locked During Probation</label>
     <defaultValue>false</defaultValue>
+    <label>Locked During Probation</label>
+    <trackHistory>false</trackHistory>
+    <trackTrending>false</trackTrending>
     <type>Checkbox</type>
 </CustomField>

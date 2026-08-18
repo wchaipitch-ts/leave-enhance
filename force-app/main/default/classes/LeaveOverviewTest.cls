@@ -216,6 +216,53 @@ private class LeaveOverviewTest {
         Test.stopTest();
     }
 
+    /*
+     * LEAVE-39. The overtime total used to have no check of its own. ApplicationItem__c
+     * is Public Read Only, so `with sharing` withheld nothing and any employee could
+     * read back a colleague's hours by passing their Id.
+     */
+    @isTest
+    static void oneEmployeeCannotReadAnothersOvertime() {
+        Test.startTest();
+        System.runAs(outsider()) {
+            try {
+                OvertimeSummaryService.getApprovedOvertimeHours(employeeId(), testYear(), 8);
+                System.assert(false, 'overtime hours are no more public than the balances');
+            } catch (AuraHandledException e) {
+                // expected
+            }
+        }
+        Test.stopTest();
+    }
+
+    /*
+     * The guard has to be the overview's own, not a side effect of the balance call
+     * being first. Reordering those lines must not be able to open the method up.
+     */
+    @isTest
+    static void theOverviewRefusesBeforeItReadsAnything() {
+        Test.startTest();
+        System.runAs(outsider()) {
+            try {
+                TimesheetController.getLeaveOverview(employeeId(), testYear(), 8);
+                System.assert(false, 'refused');
+            } catch (AuraHandledException e) {
+                // expected
+            }
+        }
+        Test.stopTest();
+
+        /*
+         * The answer is cached for the transaction, and the block above cached it for the
+         * outsider. Production never changes running user mid-transaction; a test does,
+         * which is what the reset hook is for.
+         */
+        LeaveBalanceService.canViewOthersCache = null;
+        System.assertEquals(employeeId(),
+            LeaveBalanceService.assertCanView(employeeId()),
+            'and an authorised caller still resolves to the employee asked for');
+    }
+
     @isTest
     static void anEmployeeWithNoBalanceRowsStillRenders() {
         Test.startTest();

@@ -3,13 +3,11 @@
     <fullName>Leave_Request_End_Before_Start</fullName>
     <active>true</active>
     <description>Term_To__c is the inclusive end of the range. A range that ends before it starts would make workingDaysFor return no days, so the request would silently consume nothing.</description>
-    <errorConditionFormula>
-        AND(
-          RecordType.DeveloperName &lt;&gt; "Overtime_Request",
+    <errorConditionFormula>AND(
+          RecordType.DeveloperName &lt;&gt; &quot;Overtime_Request&quot;,
           NOT(ISBLANK(Term_To__c)),
           Term_To__c &lt; Term_From__c
-        )
-    </errorConditionFormula>
+        )</errorConditionFormula>
     <errorDisplayField>Term_To__c</errorDisplayField>
     <errorMessage>End date cannot be earlier than the start date.</errorMessage>
 </ValidationRule>

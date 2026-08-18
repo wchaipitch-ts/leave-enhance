@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Refresh_Leave_Expiry__c</fullName>
+    <description>Date on which Refresh_Leave_Days__c expires. Set to the anniversary plus Grant_Window_Months__c from Refresh_Leave_Rule__mdt.</description>
+    <label>Refresh Leave Expiry</label>
+    <required>false</required>
+    <trackFeedHistory>false</trackFeedHistory>
+    <trackHistory>false</trackHistory>
+    <type>Date</type>
+</CustomField>

@@ -10,26 +10,26 @@
         <restricted>true</restricted>
         <valueSetDefinition>
             <sorted>false</sorted>
-                <value>
-                    <fullName>Calendar Year</fullName>
-                    <default>false</default>
-                    <label>Calendar Year</label>
-                </value>
-                <value>
-                    <fullName>Anniversary</fullName>
-                    <default>false</default>
-                    <label>Anniversary</label>
-                </value>
-                <value>
-                    <fullName>Per Occurrence</fullName>
-                    <default>false</default>
-                    <label>Per Occurrence</label>
-                </value>
-                <value>
-                    <fullName>None</fullName>
-                    <default>false</default>
-                    <label>None</label>
-                </value>
+            <value>
+                <fullName>Calendar Year</fullName>
+                <default>false</default>
+                <label>Calendar Year</label>
+            </value>
+            <value>
+                <fullName>Anniversary</fullName>
+                <default>false</default>
+                <label>Anniversary</label>
+            </value>
+            <value>
+                <fullName>Per Occurrence</fullName>
+                <default>false</default>
+                <label>Per Occurrence</label>
+            </value>
+            <value>
+                <fullName>None</fullName>
+                <default>false</default>
+                <label>None</label>
+            </value>
         </valueSetDefinition>
     </valueSet>
 </CustomField>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Leave_Plan_Submitted__c</fullName>
+    <defaultValue>false</defaultValue>
+    <description>Whether the employee has submitted their leave plan by month 5. If false past the deadline, the company designates the dates.</description>
+    <label>Leave Plan Submitted</label>
+    <trackFeedHistory>false</trackFeedHistory>
+    <trackHistory>false</trackHistory>
+    <type>Checkbox</type>
+</CustomField>

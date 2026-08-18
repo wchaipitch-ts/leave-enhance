@@ -10,26 +10,26 @@
         <restricted>true</restricted>
         <valueSetDefinition>
             <sorted>false</sorted>
-                <value>
-                    <fullName>None</fullName>
-                    <default>false</default>
-                    <label>None</label>
-                </value>
-                <value>
-                    <fullName>Monthly</fullName>
-                    <default>false</default>
-                    <label>Monthly</label>
-                </value>
-                <value>
-                    <fullName>Upfront</fullName>
-                    <default>false</default>
-                    <label>Upfront</label>
-                </value>
-                <value>
-                    <fullName>Anniversary</fullName>
-                    <default>false</default>
-                    <label>Anniversary</label>
-                </value>
+            <value>
+                <fullName>None</fullName>
+                <default>false</default>
+                <label>None</label>
+            </value>
+            <value>
+                <fullName>Monthly</fullName>
+                <default>false</default>
+                <label>Monthly</label>
+            </value>
+            <value>
+                <fullName>Upfront</fullName>
+                <default>false</default>
+                <label>Upfront</label>
+            </value>
+            <value>
+                <fullName>Anniversary</fullName>
+                <default>false</default>
+                <label>Anniversary</label>
+            </value>
         </valueSetDefinition>
     </valueSet>
 </CustomField>

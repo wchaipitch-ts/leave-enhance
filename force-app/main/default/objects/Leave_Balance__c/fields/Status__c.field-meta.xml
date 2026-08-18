@@ -4,21 +4,23 @@
     <description>Closed rows are historical and no longer maintained by the grant engine.</description>
     <label>Status</label>
     <required>false</required>
+    <trackHistory>false</trackHistory>
+    <trackTrending>false</trackTrending>
     <type>Picklist</type>
     <valueSet>
         <restricted>true</restricted>
         <valueSetDefinition>
             <sorted>false</sorted>
-                <value>
-                    <fullName>Active</fullName>
-                    <default>true</default>
-                    <label>Active</label>
-                </value>
-                <value>
-                    <fullName>Closed</fullName>
-                    <default>false</default>
-                    <label>Closed</label>
-                </value>
+            <value>
+                <fullName>Active</fullName>
+                <default>true</default>
+                <label>Active</label>
+            </value>
+            <value>
+                <fullName>Closed</fullName>
+                <default>false</default>
+                <label>Closed</label>
+            </value>
         </valueSetDefinition>
     </valueSet>
 </CustomField>

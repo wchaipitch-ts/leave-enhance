@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>LeaveRequestCurrentDate_ValidationRule</fullName>
+    <active>true</active>
+    <errorConditionFormula>AND( Term_From__c &lt; TODAY(), ISBLANK(Remark__c) )</errorConditionFormula>
+    <errorDisplayField>Remark__c</errorDisplayField>
+    <errorMessage>Term From date is less than today. Please enter the value of Remark.</errorMessage>
+</ValidationRule>

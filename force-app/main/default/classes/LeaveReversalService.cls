@@ -68,11 +68,18 @@ public without sharing class LeaveReversalService {
             bal.Used_Days__c = floorAtZero(zeroIfNull(bal.Used_Days__c) - giveBack);
 
             /*
-             * Unpaid leave has its entitlement granted as it is used, so the give-back
-             * has to unwind both sides. Leaving the entitlement up would turn the row
-             * into a pile of unpaid days the employee could then spend.
+             * A Grants_On_Use__c type has its entitlement granted as it is used, so the
+             * give-back has to unwind both sides. Leaving the entitlement up would turn
+             * the row into a pile of free days the employee could then spend — and
+             * because Accrued_Days__c is a formula over the entitlement, the balance page
+             * would show them as accrued and available.
+             *
+             * Read from the policy rather than from a hardcoded Unpaid leave check, so
+             * this cannot drift from the grant in ApplicationItemTriggerLogic: whatever
+             * grants on use unwinds on use.
              */
-            if (TYPE_UNPAID.equals(bal.Leave_Type__c)) {
+            Leave_Type_Policy__mdt policy = ApplicationItemTriggerLogic.policyFor(bal.Leave_Type__c);
+            if (policy != null && policy.Grants_On_Use__c == true) {
                 bal.Entitlement_Days__c = floorAtZero(zeroIfNull(bal.Entitlement_Days__c) - giveBack);
             }
             toUpdate.add(bal);

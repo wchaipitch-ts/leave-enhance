@@ -2,7 +2,6 @@
 <CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>OT_End__c</fullName>
     <description>When the overtime finished. Must be later in the day than OT Start: overtime running past midnight is rejected by the Overtime_End_After_Start validation rule rather than silently counted as negative hours.</description>
-    <externalId>false</externalId>
     <inlineHelpText>Time the overtime finished, for example 21:00. Must be later than OT Start on the same day.</inlineHelpText>
     <label>OT End</label>
     <required>false</required>

@@ -3,12 +3,10 @@
     <fullName>Overtime_Times_Required</fullName>
     <active>true</active>
     <description>An overtime request with no times claims no hours. Enforced here rather than by making the fields universally required, which would also force them onto every leave request.</description>
-    <errorConditionFormula>
-        AND(
-          RecordType.DeveloperName = "Overtime_Request",
+    <errorConditionFormula>AND(
+          RecordType.DeveloperName = &quot;Overtime_Request&quot;,
           OR(ISBLANK(OT_Start__c), ISBLANK(OT_End__c))
-        )
-    </errorConditionFormula>
+        )</errorConditionFormula>
     <errorDisplayField>OT_Start__c</errorDisplayField>
     <errorMessage>An overtime request needs both an OT Start and an OT End time.</errorMessage>
 </ValidationRule>

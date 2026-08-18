@@ -2,10 +2,12 @@
 <CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>Leave_Type__c</fullName>
     <description>Copied from Leave_Type_Policy__mdt.Leave_Type__c, which must itself match the ApplicationItem__c.Request_Type__c picklist API value exactly. Text rather than a second picklist so there is only one place to maintain the list.</description>
-    <label>Leave Type</label>
     <externalId>false</externalId>
+    <label>Leave Type</label>
     <length>60</length>
     <required>true</required>
+    <trackHistory>false</trackHistory>
+    <trackTrending>false</trackTrending>
     <type>Text</type>
     <unique>false</unique>
 </CustomField>

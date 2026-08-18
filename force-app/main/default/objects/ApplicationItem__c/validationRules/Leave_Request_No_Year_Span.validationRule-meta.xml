@@ -3,13 +3,11 @@
     <fullName>Leave_Request_No_Year_Span</fullName>
     <active>true</active>
     <description>Balances are held per Employee x Leave Type x Year, so a request crossing a year boundary would have to draw on two Leave_Balance__c rows. Blocking it keeps each request tied to exactly one balance. Agreed design decision, not a platform limitation.</description>
-    <errorConditionFormula>
-        AND(
-          RecordType.DeveloperName &lt;&gt; "Overtime_Request",
+    <errorConditionFormula>AND(
+          RecordType.DeveloperName &lt;&gt; &quot;Overtime_Request&quot;,
           NOT(ISBLANK(Term_To__c)),
           YEAR(Term_To__c) &lt;&gt; YEAR(Term_From__c)
-        )
-    </errorConditionFormula>
+        )</errorConditionFormula>
     <errorDisplayField>Term_To__c</errorDisplayField>
     <errorMessage>A leave request cannot span two calendar years. Please submit one request per year.</errorMessage>
 </ValidationRule>

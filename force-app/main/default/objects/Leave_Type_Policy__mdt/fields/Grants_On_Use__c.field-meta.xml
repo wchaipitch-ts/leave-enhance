@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Grants_On_Use__c</fullName>
+    <defaultValue>false</defaultValue>
+    <description>The type has no annual pool to draw down - it is an entitlement per occasion. Approval raises Entitlement_Days__c by the days taken, so Available stays at zero and the row becomes an honest count of what has been used rather than reading negative. Replaces the hardcoded Unpaid leave check in ApplicationItemTriggerLogic. Requires Deducts_Balance__c, or nothing reaches the grant at all. Must NOT be combined with Counts_Toward_LWOP_Check__c: a type with nothing to run short of cannot be split, and LeaveSplitService would convert every request straight to Unpaid leave. Must not be combined with Monthly accrual either, which caps Accrued_Days__c below the entitlement this writes.</description>
+    <fieldManageability>DeveloperControlled</fieldManageability>
+    <label>Grants On Use</label>
+    <type>Checkbox</type>
+</CustomField>

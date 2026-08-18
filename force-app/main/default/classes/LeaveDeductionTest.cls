@@ -77,7 +77,17 @@ private class LeaveDeductionTest {
             balanceRow(u.Id, 'Personal leave', yr, 3,  'Upfront',     0),
             // LEAVE-33: Unpaid leave now deducts too, so it needs a row like any other
             // type. Entitlement stays at zero - it is granted as it is used.
-            balanceRow(u.Id, 'Unpaid leave',   yr, 0,  'Upfront',     0)
+            balanceRow(u.Id, 'Unpaid leave',   yr, 0,  'Upfront',     0),
+            /*
+             * The Grants_On_Use__c types. They deduct like any other, so a missing row
+             * is now a hard error at approval rather than a silent no-op — which is why
+             * they are created here. Zero entitlement is the point: approval raises it
+             * by the days taken. The grant engine writes a row for every active policy
+             * in production, so this mirrors it rather than inventing a fixture.
+             */
+            balanceRow(u.Id, 'Bereavement leave', yr, 0, null, 0),
+            balanceRow(u.Id, 'Maternity leave',   yr, 0, null, 0),
+            balanceRow(u.Id, 'Other',             yr, 0, null, 0)
         };
     }
 
@@ -99,7 +109,7 @@ private class LeaveDeductionTest {
 
     private static Leave_Balance__c balance(String leaveType) {
         return [
-            SELECT Used_Days__c, Carry_Over_Days__c, Entitlement_Days__c
+            SELECT Used_Days__c, Carry_Over_Days__c, Entitlement_Days__c, Available_Days__c
             FROM Leave_Balance__c
             WHERE Employee__c = :testUserId() AND Leave_Type__c = :leaveType
             LIMIT 1
@@ -248,8 +258,19 @@ private class LeaveDeductionTest {
         System.assertEquals(0, balance('Annual leave').Used_Days__c, 'neither touches the annual row');
     }
 
+    /*
+     * Statutory leave is an entitlement per occasion, not an annual allowance, so there
+     * is no pool to run down. Approval grants the days it takes: the row keeps a true
+     * count of what has been used and never reads negative, which is the same treatment
+     * LEAVE-33 gave Unpaid leave and is now driven by Grants_On_Use__c rather than by a
+     * hardcoded type name.
+     *
+     * This replaces statutoryLeaveDeductsNothing, which asserted the previous
+     * configuration: those types had Deducts_Balance__c false and were recorded without
+     * touching a balance at all, so nothing anywhere counted how much had been taken.
+     */
     @isTest
-    static void statutoryLeaveDeductsNothing() {
+    static void statutoryLeaveGrantsItselfAsItIsTaken() {
         List<ApplicationItem__c> batch = new List<ApplicationItem__c>{
             request('Bereavement leave', 'All day'),
             request('Maternity leave', 'All day'),
@@ -262,10 +283,34 @@ private class LeaveDeductionTest {
         }
         update batch;
 
+        for (String leaveType : new List<String>{ 'Bereavement leave', 'Maternity leave', 'Other' }) {
+            Leave_Balance__c row = balance(leaveType);
+            System.assertEquals(1, row.Used_Days__c, leaveType + ': the day is counted');
+            System.assertEquals(1, row.Entitlement_Days__c,
+                leaveType + ': entitlement is granted as it is used');
+            System.assertEquals(0, row.Available_Days__c,
+                leaveType + ': so the row never reads negative');
+        }
+
         System.assertEquals(0, balance('Annual leave').Used_Days__c,
-            'types with Deducts_Balance__c false move no balance');
-        System.assertEquals(0, balance('Sick leave').Used_Days__c,
-            'and do not leak into another row');
+            'and none of it leaks into a pooled row');
+        System.assertEquals(0, balance('Sick leave').Used_Days__c);
+    }
+
+    /*
+     * The half day matters: grant-on-use adds exactly what was taken, so a 0.5 day
+     * request must leave the row at 0.5 used and 0.5 granted, not rounded to a whole day.
+     */
+    @isTest
+    static void grantOnUseFollowsAHalfDayExactly() {
+        ApplicationItem__c appl = request('Bereavement leave', 'AM leave');
+        insert appl;
+        approve(appl);
+
+        Leave_Balance__c row = balance('Bereavement leave');
+        System.assertEquals(0.5, row.Used_Days__c, 'half a day taken');
+        System.assertEquals(0.5, row.Entitlement_Days__c, 'and half a day granted');
+        System.assertEquals(0, row.Available_Days__c, 'leaving the row at zero');
     }
 
     @isTest

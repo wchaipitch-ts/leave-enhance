@@ -1,12 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>Carry_Over_Days__c</fullName>
-    <description>Days carried in from the prior year. Consumed before current-year entitlement.</description>
-    <label>Carry Over Days</label>
     <defaultValue>0</defaultValue>
+    <description>Days carried in from the prior year. Consumed before current-year entitlement.</description>
+    <externalId>false</externalId>
+    <label>Carry Over Days</label>
     <precision>4</precision>
     <required>false</required>
     <scale>1</scale>
+    <trackHistory>false</trackHistory>
+    <trackTrending>false</trackTrending>
     <type>Number</type>
     <unique>false</unique>
 </CustomField>

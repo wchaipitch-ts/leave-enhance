@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>Locked_During_Probation__c</fullName>
+    <defaultValue>false</defaultValue>
     <description>True for Annual and Refreshment only. Sick and statutory leave stay available during probation - Thai labour law mandates paid sick leave regardless.</description>
     <fieldManageability>DeveloperControlled</fieldManageability>
     <label>Locked During Probation</label>
-    <defaultValue>false</defaultValue>
     <type>Checkbox</type>
 </CustomField>

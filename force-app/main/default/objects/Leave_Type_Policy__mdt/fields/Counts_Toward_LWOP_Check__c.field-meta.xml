@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>Counts_Toward_LWOP_Check__c</fullName>
+    <defaultValue>false</defaultValue>
     <description>True only for Annual and Sick leave. Insufficient balance on these types re-labels the request as Leave Without Pay.</description>
     <fieldManageability>DeveloperControlled</fieldManageability>
     <label>Counts Toward LWOP Check</label>
-    <defaultValue>false</defaultValue>
     <type>Checkbox</type>
 </CustomField>

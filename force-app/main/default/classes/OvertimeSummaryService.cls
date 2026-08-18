@@ -33,7 +33,13 @@ public with sharing class OvertimeSummaryService {
         if (year == null || month == null || month < 1 || month > 12) {
             throw new AuraHandledException('A four digit year and a month from 1 to 12 are required.');
         }
-        Id target = employeeId == null ? UserInfo.getUserId() : employeeId;
+        /*
+         * LEAVE-39. This class is `with sharing`, but ApplicationItem__c is Public Read
+         * Only, so sharing withheld nothing: any employee could pass any Id and read back
+         * somebody else's overtime. Gated on the same rule as the leave balances, which
+         * LeaveBalanceService owns, so the two cannot answer differently.
+         */
+        Id target = LeaveBalanceService.assertCanView(employeeId);
 
         Date monthStart = Date.newInstance(year, month, 1);
         Date monthEnd = Date.newInstance(year, month, Date.daysInMonth(year, month));

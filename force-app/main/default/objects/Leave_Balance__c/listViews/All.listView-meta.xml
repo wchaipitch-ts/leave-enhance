@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ListView xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>All</fullName>
+    <columns>NAME</columns>
+    <columns>Employee__c</columns>
+    <columns>Available_Days__c</columns>
+    <columns>Carry_Over_Days__c</columns>
+    <columns>Used_Days__c</columns>
+    <columns>Entitlement_Days__c</columns>
+    <columns>Leave_Type__c</columns>
+    <columns>Accrued_Days__c</columns>
+    <columns>Expiry_Date__c</columns>
+    <columns>Carry_Over_Expiry__c</columns>
+    <columns>Accrual_Method__c</columns>
+    <filterScope>Everything</filterScope>
+    <label>All</label>
+</ListView>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Carry_Over_Expiry__c</fullName>
+    <description>Date on which Carry_Over_Days__c expires. Set to June 30 of the carry-over year by the January 1 grant.</description>
+    <label>Carry Over Expiry</label>
+    <required>false</required>
+    <trackFeedHistory>false</trackFeedHistory>
+    <trackHistory>false</trackHistory>
+    <type>Date</type>
+</CustomField>
