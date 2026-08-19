@@ -2,7 +2,7 @@
 private class LeaveOverviewTest {
 
     /*
-     * LEAVE-38 — TimesheetController.getLeaveOverview.
+     * TimesheetController.getLeaveOverview.
      *
      * A separate class rather than additions to TimesheetControllerTest, which belongs
      * to the timesheet work and covers the methods this one deliberately left alone.
@@ -217,7 +217,7 @@ private class LeaveOverviewTest {
     }
 
     /*
-     * LEAVE-39. The overtime total used to have no check of its own. ApplicationItem__c
+     * The overtime total used to have no check of its own. ApplicationItem__c
      * is Public Read Only, so `with sharing` withheld nothing and any employee could
      * read back a colleague's hours by passing their Id.
      */

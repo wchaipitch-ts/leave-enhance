@@ -1,5 +1,5 @@
 /*
- * LEAVE-33 — splitting a request that runs past the balance.
+ *  — splitting a request that runs past the balance.
  *
  * Replaces the LWOP fields and the two-stage approval gate that preceded it. Instead of
  * one record carrying "20 days, 12 of them unpaid" across six extra fields, the request
@@ -53,7 +53,7 @@ public without sharing class LeaveSplitService {
     }
 
     /*
-     * LEAVE-34. Re-measures a record that was itself the unpaid half of an earlier
+     * . Re-measures a record that was itself the unpaid half of an earlier
      * split and has just been promoted back to a paid type, because the paid half was
      * refused and gave its balance back. The Split_From__c guard is lifted for this
      * path only — on insert it is what stops a tail splitting the moment it is created.
@@ -63,7 +63,7 @@ public without sharing class LeaveSplitService {
     }
 
     /**
-     * LEAVE-37. Re-splits a request whose shape changed after it was saved.
+     * . Re-splits a request whose shape changed after it was saved.
      *
      * The split used to run on insert alone, so a request saved with no end date and
      * widened afterwards - which is what filling the form in two passes gives you -

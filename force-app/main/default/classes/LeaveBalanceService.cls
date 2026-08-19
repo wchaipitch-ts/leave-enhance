@@ -1,18 +1,3 @@
-/*
- * LEAVE-32 — serves Leave_Balance__c to the UI.
- *
- * Until now nothing did. Balances moved off the User object in LEAVE-25, but the
- * timesheet card kept reading User.Annual_Leave_Day__c, a field no code has written
- * since. It is a frozen pre-migration snapshot that drifts further with every
- * approval, so the card has been quietly overstating people's leave. This class is
- * what the card and the Leave Balance page should read instead.
- *
- * Deliberately "without sharing". Leave_Balance__c has a Private sharing model and the
- * employee is a lookup, not the owner — the rows are owned by whoever ran the grant
- * job. Under "with sharing" an ordinary employee would therefore see nothing at all,
- * including their own balance. Access is instead decided explicitly in assertCanView,
- * which is narrower than sharing would be and, unlike sharing, is visible in one place.
- */
 public without sharing class LeaveBalanceService {
 
     /*
@@ -224,7 +209,7 @@ public without sharing class LeaveBalanceService {
     }
 
     /**
-     * LEAVE-39. Resolves whose figures are being asked for and refuses if the caller may
+     * Resolves whose figures are being asked for and refuses if the caller may
      * not see them. Returns the resolved employee, so a caller can use it in place of
      * working the target out for itself.
      *

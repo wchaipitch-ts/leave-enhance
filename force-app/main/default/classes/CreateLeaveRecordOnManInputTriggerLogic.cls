@@ -11,7 +11,7 @@ public class CreateLeaveRecordOnManInputTriggerLogic {
      * One booking: a request paired with one of the dates it covers, and the hours
      * that date is worth.
      *
-     * LEAVE-31 generalised this from the old leave-only LeaveDay. Leave and overtime
+     * generalised this from the old leave-only LeaveDay. Leave and overtime
      * differ only in which dates they expand to, how many hours each date carries and
      * which yearly project they hang off; the machinery that resolves the project, the
      * monthly assignment and the Man_hour__c is identical, and duplicating it was the
@@ -38,7 +38,7 @@ public class CreateLeaveRecordOnManInputTriggerLogic {
     }
 
     /*
-     * LEAVE-31 — the entry point the trigger uses. A batch can hold both kinds, so it
+     * — the entry point the trigger uses. A batch can hold both kinds, so it
      * is split by record type here rather than making the caller do it twice.
      */
     public void createBookings(List<ApplicationItem__c> applications) {
@@ -59,11 +59,11 @@ public class CreateLeaveRecordOnManInputTriggerLogic {
     }
 
     /*
-     * LEAVE-11: bulkified. Previously every record ran its own SOQL for the project
+     *  bulkified. Previously every record ran its own SOQL for the project
      * assignment, its own SOQL for the project, and up to three separate inserts,
      * so a batch of any size exhausted the query limit before the DML limit.
      *
-     * LEAVE-26: multi-day. A request is now expanded into one Man_hour__c per working
+     *  multi-day. A request is now expanded into one Man_hour__c per working
      * day. Before this, a five-day leave booked a single 7.5h record instead of 37.5h,
      * which understated the timesheet by the whole rest of the range — and disagreed
      * with the calendar Events, which were already one per day.
@@ -94,7 +94,7 @@ public class CreateLeaveRecordOnManInputTriggerLogic {
     }
 
     /*
-     * LEAVE-31 — approved overtime books project time the same way leave does, so a
+     * — approved overtime books project time the same way leave does, so a
      * timesheet reflects the hours actually worked rather than only the contracted
      * ones.
      *
@@ -256,7 +256,7 @@ public class CreateLeaveRecordOnManInputTriggerLogic {
                 ProjectAssign_No__c = assign.Id,
                 Work__c             = booking.work,
                 Remark__c           = booking.appl.Remark__c,
-                // LEAVE-34: so undoing an approval can remove exactly the rows it made.
+                //  so undoing an approval can remove exactly the rows it made.
                 Application_Item__c = booking.appl.Id
             ));
         }
@@ -294,7 +294,7 @@ public class CreateLeaveRecordOnManInputTriggerLogic {
         return String.valueOf(d.year()).substring(2, 4);
     }
 
-    /** "Leave FY26" / "Overtime FY26". The leave name is unchanged from LEAVE-26. */
+    /** "Leave FY26" / "Overtime FY26". The leave name is unchanged from  */
     @TestVisible
     private static String projectNameFor(String kind, Date d) {
         return kind + ' FY' + twoDigitYear(d);

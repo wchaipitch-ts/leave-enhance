@@ -25,7 +25,7 @@ public class ApplicationItemTriggerLogic {
     private static Map<String, Leave_Type_Policy__mdt> policyCache;
 
     /*
-     * LEAVE-25 — active policies by leave type.
+     * active policies by leave type.
      *
      * Replaces the hardcoded deducting / non-deducting sets. Classifying a new leave
      * type is now a Custom Metadata row, not a deployment. getAll() consumes no SOQL
@@ -59,7 +59,7 @@ public class ApplicationItemTriggerLogic {
     }
 
     /*
-     * LEAVE-25 — day count for a date range. Runs in the before contexts on every
+     * day count for a date range. Runs in the before contexts on every
      * leave request, not only approved ones, so the figure is right from Draft onward.
      *
      * Term_To__c blank means a single-day request, which is what every record created
@@ -91,7 +91,7 @@ public class ApplicationItemTriggerLogic {
     }
 
     /*
-     * LEAVE-26 — the days a request actually consumes. Shared by the day count, the
+     * the days a request actually consumes. Shared by the day count, the
      * calendar Events and the Man_hour__c records so the three cannot disagree.
      *
      * A single-day request is taken at face value, weekend or not: that is what the
@@ -125,7 +125,7 @@ public class ApplicationItemTriggerLogic {
     }
 
     /*
-     * LEAVE-31 — hours claimed by an overtime request. Runs on every save, not only
+     * hours claimed by an overtime request. Runs on every save, not only
      * approved ones, so the approver sees the figure they are signing off.
      *
      * Deliberately separate from the leave day count. Leave measures whole and half
@@ -192,7 +192,7 @@ public class ApplicationItemTriggerLogic {
     }
 
     /*
-     * LEAVE-25 — balance deduction on approval. Rewritten from the User-field version.
+     * balance deduction on approval. Rewritten from the User-field version.
      *
      * Balances now live on Leave_Balance__c, an ordinary custom object, so this runs
      * in the same transaction as the approval. The @future split is gone: it existed
@@ -203,7 +203,7 @@ public class ApplicationItemTriggerLogic {
      * Still runs in a before context so Carry_Over_Days_Used__c lands on the in-flight
      * record without a second DML on ApplicationItem__c.
      *
-     * LEAVE-33: every request is deducted in full again. A request that ran past the
+     * very request is deducted in full again. A request that ran past the
      * balance was already cut down to what it could afford at insert, by
      * LeaveSplitService, and the remainder now exists as its own Unpaid leave record
      * deducting its own balance. There is nothing left here to split.
@@ -276,7 +276,7 @@ public class ApplicationItemTriggerLogic {
             appl.Leave_Balance__c = bal.Id;
 
             /*
-             * LEAVE-33 backstop. The split is calculated when the request is saved, so
+             * ckstop. The split is calculated when the request is saved, so
              * it reflects the balance at that moment. If two requests were raised while
              * both looked affordable and the other one was approved first, this one is
              * now too big and its unpaid half was never created.
@@ -316,14 +316,14 @@ public class ApplicationItemTriggerLogic {
             bal.Used_Days__c = zeroIfNull(bal.Used_Days__c) + payable;
 
             /*
-             * LEAVE-34. What was actually taken, recorded on the request. Reversal
+             * hat was actually taken, recorded on the request. Reversal
              * gives back this figure rather than recomputing from Leave_Days__c, which
              * can be edited after approval and then no longer matches the deduction.
              */
             appl.Balance_Applied_Days__c = payable;
 
             /*
-             * LEAVE-33 — grant on use. Some types have no annual pool to draw down:
+             * grant on use. Some types have no annual pool to draw down:
              * unpaid leave, and the statutory types that are an entitlement per occasion
              * rather than an allowance. Deducting one of those alone would drive
              * Available_Days__c negative and the balance page would read "-12 available",
@@ -349,7 +349,7 @@ public class ApplicationItemTriggerLogic {
     }
 
     /*
-     * LEAVE-11 / LEAVE-25: one Event per working day of the range. Events are
+     * ne Event per working day of the range. Events are
      * collected and inserted once — the insert used to sit inside the loop, so 150
      * approvals in one transaction exhausted the DML statement limit.
      *

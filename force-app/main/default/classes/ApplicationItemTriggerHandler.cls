@@ -3,7 +3,7 @@ public class ApplicationItemTriggerHandler {
     private ApplicationItemTriggerLogic logic = new ApplicationItemTriggerLogic();
 
     /*
-     * LEAVE-23 — record type gate.
+     * record type gate.
      *
      * Leave and Overtime requests share ApplicationItem__c, but only a Leave Request
      * moves a balance, produces a leave calendar Event, or books a leave Man_hour__c.
@@ -43,7 +43,7 @@ public class ApplicationItemTriggerHandler {
     }
 
     /*
-     * LEAVE-13 / LEAVE-25 run in the before contexts so that Leave_Days__c,
+     * run in the before contexts so that Leave_Days__c,
      * Carry_Over_Days_Used__c and the balance lookup are set on the in-flight record
      * without any DML on ApplicationItem__c.
      *
@@ -52,7 +52,7 @@ public class ApplicationItemTriggerHandler {
      * which reads the figure it writes.
      */
     /*
-     * LEAVE-43. OvertimeRequestGuard runs before calculateOvertimeHours because it is what
+     * OvertimeRequestGuard runs before calculateOvertimeHours because it is what
      * decides whose record this is - it copies Employee__c into OwnerId, and everything
      * that later reads the owner depends on that having happened first.
      */
@@ -68,7 +68,7 @@ public class ApplicationItemTriggerHandler {
         List<ApplicationItem__c> overtime = overtimeRequests(newList);
         OvertimeRequestGuard.enforce(overtime, oldMap);
         logic.calculateOvertimeHours(overtime);
-        // LEAVE-34. Entering and leaving Approved are disjoint sets, so this cannot
+        // Entering and leaving Approved are disjoint sets, so this cannot
         // collide with the deduction above.
         LeaveReversalService.restoreBalances(justUnapproved(newList, oldMap));
     }
@@ -78,7 +78,7 @@ public class ApplicationItemTriggerHandler {
      * and deductLeaveBalance read it - the guard to measure the day cap and the document
      * threshold, the deduction to decide how much balance to move.
      *
-     * LEAVE-42. The guard runs before the deduction so a request that breaks a policy
+     *  The guard runs before the deduction so a request that breaks a policy
      * fails on its own terms rather than alongside a balance error it only caused by
      * being the wrong shape.
      */
@@ -89,11 +89,11 @@ public class ApplicationItemTriggerHandler {
     }
 
     /*
-     * LEAVE-12. A record inserted already Approved has no prior state, so every
+     * A record inserted already Approved has no prior state, so every
      * approved row counts as newly approved.
      */
     /*
-     * LEAVE-33. The split runs after insert, not on approval: the unpaid record has to
+     * The split runs after insert, not on approval: the unpaid record has to
      * point back at a saved parent, and the employee should see what will not be paid
      * at the moment they save rather than after somebody signs it.
      */
@@ -106,7 +106,7 @@ public class ApplicationItemTriggerHandler {
         afterSave(newList, oldMap);
 
         /*
-         * LEAVE-34. Both run in the after context on purpose. EventTriggerLogic refuses
+         * Both run in the after context on purpose. EventTriggerLogic refuses
          * a delete while the request still reads Approved; by here it reads Rejected and
          * the guard lets it through. Promotion likewise needs the freed balance to have
          * been written, which happened in the before context above.
@@ -117,13 +117,13 @@ public class ApplicationItemTriggerHandler {
             LeaveReversalService.promoteUnpaidSiblings(unapproved);
         }
 
-        // LEAVE-37. A request widened after it was saved has to be divided again; on
+        //  A request widened after it was saved has to be divided again; on
         // insert alone it kept the new day count and never grew an unpaid half.
         LeaveSplitService.resplitOnEdit(reshapedRequests(newList, oldMap));
     }
 
     /*
-     * LEAVE-34. Deleting an approved request has to give the balance back too. The
+     * Deleting an approved request has to give the balance back too. The
      * trigger declared after delete from the beginning but never routed it, so until
      * now a delete silently kept the days spent.
      */
@@ -131,7 +131,7 @@ public class ApplicationItemTriggerHandler {
         // The lookup from Man_hour__c is nulled as part of the delete, so the rows have
         // to be identified while it still points somewhere.
         LeaveReversalService.rememberBookingsOf(oldList);
-        // LEAVE-42. Same shape of problem: the platform takes the ContentDocumentLinks
+        // Same shape of problem: the platform takes the ContentDocumentLinks
         // with the request, and without this note the removal lock would read that
         // cascade as somebody stripping the certificate off an approved request.
         LeaveDocumentPolicy.noteRequestsBeingDeleted(oldList);
@@ -149,7 +149,7 @@ public class ApplicationItemTriggerHandler {
     }
 
     /*
-     * LEAVE-31. Both kinds of request book a Man_hour__c on approval, so both travel
+     * Both kinds of request book a Man_hour__c on approval, so both travel
      * in the same Queueable and the logic class routes each by record type. Only leave
      * produces a calendar Event: an overtime claim is a record of hours already
      * worked, not an absence anyone needs to see blocked out in a diary.
@@ -200,7 +200,7 @@ public class ApplicationItemTriggerHandler {
      * Balance_Applied__c flag is needed.
      */
     /*
-     * LEAVE-34. The mirror of justApproved: records crossing OUT of Approved. Only a
+     * The mirror of justApproved: records crossing OUT of Approved. Only a
      * transition counts, so editing an already-rejected record cannot give the days
      * back a second time.
      */
@@ -224,12 +224,12 @@ public class ApplicationItemTriggerHandler {
     }
 
     /*
-     * LEAVE-37. Requests whose shape changed on an edit, so the split can be measured
+     * Requests whose shape changed on an edit, so the split can be measured
      * again. Scoped to the four fields that can change how many days are being asked
      * for - the split is not re-run because somebody fixed a typo in the remark, which
      * matters because rebuilding a family deletes the continuation first.
      *
-     * Approved records are excluded because LEAVE-35 forbids editing them at all, and
+     * Approved records are excluded because forbids editing them at all, and
      * Rejected ones because a refused request has nothing left to divide. That also
      * keeps this disjoint from promoteUnpaidSiblings, which handles the records
      * leaving Approved.
@@ -278,7 +278,7 @@ public class ApplicationItemTriggerHandler {
     }
 
     /*
-     * LEAVE-11. One Queueable for the whole batch rather than one per record:
+     *  One Queueable for the whole batch rather than one per record:
      * the previous loop burned a job per row against a 50-job ceiling, and did so
      * even for records that were not approved.
      */

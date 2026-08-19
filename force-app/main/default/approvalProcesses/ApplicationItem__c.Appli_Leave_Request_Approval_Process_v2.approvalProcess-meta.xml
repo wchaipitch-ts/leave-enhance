@@ -38,7 +38,6 @@
             </approver>
             <whenMultipleApprovers>FirstResponse</whenMultipleApprovers>
         </assignedApprover>
-        <description>LEAVE-36: whether a day goes unpaid is the Managing Director&apos;s call. Anything that is not Unpaid leave fails this step&apos;s criteria and is approved without reaching the MD. Note the approver is a named user - the username carries a sandbox suffix and must be repointed before this deploys anywhere else.</description>
         <entryCriteria>
             <criteriaItems>
                 <field>ApplicationItem__c.Request_Type__c</field>
@@ -52,7 +51,6 @@
             <type>RejectRequest</type>
         </rejectBehavior>
     </approvalStep>
-    <description>LEAVE-36. Replaces Appli_Leave_Request_Approval_Process, which could not take a second step once activated. The old process is deactivated rather than deleted so the approval history on existing records survives.</description>
     <emailTemplate>ApplicationItem_Approval/Leave_Request_Email_Template</emailTemplate>
     <enableMobileDeviceAccess>false</enableMobileDeviceAccess>
     <entryCriteria>

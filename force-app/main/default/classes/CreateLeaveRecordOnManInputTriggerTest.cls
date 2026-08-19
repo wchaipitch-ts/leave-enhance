@@ -47,7 +47,7 @@ public class CreateLeaveRecordOnManInputTriggerTest {
         );
         insert testApplicationItem;
 
-        // Inserted as Pending so the after-insert trigger added by LEAVE-12 does not
+        // Inserted as Pending so the after-insert trigger added by  does not
         // also process it. Flipped in memory only, to exercise the logic class alone.
         testApplicationItem.Status__c = 'Approved';
 
@@ -95,7 +95,7 @@ public class CreateLeaveRecordOnManInputTriggerTest {
         );
         insert testApplicationItem;
 
-        // Inserted as Pending so the after-insert trigger added by LEAVE-12 does not
+        // Inserted as Pending so the after-insert trigger added by  does not
         // also process it. Flipped in memory only, to exercise the logic class alone.
         testApplicationItem.Status__c = 'Approved';
 
@@ -147,7 +147,7 @@ public class CreateLeaveRecordOnManInputTriggerTest {
         );
         insert testApplicationItem;
 
-        // Inserted as Pending so the after-insert trigger added by LEAVE-12 does not
+        // Inserted as Pending so the after-insert trigger added by  does not
         // also process it. Flipped in memory only, to exercise the logic class alone.
         testApplicationItem.Status__c = 'Approved';
 
@@ -196,7 +196,7 @@ public class CreateLeaveRecordOnManInputTriggerTest {
         );
         insert testApplicationItem;
 
-        // Inserted as Pending so the after-insert trigger added by LEAVE-12 does not
+        // Inserted as Pending so the after-insert trigger added by  does not
         // also process it. Flipped in memory only, to exercise the logic class alone.
         testApplicationItem.Status__c = 'Approved';
         // Create an instance of the logic class

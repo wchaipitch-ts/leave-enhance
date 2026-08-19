@@ -1,5 +1,5 @@
 /*
- * LEAVE-42 — the day cap, the document gate and the removal lock.
+ *   the day cap, the document gate and the removal lock.
  *
  * Policies are overridden in memory rather than read from the org, matching LeaveSplitTest:
  * Custom Metadata cannot be inserted by DML, and the two fields these rules turn on are
@@ -476,7 +476,7 @@ private class LeaveRequestGuardTest {
     }
 
     /*
-     * LEAVE-34 supports deleting an approved request, and the platform takes its
+     *  upports deleting an approved request, and the platform takes its
      * ContentDocumentLinks with it. Without the note taken in the before-delete context
      * that cascade reads as somebody stripping the certificate off an approved request.
      */

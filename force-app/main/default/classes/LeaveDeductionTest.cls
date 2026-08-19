@@ -2,7 +2,7 @@
 private class LeaveDeductionTest {
 
     /*
-     * LEAVE-25 — balance deduction against Leave_Balance__c.
+     * balance deduction against Leave_Balance__c.
      *
      * Rewritten from the User-field version. Balances no longer live on a setup
      * object, so there is no @future and no need to assert after Test.stopTest();
@@ -64,7 +64,7 @@ private class LeaveDeductionTest {
         Integer yr = System.today().year();
         insert new List<Leave_Balance__c>{
             /*
-             * LEAVE-30: Upfront rather than the production Monthly. Accrued_Days__c is
+             * Upfront rather than the production Monthly. Accrued_Days__c is
              * a formula over TODAY(), so under Monthly the annual balance would be 3
              * days in January and 15 in December — and now that a shortfall is stopped
              * at approval, the multi-day tests below would pass or fail depending on
@@ -75,7 +75,7 @@ private class LeaveDeductionTest {
             balanceRow(u.Id, 'Refresh Leave',  yr, 2,  'Anniversary', 0),
             balanceRow(u.Id, 'Sick leave',     yr, 30, 'Upfront',     0),
             balanceRow(u.Id, 'Personal leave', yr, 3,  'Upfront',     0),
-            // LEAVE-33: Unpaid leave now deducts too, so it needs a row like any other
+            // Unpaid leave now deducts too, so it needs a row like any other
             // type. Entitlement stays at zero - it is granted as it is used.
             balanceRow(u.Id, 'Unpaid leave',   yr, 0,  'Upfront',     0),
             /*
@@ -262,7 +262,7 @@ private class LeaveDeductionTest {
      * Statutory leave is an entitlement per occasion, not an annual allowance, so there
      * is no pool to run down. Approval grants the days it takes: the row keeps a true
      * count of what has been used and never reads negative, which is the same treatment
-     * LEAVE-33 gave Unpaid leave and is now driven by Grants_On_Use__c rather than by a
+     * gave Unpaid leave and is now driven by Grants_On_Use__c rather than by a
      * hardcoded type name.
      *
      * This replaces statutoryLeaveDeductsNothing, which asserted the previous
@@ -316,7 +316,7 @@ private class LeaveDeductionTest {
     @isTest
     static void unpaidLeaveTakenDirectlyIsCountedToo() {
         /*
-         * LEAVE-33 moved Unpaid leave out of the statutory group above. It now deducts
+         * moved Unpaid leave out of the statutory group above. It now deducts
          * like any other type, so a day booked deliberately as unpaid lands on the same
          * row as a day converted by the splitter — one honest total of unpaid days.
          */
@@ -342,8 +342,8 @@ private class LeaveDeductionTest {
          *
          * Originally it asserted that approval sailed through and drove Used_Days__c
          * past the entitlement — a balance that could go arbitrarily negative was the
-         * bug, not the feature. LEAVE-30 replaced that with a Managing Director gate on
-         * the same record. LEAVE-33 replaced the gate with a split: the request is cut
+         * bug, not the feature.  replaced that with a Managing Director gate on
+         * the same record. replaced the gate with a split: the request is cut
          * down to what the balance covers and the remainder becomes its own Unpaid
          * leave record, which is an ordinary request needing an ordinary approval.
          *
@@ -383,7 +383,7 @@ private class LeaveDeductionTest {
     @isTest
     static void anApprovedRequestCannotBeEdited() {
         /*
-         * LEAVE-35 closed this off entirely. It used to assert that a second save did
+         * closed this off entirely. It used to assert that a second save did
          * not deduct a second time, which was true but not enough: the edit still
          * rewrote Leave_Days__c without touching the balance, so the record and the
          * balance drifted apart. An approved request is now settled and refuses changes.

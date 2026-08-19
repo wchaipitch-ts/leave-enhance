@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CustomPermission xmlns="http://soap.sforce.com/2006/04/metadata">
-    <description>LEAVE-43. Allows raising Overtime Requests on somebody else&apos;s behalf. Checked in Apex rather than left to record type visibility alone, which governs the New button but not the API. Held by managers.</description>
+    <description>Allows raising Overtime Requests on somebody else&apos;s behalf. Checked in Apex rather than left to record type visibility alone, which governs the New button but not the API. Held by managers.</description>
     <isLicensed>false</isLicensed>
     <label>Create Overtime Request</label>
 </CustomPermission>

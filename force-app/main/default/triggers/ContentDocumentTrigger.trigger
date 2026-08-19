@@ -1,5 +1,5 @@
 /*
- * LEAVE-42. The Files related list deletes the ContentDocument rather than the link, and
+ * The Files related list deletes the ContentDocument rather than the link, and
  * a cascade does not fire the ContentDocumentLink trigger, so this is the path that has
  * to catch somebody removing the certificate from a request already with an approver.
  *

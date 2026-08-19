@@ -1,5 +1,5 @@
 /*
- * LEAVE-42 — the two rules a leave request has to satisfy before it can be submitted.
+ * the two rules a leave request has to satisfy before it can be submitted.
  *
  *   Personal leave is one day per request, and always needs a supporting document.
  *   Sick leave needs one once it reaches three days.

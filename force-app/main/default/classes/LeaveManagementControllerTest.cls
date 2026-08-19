@@ -2,7 +2,7 @@
 public with sharing class LeaveManagementControllerTest {
 
     /*
-     * LEAVE-27 — rewritten for the Leave_Balance__c grant engine.
+     *  — rewritten for the Leave_Balance__c grant engine.
      *
      * The previous version asserted the leave fields on User. The engine no longer
      * writes those at all, so this is a replacement rather than an edit.
@@ -247,7 +247,7 @@ public with sharing class LeaveManagementControllerTest {
     }
 
     /*
-     * The gap that made LEAVE-27 urgent: without a full set of rows a new hire's
+     * The gap that made  urgent: without a full set of rows a new hire's
      * first request of any type cannot be approved, because a missing balance row is
      * a hard error in ApplicationItemTriggerLogic.
      */
@@ -282,7 +282,7 @@ public with sharing class LeaveManagementControllerTest {
     // ------------------------------------------------------------------ refreshment
 
     /*
-     * LEAVE-41. Anniv3 joined on 15 March; the grant now lands on the 1st, because the
+     * . Anniv3 joined on 15 March; the grant now lands on the 1st, because the
      * anniversary MONTH is the rule. The tier is unchanged by moving the date forward:
      * monthsBetween ignores the day, so 1 March of the fourth year still reads as
      * thirty-six months.
@@ -304,7 +304,7 @@ public with sharing class LeaveManagementControllerTest {
 
     /*
      * The other half of the same rule, and the behaviour that actually changed: before
-     * LEAVE-41 only the joining day granted, so a run on any other day of the month did
+     *  only the joining day granted, so a run on any other day of the month did
      * nothing. It has to grant now, or a missed 1st would lose the year's refreshment.
      */
     @isTest

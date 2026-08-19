@@ -1,6 +1,5 @@
 /*
  * Backfills ApplicationItem__c.Leave_Balance__c on requests approved before the field
- * existed (LEAVE-33).
  *
  * The lookup is what gives each Leave_Balance__c record its related list of the
  * requests that consumed it. Going forward, deductLeaveBalance stamps it at the moment

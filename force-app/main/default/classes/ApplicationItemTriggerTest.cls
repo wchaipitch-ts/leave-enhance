@@ -14,7 +14,7 @@ private class ApplicationItemTriggerTest {
                     EmailEncodingKey = 'UTF-8',
                     LanguageLocaleKey = 'th',
                     LocaleSidKey = 'th',
-                    // LEAVE-30: Accrued_Days__c returns zero for an employee with no
+                    // Accrued_Days__c returns zero for an employee with no
                     // joining date, so without this the balance below holds nothing and
                     // every request here becomes unpaid days awaiting the Managing
                     // Director. Nothing in this class is about accrual - it just needs
@@ -25,12 +25,12 @@ private class ApplicationItemTriggerTest {
         // User user = [SELECT Id, ManagerId FROM User WHERE Profile.name = 'EngineerGroupMember' LIMIT 1];
 
         /*
-         * LEAVE-25: approving a deducting leave type now requires a Leave_Balance__c
+         * approving a deducting leave type now requires a Leave_Balance__c
          * row to deduct from — a missing row is a hard error rather than a silent
          * approval against an entitlement that does not exist. Every request below is
          * Annual leave dated today, so one row covers the whole class.
          *
-         * LEAVE-30: the entitlement is deliberately far larger than any real one, and
+         * the entitlement is deliberately far larger than any real one, and
          * Upfront rather than Monthly. A shortfall is now stopped at approval pending
          * the Managing Director, and bulkApprovalStaysWithinGovernorLimits approves
          * 200 days in one go — against a true 12-day balance every record past the
@@ -125,12 +125,6 @@ private class ApplicationItemTriggerTest {
         }
     }
 
-    // ------------------------------------------------------ LEAVE-11 / LEAVE-12
-
-    /*
-     * LEAVE-12. A record created already Approved used to produce nothing at all,
-     * because the trigger declared after insert but never routed it.
-     */
     @IsTest
     private static void recordInsertedAsApprovedIsProcessed() {
         User owner = [SELECT Id FROM User WHERE CompanyName = 'TEST' LIMIT 1];
@@ -156,7 +150,7 @@ private class ApplicationItemTriggerTest {
     /*
      * Editing an already-approved record used to re-run the whole path and create a
      * second Event and a second Man_hour__c. The transition guard fixed the duplication
-     * in LEAVE-12; LEAVE-35 then closed the edit off altogether, because it also
+     * in hen closed the edit off altogether, because it also
      * rewrote the day count without moving the balance.
      */
     @IsTest
@@ -182,7 +176,7 @@ private class ApplicationItemTriggerTest {
     }
 
     /*
-     * LEAVE-11. The old path inserted one Event per iteration and enqueued one
+     * The old path inserted one Event per iteration and enqueued one
      * Queueable per record, so this volume broke both the DML statement limit and
      * the 50-job ceiling.
      */

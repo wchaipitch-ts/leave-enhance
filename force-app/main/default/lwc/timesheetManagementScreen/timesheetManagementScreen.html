@@ -1,151 +1,104 @@
 <template>
-	<!--
-    <lightning-card>
-        <div slot="title" class="highlight-panel">
-            <span class="highlight-panel-icon">
-                <lightning-icon icon-name="standard:shift_scheduling_operation" alternative-text="Timesheet Management Screen"
-                    title="Timesheet Management Screen"></lightning-icon>
-            </span>
-            <span class="highlight-panel-title">
-                Timesheet Management Screen
-            </span>
-        </div>
-    </lightning-card>
-    <br/>
-    -->
-
-	<lightning-card>
-		<div class="custom-box slds-p-around_none slds-m-top_x-small slds-m-bottom_medium slds-m-horizontal_none">
-			<lightning-layout>
-				<lightning-layout-item flexibility="auto">
-					<template lwc:if={isNotCurrentUser}>
-						<lightning-button-icon
-							style="position: absolute"
-							icon-name="utility:left"
-							alternative-text="Back to current user"
-							title="Back to current user"
-							onclick={onBack}>
-						</lightning-button-icon>
-					</template>
-					<div class="user-avatar-margin box-border slds-align_absolute-center">
-						<span class="user-avatar-size slds-avatar slds-avatar_circle slds-avatar_large" onclick={onUserRefresh}>
-							<img class="avatar-image" alt={userName} src={userAvatar} title={userName} />
+	<!-- ======================================================= -->
+	<!-- Top Section: ข้อมูลพนักงาน | วันลา | นาฬิกา (ปรับให้ตรง Design 100%) -->
+	<!-- ======================================================= -->
+	<div class="slds-box slds-p-around_none slds-theme_default slds-m-bottom_medium" style="border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); overflow: hidden;">
+		<div class="slds-grid slds-grid_stretch">
+			
+			<!-- ========================================== -->
+			<!-- คอลัมน์ที่ 1: ข้อมูลพนักงาน (25%) -->
+			<!-- ========================================== -->
+			<!-- 🌟 แก้ไข: ใช้ slds-p-around_large เพื่อเพิ่มช่องไฟรอบๆ ให้โปร่งสวยงามตาม Design -->
+			<div class="slds-col slds-size_3-of-12 slds-border_right slds-p-around_large">
+				
+				<div class="slds-grid slds-m-bottom_medium">
+					<!-- รูป Avatar -->
+					<div class="slds-col slds-grow-none slds-m-right_medium">
+						<!-- 🌟 แก้ไข: ปรับขนาดรูป Avatar ให้ใหญ่ขึ้นเป็น 90px เพื่อให้สมดุลกับความสูงของกล่องข้อความ -->
+						<span class="slds-avatar slds-avatar_circle" style="width: 90px; height: 90px; cursor: pointer;" onclick={onUserRefresh}>
+							<img alt={userName} src={userAvatar} title={userName} />
 						</span>
 					</div>
-				</lightning-layout-item>
-
-				<lightning-layout-item size="6">
-					<div class="inform-box box-border custom-box slds-p-around_medium">
-						<lightning-layout class="user-card">
-							<lightning-layout-item flexibility="auto">
-								<div class="user-margin slds-p-bottom_small">
-									<label for="userName" class="user-label">Name</label><br />
-									<lightning-formatted-url value={userPath} tooltip={userName} label={userName} class="user-text" target="_blank">
-									</lightning-formatted-url>
-								</div>
-							</lightning-layout-item>
-							<lightning-layout-item flexibility="auto">
-								<div class="user-margin slds-p-bottom_small">
-									<label for="employeeNumber" class="user-label">Employee Number</label><br />
-									<lightning-formatted-text
-										name="employeeNumber"
-										value={employeeNumber}
-										class="user-text"></lightning-formatted-text>
-								</div>
-							</lightning-layout-item>
-							<lightning-layout-item flexibility="auto">
-								<div class="user-margin slds-p-bottom_small">
-									<label for="userTitle" class="user-label">Title</label><br />
-									<lightning-formatted-text name="userTitle" value={userTitle} class="user-text"></lightning-formatted-text>
-								</div>
-							</lightning-layout-item>
-							<lightning-layout-item flexibility="auto">
-								<div class="user-margin slds-p-bottom_small">
-									<label for="userTitle" class="user-label">Department</label><br />
-									<lightning-formatted-text
-										name="userDepartment"
-										value={userDepartment}
-										class="user-text"></lightning-formatted-text>
-								</div>
-							</lightning-layout-item>
-							<lightning-layout-item flexibility="auto">
-								<div class="user-margin slds-p-bottom_small">
-									<label for="userTitle" class="user-label">Manager</label><br />
-									<lightning-formatted-url
-										value={userManagerPath}
-										tooltip={userManagerName}
-										label={userManagerName}
-										class="user-text"
-										target="_blank">
-									</lightning-formatted-url>
-								</div>
-							</lightning-layout-item>
-						</lightning-layout>
-
-						<lightning-layout class="inform-card">
-							<lightning-layout-item flexibility="auto">
-								<div class="inform-margin slds-p-bottom_small">
-									<label for="standardWork" class="inform-label">Standard Work</label><br />
-									<lightning-formatted-text name="standardWork" value={standardWork} class="inform-text">
-									</lightning-formatted-text>
-								</div>
-							</lightning-layout-item>
-							<lightning-layout-item flexibility="auto">
-								<div class="inform-margin slds-p-bottom_small">
-									<label for="workedHours" class="inform-label">Worked Hours</label><br />
-									<lightning-formatted-text name="workedHours" value={workedHours} class="inform-text"> </lightning-formatted-text>
-								</div>
-							</lightning-layout-item>
-							<lightning-layout-item flexibility="auto">
-								<div class="inform-margin slds-p-bottom_small">
-									<label for="overtimeHours" class="inform-label">Overtime Hours</label><br />
-									<lightning-formatted-text name="overtimeHours" value={overtimeHours} class="inform-text">
-									</lightning-formatted-text>
-								</div>
-							</lightning-layout-item>
-							<lightning-layout-item flexibility="auto">
-								<div class="inform-margin slds-p-bottom_small">
-									<label for="leaveHours" class="inform-label">Leave Hours</label><br />
-									<lightning-formatted-text name="leaveHours" value={leaveHours} class="inform-text"> </lightning-formatted-text>
-								</div>
-							</lightning-layout-item>
-							<lightning-layout-item flexibility="auto">
-								<div class="inform-margin slds-p-bottom_small">
-									<label for="totalHours" class="inform-label">Total Hours</label><br />
-									<lightning-formatted-text name="totalHours" value={totalHours} class="inform-text"> </lightning-formatted-text>
-								</div>
-							</lightning-layout-item>
-							<lightning-layout-item flexibility="auto">
-								<div class="inform-margin slds-p-bottom_small">
-									<label for="userAnnualDate" class="inform-label">Annual Leave</label><br />
-									<lightning-formatted-text name="userAnnualDate" value={userAnnualDate} class="inform-text">
-									</lightning-formatted-text>
-								</div>
-							</lightning-layout-item>
-							<!-- <lightning-layout-item flexibility="auto">
-								<div class="user-margin slds-p-bottom_small">
-									<label for="employeeNumber" class="user-label">Annual Leave</label><br />
-									<lightning-formatted-text
-										name="employeeNumber"
-										value={employeeNumber}
-										class="user-text"></lightning-formatted-text>
-								</div>
-							</lightning-layout-item> -->
-						</lightning-layout>
+					<!-- ข้อมูล Text -->
+					<div class="slds-col" style="font-size: 0.8rem; color: #000;">
+						<div class="slds-text-title_bold" style="font-size: 0.75rem;">Name</div>
+						<div class="slds-m-bottom_x-small slds-truncate">
+							<lightning-formatted-url value={userPath} tooltip={userName} label={userName} target="_blank"></lightning-formatted-url>
+						</div>
+						
+						<div class="slds-text-title_bold" style="font-size: 0.75rem;">Employee Number</div>
+						<div class="slds-m-bottom_x-small slds-truncate text-blue">{employeeNumber}</div>
+						
+						<div class="slds-text-title_bold" style="font-size: 0.75rem;">Department</div>
+						<div class="slds-m-bottom_x-small slds-truncate text-blue">{userDepartment}</div>
+						
+						<div class="slds-text-title_bold" style="font-size: 0.75rem;">Start Date</div>
+						<div class="slds-truncate text-blue">{userStartDate}</div>
 					</div>
-				</lightning-layout-item>
+				</div>
 
-				<lightning-layout-item size="4" class="slds-show_large">
-					<div class="box-border custom-box slds-p-around_medium slds-text-align_center">
-						<c-timestamp stamp={stamp} onstamped={handleStamped}></c-timestamp>
-						<template lwc:if={isNotCurrentUser}>
-							<div class="navexStandardManager slds-template__container slds-spinner_container"></div>
-						</template>
+				<!-- เส้นคั่นแนวนอน -->
+				<div class="slds-border_top slds-m-vertical_medium"></div>
+
+				<!-- ส่วนล่าง: สรุปเวลาทำงาน -->
+				<div class="slds-grid slds-wrap" style="font-size: 0.8rem; color: #000;">
+					<div class="slds-col slds-size_1-of-2 slds-m-bottom_medium">
+						<div class="slds-text-title_bold" style="font-size: 0.75rem;">Standard Work</div>
+						<div class="text-blue">{standardWork}</div>
 					</div>
-				</lightning-layout-item>
-			</lightning-layout>
+					<div class="slds-col slds-size_1-of-2 slds-m-bottom_medium">
+						<div class="slds-text-title_bold" style="font-size: 0.75rem;">Worked Hours</div>
+						<div class="text-blue">{workedHours}</div>
+					</div>
+					<div class="slds-col slds-size_1-of-2">
+						<div class="slds-text-title_bold" style="font-size: 0.75rem;">Total Hours</div>
+						<div class="text-blue">{totalHours}</div>
+					</div>
+					<div class="slds-col slds-size_1-of-2">
+						<div class="slds-text-title_bold" style="font-size: 0.75rem;">Overtime Hours</div>
+						<div class="text-blue">{overtimeHours}</div>
+					</div>
+				</div>
+			</div>
+
+			<!-- ========================================== -->
+			<!-- คอลัมน์ที่ 2: หน้าสรุปวันลา (50%) -->
+			<!-- ========================================== -->
+			<!-- 🌟 แก้ไข: แทรก padding-top: 3rem ตามที่คุณทดสอบไว้ใน Developer Tools -->
+			<div class="slds-col slds-size_6-of-12 slds-border_right slds-p-vertical_medium" style="padding-top: 3rem;">
+				<!-- Pass variables from Parent (Timesheet) to Child (LeaveSummaryCard) -->
+				<c-leave-summary-card 
+					target-user-id={userId} 
+					target-year={selectedYear}
+					target-month={selectedMonth}>
+				</c-leave-summary-card>
+			</div>
+
+			<!-- ========================================== -->
+			<!-- คอลัมน์ที่ 3: นาฬิกาลงเวลา (25%) -->
+			<!-- ========================================== -->
+			<!-- 🌟 แก้ไข: จัดการ padding-top เพื่อดันนาฬิกาให้บาลานซ์กับ Leave Summary -->
+			<div class="slds-col slds-size_3-of-12 slds-p-horizontal_medium slds-text-align_center" style="padding-top: 3rem; position: relative;">
+				<c-timestamp stamp={stamp} onstamped={handleStamped}></c-timestamp>
+				<template lwc:if={isNotCurrentUser}>
+					<div class="navexStandardManager slds-template__container slds-spinner_container"></div>
+				</template>
+			</div>
+			
 		</div>
-	</lightning-card>
+	</div>
+
+	<!-- ======================================================= -->
+	<!-- Middle Section: ตาราง Application Item -->
+	<!-- ======================================================= -->
+	<!-- ======================================================= -->
+	<div class="slds-m-bottom_medium">
+		<!-- 🌟 แก้ไข: ส่งตัวแปร userId จากแม่ ไปเข้าประตู target-user-id ของลูก -->
+		<c-application-item-list-view target-user-id={userId}></c-application-item-list-view>
+	</div>
+
+	<!-- (ด้านล่างคงเป็นโค้ด <lightning-card> ของตาราง Timesheet 31 วันตามปกติ) -->
+
 
 	<lightning-card>
 		<lightning-layout>

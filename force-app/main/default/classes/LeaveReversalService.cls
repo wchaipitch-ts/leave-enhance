@@ -1,9 +1,9 @@
 /*
- * LEAVE-34 — undoing an approval.
+ *  — undoing an approval.
  *
  * Until now nothing ran when a request left the Approved state. Rejecting or deleting
  * an approved request left the balance spent, the calendar entries standing and the
- * timesheet booked, for an absence nobody was taking. After LEAVE-33 it also left the
+ * timesheet booked, for an absence nobody was taking. After  it also left the
  * unpaid half of a split queued for approval on its own.
  *
  * Three things have to come back:
@@ -129,7 +129,7 @@ public without sharing class LeaveReversalService {
     }
 
     /**
-     * LEAVE-34 / G2. A refused paid half frees the balance its unpaid tail was denied,
+     *  / G2. A refused paid half frees the balance its unpaid tail was denied,
      * so the tail is turned back into the type the employee originally asked for and
      * re-measured against the balance. Whatever still does not fit splits out again.
      *

@@ -2,7 +2,7 @@
 private class LeaveBalanceServiceTest {
 
     /*
-     * LEAVE-32 — the read side of Leave_Balance__c.
+     * read side of Leave_Balance__c.
      *
      * Which types appear and in what order comes from the org's real
      * Leave_Type_Policy__mdt rows, so these tests assert on behaviour — Annual is

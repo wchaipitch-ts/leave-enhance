@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<LightningComponentBundle xmlns="http://soap.sforce.com/2006/04/metadata">
+    <!-- ระบุเวอร์ชันของ API ที่ใช้งาน (แนะนำให้ใช้ 57.0 ขึ้นไปครับ) -->
+    <apiVersion>65.0</apiVersion>
+
+    <!-- 🌟 สำคัญมาก: เปลี่ยนจาก false เป็น true เพื่อเปิดให้ Component
+    นี้ถูกเรียกใช้งานจากภายนอกได้ -->
+    <isExposed>true</isExposed>
+
+    <!-- 🌟 กำหนดเป้าหมาย (Targets) ว่าจะอนุญาตให้ Component นี้เอาไปแปะที่ไหนได้บ้าง -->
+    <targets>
+        <!-- อนุญาตให้นำไปสร้างเป็น Tab (Lightning Component Tab) ได้ -->
+        <target>lightning__Tab</target>
+
+        <!-- (แถม) เผื่ออนาคตอยากเอาไปแปะในหน้า App Page หรือ Record Page ปกติด้วย -->
+        <target>lightning__AppPage</target>
+        <target>lightning__RecordPage</target>
+    </targets>
+</LightningComponentBundle>

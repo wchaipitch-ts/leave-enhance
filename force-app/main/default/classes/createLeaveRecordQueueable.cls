@@ -2,7 +2,7 @@ public with sharing class createLeaveRecordQueueable implements Queueable {
     private List<ApplicationItem__c> appitems;
 
     /*
-     * LEAVE-11: the batch now travels in one job. The handler used to enqueue one
+     * the batch now travels in one job. The handler used to enqueue one
      * of these per record, against a ceiling of 50 jobs per transaction.
      */
     public createLeaveRecordQueueable(List<ApplicationItem__c> appitems) {
@@ -15,10 +15,10 @@ public with sharing class createLeaveRecordQueueable implements Queueable {
     }
 
     /*
-     * LEAVE-31: createBookings rather than createLeaveRecords. The batch can now hold
+     * createBookings rather than createLeaveRecords. The batch can now hold
      * both leave and overtime, and the logic class routes each by record type.
      *
-     * LEAVE-34: re-read before booking. This job runs after the transaction that
+     * re-read before booking. This job runs after the transaction that
      * enqueued it, and a request can be rejected in between — the reversal then finds
      * no bookings to remove, and this job goes on to create them for an absence that
      * was refused. The in-memory copies still say Approved, so only the database can

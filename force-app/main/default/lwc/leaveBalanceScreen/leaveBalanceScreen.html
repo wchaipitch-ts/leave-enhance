@@ -1,0 +1,104 @@
+<template>
+    <!-- ======================================================= -->
+    <!-- 📍 ท่อนบน: ข้อมูลพนักงาน และ กล่องสรุปวันลา (Highlight Cards) -->
+    <!-- ======================================================= -->
+    <div class="slds-box slds-theme_default slds-m-bottom_medium" style="border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+        <div class="slds-grid slds-grid_stretch slds-gutters_large">
+            
+            <!-- 1.1 ฝั่งซ้าย: ข้อมูลพนักงาน (Employee Info) กินพื้นที่ 3 ส่วน -->
+            <div class="slds-col slds-size_3-of-12 slds-border_right slds-p-right_large">
+                <div class="slds-media slds-m-bottom_small">
+                    <div class="slds-media__figure">
+                        <!-- รูป Avatar พนักงาน -->
+                        <span class="slds-avatar slds-avatar_circle" style="width: 80px; height: 80px;">
+                            <img alt={employee.name} src={employee.photoUrl} title={employee.name} />
+                        </span>
+                    </div>
+                    <div class="slds-media__body slds-p-left_small">
+                        <!-- ข้อมูลส่วนตัวพนักงาน -->
+                        <div class="slds-text-title_bold" style="font-size: 0.75rem; color: #000;">Name</div>
+                        <div class="slds-m-bottom_x-small text-blue" style="font-size: 0.8rem;">{employee.name}</div>
+                        
+                        <div class="slds-text-title_bold" style="font-size: 0.75rem; color: #000;">Employee Number</div>
+                        <div class="slds-m-bottom_x-small text-blue" style="font-size: 0.8rem;">{employee.employeeNumber}</div>
+                        
+                        <div class="slds-text-title_bold" style="font-size: 0.75rem; color: #000;">Department</div>
+                        <div class="slds-m-bottom_x-small text-blue" style="font-size: 0.8rem;">{employee.department}</div>
+                        
+                        <div class="slds-text-title_bold" style="font-size: 0.75rem; color: #000;">Start Date</div>
+                        <div class="text-blue" style="font-size: 0.8rem;">{employee.startDate}</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 1.2 ฝั่งขวา: กล่องสรุปวันลา (Leave Balance Cards) กินพื้นที่ 9 ส่วน -->
+            <div class="slds-col slds-size_9-of-12 slds-p-left_large">
+                
+                <!-- ส่วนหัว: Title และ Year Dropdown -->
+                <div class="slds-grid slds-grid_align-spread slds-m-bottom_medium">
+                    <div>
+                        <h2 class="slds-text-heading_medium slds-text-title_bold" style="color: #000;">Leave Balance</h2>
+                        <p class="slds-text-body_small" style="color: #747474;">Overview of your leave entitlements and balances</p>
+                    </div>
+                    <div>
+                        <!-- ปุ่มเลือกปี (Mock ไว้ก่อน) -->
+                        <lightning-button-menu alternative-text="Show menu" label={selectedYear} variant="border-filled">
+                            <template for:each={availableYears} for:item="yr">
+                                <lightning-menu-item key={yr} value={yr} label={yr}></lightning-menu-item>
+                            </template>
+                        </lightning-button-menu>
+                    </div>
+                </div>
+
+                <!-- ส่วนกล่อง 4 ใบ: ใช้ template for:each เพื่อวนลูปสร้างกล่องจาก JS -->
+                <div class="slds-grid slds-gutters_small">
+                    <template for:each={highlightCards} for:item="card">
+                        <div key={card.leaveType} class="slds-col slds-size_1-of-4">
+                            <!-- คลาส card.cssClass จะถูกส่งมาจาก JS เพื่อเปลี่ยนสีขอบกล่องซ้ายมือ -->
+                            <div class={card.cssClass}>
+                                <div class="slds-grid slds-grid_align-spread slds-grid_vertical-align-center">
+                                    <div class="slds-col slds-text-title_bold" style="font-size: 0.75rem; color: #000; white-space: pre-wrap;">
+                                        {card.leaveType}
+                                    </div>
+                                    <div class="slds-col slds-text-align_center">
+                                        <div style="font-size: 0.65rem; color: #747474;">Available</div>
+                                        <div class={card.numberCssClass} style="font-size: 2.5rem; line-height: 1; font-weight: 700;">{card.available}</div>
+                                        <div class={card.numberCssClass} style="font-size: 0.75rem; font-weight: 700;">Days</div>
+                                        <div style="font-size: 0.65rem; color: #747474;">Of {card.entitlement} Days</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- ======================================================= -->
+    <!-- 📍 ท่อนกลาง: ตารางประวัติคำขอ (เรียกใช้ Component เดิม) -->
+    <!-- ======================================================= -->
+    <div class="slds-m-bottom_medium">
+        <!-- ส่ง employee.userId ที่ได้จาก Mock ไปให้ตัวลูกทำงานต่อ -->
+        <template if:true={employee.userId}>
+            <c-application-item-list-view target-user-id={employee.userId}></c-application-item-list-view>
+        </template>
+    </div>
+
+    <!-- ======================================================= -->
+    <!-- 📍 ท่อนล่าง: ตารางสรุปวันลาทั้งหมด (Summary Table) -->
+    <!-- ======================================================= -->
+    <div class="slds-box slds-theme_default" style="border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+        <h2 class="slds-text-heading_small slds-text-title_bold slds-m-bottom_medium" style="color: #000;">Leave Balance Summary by Leave Type</h2>
+        
+        <!-- ตารางข้อมูลวันลาทั้งหมด -->
+        <lightning-datatable
+            key-field="leaveType"
+            data={tableData}
+            columns={columns}
+            hide-checkbox-column="true"
+            resize-column-disabled="true">
+        </lightning-datatable>
+    </div>
+</template>
