@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<RecordType xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Other</fullName>
+    <active>true</active>
+    <description>For internal project, you can create the Project record by &quot;New&quot; button    ex- &quot;Internal&quot;</description>
+    <label>Other</label>
+    <picklistValues>
+        <picklist>Category__c</picklist>
+        <values>
+            <fullName>6%2EInternal</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>7%2EStudy</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>9%2ELeave</fullName>
+            <default>true</default>
+        </values>
+    </picklistValues>
+    <picklistValues>
+        <picklist>Project_Status__c</picklist>
+        <values>
+            <fullName>Closed</fullName>
+            <default>false</default>
+        </values>
+        <values>
+            <fullName>Open</fullName>
+            <default>true</default>
+        </values>
+    </picklistValues>
+</RecordType>

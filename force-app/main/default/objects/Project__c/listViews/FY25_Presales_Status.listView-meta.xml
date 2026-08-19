@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ListView xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>FY25_Presales_Status</fullName>
+    <columns>Opportunity_Name__c</columns>
+    <columns>NAME</columns>
+    <columns>Category__c</columns>
+    <columns>Project_Name__c</columns>
+    <columns>Amount__c</columns>
+    <columns>SA_Support__c</columns>
+    <columns>Project_Status__c</columns>
+    <columns>Weekly_Progress__c</columns>
+    <columns>Next_Step__c</columns>
+    <columns>Actual_Hours__c</columns>
+    <columns>Solution_Overview__c</columns>
+    <filterScope>Everything</filterScope>
+    <filters>
+        <field>Project_Name__c</field>
+        <operation>startsWith</operation>
+        <value>,FY25 Presales,FY25 MA,FY26 Presales,FY26 MA</value>
+    </filters>
+    <filters>
+        <field>RECORDTYPE</field>
+        <operation>equals</operation>
+        <value>Project__c.Presale_Activities</value>
+    </filters>
+    <label>FY25 Presale &amp; MA Activity</label>
+</ListView>

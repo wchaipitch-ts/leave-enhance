@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ListView xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Pre_sales</fullName>
+    <columns>NAME</columns>
+    <columns>Project_Name__c</columns>
+    <columns>SA_Support__c</columns>
+    <columns>Project_Status__c</columns>
+    <columns>Start_Date__c</columns>
+    <columns>Due_Date__c</columns>
+    <columns>Actual_Hours__c</columns>
+    <filterScope>Everything</filterScope>
+    <filters>
+        <field>RECORDTYPE</field>
+        <operation>equals</operation>
+        <value>Project__c.Presale_Activities</value>
+    </filters>
+    <filters>
+        <field>Project_Status__c</field>
+        <operation>notEqual</operation>
+        <value>Close Lost,Closed Presale</value>
+    </filters>
+    <label>Pre-sales</label>
+</ListView>

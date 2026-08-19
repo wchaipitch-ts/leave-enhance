@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Project_Status__c</fullName>
+    <label>Project Status</label>
+    <required>false</required>
+    <trackHistory>true</trackHistory>
+    <trackTrending>false</trackTrending>
+    <type>Picklist</type>
+    <valueSet>
+        <controllingField>Category__c</controllingField>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value>
+                <fullName>Not Started</fullName>
+                <default>true</default>
+                <label>Not Started</label>
+            </value>
+            <value>
+                <fullName>Open</fullName>
+                <default>false</default>
+                <label>Open</label>
+            </value>
+            <value>
+                <fullName>Discovery</fullName>
+                <default>false</default>
+                <label>Discovery</label>
+            </value>
+            <value>
+                <fullName>Creating Proposal</fullName>
+                <default>false</default>
+                <label>Creating Proposal</label>
+            </value>
+            <value>
+                <fullName>Proposal Submitted</fullName>
+                <default>false</default>
+                <label>Proposal Submitted</label>
+            </value>
+            <value>
+                <fullName>Handovered</fullName>
+                <default>false</default>
+                <label>Handovered</label>
+            </value>
+            <value>
+                <fullName>Planing</fullName>
+                <default>false</default>
+                <label>Planing</label>
+            </value>
+            <value>
+                <fullName>Design</fullName>
+                <default>false</default>
+                <label>Design</label>
+            </value>
+            <value>
+                <fullName>Customize/Develop</fullName>
+                <default>false</default>
+                <label>Customize/Develop</label>
+            </value>
+            <value>
+                <fullName>Testing(IT/ST)</fullName>
+                <default>false</default>
+                <label>Testing(IT/ST)</label>
+            </value>
+            <value>
+                <fullName>UAT/Education/Deployment</fullName>
+                <default>false</default>
+                <label>UAT/Education/Deployment</label>
+            </value>
+            <value>
+                <fullName>in MA support</fullName>
+                <default>false</default>
+                <label>in MA support</label>
+            </value>
+            <value>
+                <fullName>Closed</fullName>
+                <default>false</default>
+                <label>Closed</label>
+            </value>
+            <value>
+                <fullName>In Defect</fullName>
+                <default>false</default>
+                <label>In Defect</label>
+            </value>
+        </valueSetDefinition>
+        <valueSettings>
+            <controllingFieldValue>1.Delivery</controllingFieldValue>
+            <controllingFieldValue>3.PreSales</controllingFieldValue>
+            <controllingFieldValue>6.Internal</controllingFieldValue>
+            <controllingFieldValue>2.MA</controllingFieldValue>
+            <controllingFieldValue>4.Product Support</controllingFieldValue>
+            <controllingFieldValue>5.Our SF/PKG Development</controllingFieldValue>
+            <valueName>Not Started</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>1.Delivery</controllingFieldValue>
+            <valueName>Planing</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>1.Delivery</controllingFieldValue>
+            <valueName>Design</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>1.Delivery</controllingFieldValue>
+            <valueName>Customize/Develop</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>1.Delivery</controllingFieldValue>
+            <valueName>Testing(IT/ST)</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>1.Delivery</controllingFieldValue>
+            <valueName>UAT/Education/Deployment</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>1.Delivery</controllingFieldValue>
+            <controllingFieldValue>3.PreSales</controllingFieldValue>
+            <controllingFieldValue>6.Internal</controllingFieldValue>
+            <controllingFieldValue>9.Leave</controllingFieldValue>
+            <controllingFieldValue>7.Study</controllingFieldValue>
+            <controllingFieldValue>2.MA</controllingFieldValue>
+            <controllingFieldValue>4.Product Support</controllingFieldValue>
+            <controllingFieldValue>5.Our SF/PKG Development</controllingFieldValue>
+            <valueName>Closed</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>3.PreSales</controllingFieldValue>
+            <controllingFieldValue>6.Internal</controllingFieldValue>
+            <controllingFieldValue>9.Leave</controllingFieldValue>
+            <controllingFieldValue>7.Study</controllingFieldValue>
+            <controllingFieldValue>4.Product Support</controllingFieldValue>
+            <controllingFieldValue>5.Our SF/PKG Development</controllingFieldValue>
+            <valueName>Open</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>3.PreSales</controllingFieldValue>
+            <valueName>Discovery</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>3.PreSales</controllingFieldValue>
+            <valueName>Creating Proposal</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>3.PreSales</controllingFieldValue>
+            <valueName>Proposal Submitted</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>3.PreSales</controllingFieldValue>
+            <valueName>Handovered</valueName>
+        </valueSettings>
+        <valueSettings>
+            <controllingFieldValue>2.MA</controllingFieldValue>
+            <valueName>in MA support</valueName>
+        </valueSettings>
+    </valueSet>
+</CustomField>

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>CANNOT_UPDATE_CLOSED_PROJECT</fullName>
+    <active>true</active>
+    <errorConditionFormula>AND ( NOT(ISCHANGED(Project_Status__c)),
+TEXT(Project_Status__c) = &apos;Closed&apos;)</errorConditionFormula>
+    <errorMessage>CANNOT update the closed project record.Please contact to the Engineer Manager.</errorMessage>
+</ValidationRule>

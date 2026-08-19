@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Validate_for_Close_Presales</fullName>
+    <active>false</active>
+    <errorConditionFormula>RecordType.DeveloperName = &apos;Presale_Activities&apos; &amp;&amp;
+( Opportunity_Name__r.IsClosed 
+||
+ Opportunity_Name__r.IsWon 
+   &amp;&amp; (ISBLANK( Proposal_Approach_Rev_Date__c ) 
+        || ISBLANK( Solution_Approval_Date__c ) 
+        || ISBLANK( Estimation_WS__c ) 
+        || ISBLANK( Proposal__c )
+      )
+)</errorConditionFormula>
+    <errorMessage>Congrats! To close presales activity, 1. close the opp record and 2.make sure to share the review steps and materials.</errorMessage>
+</ValidationRule>
