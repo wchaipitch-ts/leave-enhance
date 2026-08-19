@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Overtime_Project_Required</fullName>
+    <active>true</active>
+    <description>Without a Project the hours book against the &quot;Overtime FYxx&quot; catch-all and never reach project reporting. On the rule not the field, so that Leave Requests are unaffected - they keep the yearly bucket deliberately.</description>
+    <errorConditionFormula>AND(
+      RecordType.DeveloperName = &quot;Overtime_Request&quot;,
+      ISBLANK(Project__c)
+    )</errorConditionFormula>
+    <errorDisplayField>Project__c</errorDisplayField>
+    <errorMessage>Choose the Project these overtime hours were worked on.</errorMessage>
+</ValidationRule>

@@ -36,7 +36,8 @@ public with sharing class createLeaveRecordQueueable implements Queueable {
         if (!ids.isEmpty()) {
             toBook = [
                 SELECT Id, RecordTypeId, Request_Type__c, Period_Leave__c, Status__c,
-                       Term_From__c, Term_To__c, Remark__c, OwnerId, OT_Start__c, OT_End__c
+                       Term_From__c, Term_To__c, Remark__c, OwnerId, OT_Start__c, OT_End__c,
+                       Project__c
                 FROM ApplicationItem__c
                 WHERE Id IN :ids AND Status__c = 'Approved'
             ];

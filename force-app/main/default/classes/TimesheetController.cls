@@ -450,7 +450,7 @@ public without sharing class TimesheetController {
         'Id, Name, RecordTypeId, RecordType.DeveloperName, Request_Type__c,'
       + ' Period_Leave__c, Term_From__c, Term_To__c, No_of_Days__c, Remark__c,'
       + ' Status__c, Split_From__c,'
-      + ' OT_Start__c, OT_End__c, Overtime_Hours__c,'
+      + ' OT_Start__c, OT_End__c, Overtime_Hours__c, Project__c, Project__r.Project_Name__c,'
       + ' OwnerId, Owner.Name, Owner.FirstName';
 
     /** Requests with no pay behind them, and its exact complement for the Leave tab. */
@@ -581,6 +581,7 @@ public without sharing class TimesheetController {
         if (ApplicationItemTriggerHandler.isOvertimeRequest(existing)) {
             toSave.OT_Start__c = editedApplicationItem.OT_Start__c;
             toSave.OT_End__c   = editedApplicationItem.OT_End__c;
+            toSave.Project__c  = editedApplicationItem.Project__c;
         } else {
             toSave.Request_Type__c = editedApplicationItem.Request_Type__c;
             toSave.Period_Leave__c = editedApplicationItem.Period_Leave__c;

@@ -26,6 +26,11 @@ private class OvertimeRequestTest {
             .getRecordTypeInfosByDeveloperName().get('Overtime_Request').getRecordTypeId();
     }
 
+    /** The real project the overtime is worked on, created in setup. */
+    private static Id testProjectId() {
+        return [SELECT Id FROM Project__c WHERE Project_Name__c = 'OT Test Project' LIMIT 1].Id;
+    }
+
     private static Integer testYear() {
         return System.today().year();
     }
@@ -57,6 +62,19 @@ private class OvertimeRequestTest {
         System.runAs(new User(Id = UserInfo.getUserId())) {
             insert u;
         }
+
+        /*
+         * A real project for the hours to land on. Overtime_Project_Required makes this
+         * mandatory: without it the claim will not save at all, and the assertions below
+         * about where the hours go would have nothing to measure.
+         */
+        insert new Project__c(
+            RecordTypeId    = Schema.SObjectType.Project__c
+                .getRecordTypeInfosByDeveloperName().get('non_Charged').getRecordTypeId(),
+            Project_Name__c = 'OT Test Project',
+            Start_Date__c   = Date.newInstance(System.today().year(), 1, 1),
+            Due_Date__c     = Date.newInstance(System.today().year(), 12, 31)
+        );
 
         // An annual balance the overtime must be shown NOT to touch.
         Integer yr = System.today().year();
@@ -91,6 +109,7 @@ private class OvertimeRequestTest {
             OT_End__c    = Time.newInstance(21, 0, 0, 0),
             Remark__c    = 'overtime test',
             Status__c    = 'Pending',
+            Project__c   = testProjectId(),
             OwnerId      = testUserId()
         );
     }
@@ -227,8 +246,14 @@ private class OvertimeRequestTest {
         }
     }
 
+    /*
+     * The hours land on the project the manager named. Before the Project field they went
+     * to a per-year "Overtime FYxx" bucket invented by the booking logic, so every overtime
+     * record in the org reported against the same project and none of them against the work
+     * they were actually done for.
+     */
     @isTest
-    static void bookingHangsOffItsOwnYearlyProject() {
+    static void bookingHangsOffTheChosenProject() {
         ApplicationItem__c appl = overtimeRequest();
         insert appl;
 
@@ -236,11 +261,96 @@ private class OvertimeRequestTest {
         approve(appl);
         Test.stopTest();
 
-        String expected = 'Overtime FY' + String.valueOf(testYear()).substring(2, 4);
-        System.assertEquals(1, [SELECT COUNT() FROM Project__c WHERE Project_Name__c = :expected],
-            'overtime books against its own project, not the leave one');
+        List<Man_hour__c> booked = [
+            SELECT ProjectAssign_No__r.Project_No__c, ProjectAssign_No__r.Assignee__c
+            FROM Man_hour__c WHERE Work__c = 'Overtime'
+        ];
+        System.assertEquals(1, booked.size(), 'one date, one booking');
+        System.assertEquals(testProjectId(), booked[0].ProjectAssign_No__r.Project_No__c,
+            'the hours book against the project on the request');
+        System.assertEquals(testUserId(), booked[0].ProjectAssign_No__r.Assignee__c,
+            'and against the employee who worked them');
+
+        String bucket = 'Overtime FY' + String.valueOf(testYear()).substring(2, 4);
+        System.assertEquals(0, [SELECT COUNT() FROM Project__c WHERE Project_Name__c = :bucket],
+            'and the yearly catch-all is not created at all');
         System.assertEquals(0, [SELECT COUNT() FROM Man_hour__c WHERE Work__c = 'Annual leave'],
             'and books nothing under a leave type');
+    }
+
+    /*
+     * A range crossing a month boundary still needs one assignment per month, which the
+     * name-keyed version of book() got for free and the Id-keyed one has to keep. Both
+     * months hang off the same chosen project.
+     */
+    @isTest
+    static void aRangeAcrossMonthsGetsAnAssignmentInEach() {
+        ApplicationItem__c appl = overtimeRequest();
+        appl.Term_From__c = Date.newInstance(testYear(), 3, 30);
+        appl.Term_To__c   = Date.newInstance(testYear(), 4, 2);
+        insert appl;
+
+        Test.startTest();
+        approve(appl);
+        Test.stopTest();
+
+        Set<Id> assigns = new Set<Id>();
+        for (Man_hour__c mh : [
+            SELECT ProjectAssign_No__c, ProjectAssign_No__r.Project_No__c
+            FROM Man_hour__c WHERE Work__c = 'Overtime'
+        ]) {
+            assigns.add(mh.ProjectAssign_No__c);
+            System.assertEquals(testProjectId(), mh.ProjectAssign_No__r.Project_No__c,
+                'every date books against the one chosen project');
+        }
+        System.assertEquals(4, [SELECT COUNT() FROM Man_hour__c WHERE Work__c = 'Overtime'],
+            'four dates, four bookings');
+        System.assertEquals(2, assigns.size(), 'March and April get an assignment each');
+    }
+
+    /*
+     * The employee needs no pre-existing assignment on the project - book() creates the
+     * monthly one on demand, exactly as it always did for the yearly bucket. Asserted
+     * because the alternative was to refuse the approval, and this is the deliberate choice.
+     */
+    @isTest
+    static void anUnassignedEmployeeGetsAnAssignmentMade() {
+        System.assertEquals(0, [
+            SELECT COUNT() FROM ProjectAssign__c
+            WHERE Project_No__c = :testProjectId() AND Assignee__c = :testUserId()
+        ], 'the employee starts with no assignment on this project');
+
+        ApplicationItem__c appl = overtimeRequest();
+        insert appl;
+
+        Test.startTest();
+        approve(appl);
+        Test.stopTest();
+
+        System.assertEquals(1, [
+            SELECT COUNT() FROM ProjectAssign__c
+            WHERE Project_No__c = :testProjectId() AND Assignee__c = :testUserId()
+        ], 'approving the claim created it');
+    }
+
+    /** The rule that makes the field mandatory, and only for overtime. */
+    @isTest
+    static void overtimeWithoutAProjectIsRefused() {
+        ApplicationItem__c appl = overtimeRequest();
+        appl.Project__c = null;
+
+        Test.startTest();
+        String message = '';
+        try {
+            insert appl;
+            System.assert(false, 'a claim with no project should not save');
+        } catch (DmlException e) {
+            message = e.getDmlMessage(0);
+        }
+        Test.stopTest();
+
+        System.assert(message.contains('Project'),
+            'the message names the field: ' + message);
     }
 
     @isTest

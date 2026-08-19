@@ -68,6 +68,28 @@ private class OvertimeRequestGuardTest {
             insert new PermissionSetAssignment(
                 AssigneeId = staff[0].Id, PermissionSetId = readOnly.Id);
         }
+
+        // Overtime_Project_Required means a claim will not save without one.
+        insert new Project__c(
+            RecordTypeId    = Schema.SObjectType.Project__c
+                .getRecordTypeInfosByDeveloperName().get('non_Charged').getRecordTypeId(),
+            Project_Name__c = 'OT Guard Project',
+            Start_Date__c   = Date.newInstance(System.today().year(), 1, 1),
+            Due_Date__c     = Date.newInstance(System.today().year(), 12, 31)
+        );
+    }
+
+    // Cached like cachedUserId: the bulk test builds 200 requests, and a query per
+    // request would exhaust the SOQL limit before the assertion was reached.
+    private static Id cachedProjectId;
+
+    private static Id guardProjectId() {
+        if (cachedProjectId == null) {
+            cachedProjectId = [
+                SELECT Id FROM Project__c WHERE Project_Name__c = 'OT Guard Project' LIMIT 1
+            ].Id;
+        }
+        return cachedProjectId;
     }
 
     private static User buildUser(Id profileId, String stem, String first, String last,
@@ -94,7 +116,8 @@ private class OvertimeRequestGuardTest {
             Term_From__c = System.today().addDays(1),
             OT_Start__c  = Time.newInstance(18, 0, 0, 0),
             OT_End__c    = Time.newInstance(21, 0, 0, 0),
-            Remark__c    = 'guard test', Status__c = 'Draft'
+            Remark__c    = 'guard test', Status__c = 'Draft',
+            Project__c   = guardProjectId()
         );
     }
 

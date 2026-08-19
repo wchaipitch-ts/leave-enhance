@@ -102,6 +102,11 @@ public class CreateLeaveRecordOnManInputTriggerLogic {
      * Every date in the range is booked, weekends and public holidays included:
      * workingDaysFor is deliberately not reused here, because those are exactly the
      * days overtime tends to fall on.
+     *
+     * The hours book against the project named on the request rather than against the
+     * yearly "Overtime FYxx" catch-all, which made every overtime record in the org
+     * indistinguishable in project reporting. Leave keeps its bucket: a day of absence
+     * is not worked on anything.
      */
     public void createOvertimeRecords(List<ApplicationItem__c> applications) {
         List<ApplicationItem__c> approved = approvedOnly(applications);
@@ -116,7 +121,11 @@ public class CreateLeaveRecordOnManInputTriggerLogic {
                 continue; // no window, or an inverted one - the validation rules report it
             }
             for (Date d : ApplicationItemTriggerLogic.overtimeDatesFor(appl)) {
-                bookings.add(new Booking(appl, d, hours, KIND_OVERTIME, KIND_OVERTIME));
+                Booking booking = new Booking(appl, d, hours, KIND_OVERTIME, KIND_OVERTIME);
+                // The project the manager chose. Blank only on requests raised before the
+                // field existed, which fall back to the yearly bucket in resolveProjects.
+                booking.projectId = appl.Project__c;
+                bookings.add(booking);
             }
         }
         book(bookings);

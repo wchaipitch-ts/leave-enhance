@@ -10,6 +10,11 @@
         <field>ApplicationItem__c.Employee__c</field>
         <readable>true</readable>
     </fieldPermissions>
+    <fieldPermissions>
+        <editable>true</editable>
+        <field>ApplicationItem__c.Project__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
     <hasActivationRequired>false</hasActivationRequired>
     <label>Overtime Request Manager</label>
     <objectPermissions>

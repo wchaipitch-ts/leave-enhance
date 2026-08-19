@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Project__c</fullName>
+    <deleteConstraint>SetNull</deleteConstraint>
+    <description>The project an Overtime Request&apos;s hours are worked on.
+
+Before this field every overtime booking landed on a per-year catch-all project named &quot;Overtime FY26&quot;, invented by CreateLeaveRecordOnManInputTriggerLogic on first use, so Man_hour__c.Project_Name__c read the same value for every overtime record in the org and the hours were invisible to project reporting. With this set, the booking hangs off the chosen project instead and the yearly bucket is used only by leave.
+
+Required for Overtime Requests by Overtime_Project_Required rather than at field level, so that Leave Requests - which keep the bucket - are unaffected.
+
+The employee does not need an existing ProjectAssign__c: the booking logic creates the monthly assignment on demand, as it already did for the bucket.</description>
+    <inlineHelpText>The project these overtime hours were worked on. The hours are booked against it.</inlineHelpText>
+    <label>Project</label>
+    <lookupFilter>
+        <active>true</active>
+        <errorMessage>That project is closed. Choose a project that was still running when the overtime was worked.</errorMessage>
+        <filterItems>
+            <field>Project__c.Project_Status__c</field>
+            <operation>notEqual</operation>
+            <value>Closed</value>
+        </filterItems>
+        <isOptional>false</isOptional>
+    </lookupFilter>
+    <referenceTo>Project__c</referenceTo>
+    <relationshipLabel>Overtime Requests</relationshipLabel>
+    <relationshipName>Overtime_Requests</relationshipName>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Lookup</type>
+</CustomField>
