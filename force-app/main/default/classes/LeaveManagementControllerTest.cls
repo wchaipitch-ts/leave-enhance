@@ -281,18 +281,44 @@ public with sharing class LeaveManagementControllerTest {
 
     // ------------------------------------------------------------------ refreshment
 
+    /*
+     * LEAVE-41. Anniv3 joined on 15 March; the grant now lands on the 1st, because the
+     * anniversary MONTH is the rule. The tier is unchanged by moving the date forward:
+     * monthsBetween ignores the day, so 1 March of the fourth year still reads as
+     * thirty-six months.
+     */
     @isTest
-    static void refreshGrantMatchesTheTierForCompletedYears() {
+    static void refreshGrantLandsAtTheStartOfTheAnniversaryMonth() {
         useFixtures();
         Test.startTest();
-        LeaveManagementController.runDaily(Date.newInstance(2026, 3, 15));
+        LeaveManagementController.runDaily(Date.newInstance(2026, 3, 1));
         Test.stopTest();
 
         Leave_Balance__c r = row('Anniv3', REFRESH, GRANT_YEAR);
         System.assertEquals(3, r.Entitlement_Days__c, 'three completed years grants three days');
-        System.assertEquals(Date.newInstance(2026, 4, 15), r.Expiry_Date__c,
-            'the window is one month');
-        System.assertEquals(Date.newInstance(2026, 3, 15), r.Granted_On__c, 'stamped on the anniversary');
+        System.assertEquals(Date.newInstance(2026, 4, 1), r.Expiry_Date__c,
+            'the window is one month from the grant');
+        System.assertEquals(Date.newInstance(2026, 3, 1), r.Granted_On__c,
+            'stamped on the first of the anniversary month, not the joining day');
+    }
+
+    /*
+     * The other half of the same rule, and the behaviour that actually changed: before
+     * LEAVE-41 only the joining day granted, so a run on any other day of the month did
+     * nothing. It has to grant now, or a missed 1st would lose the year's refreshment.
+     */
+    @isTest
+    static void refreshGrantStillLandsIfTheFirstOfTheMonthIsMissed() {
+        useFixtures();
+        Test.startTest();
+        LeaveManagementController.runDaily(Date.newInstance(2026, 3, 14));
+        Test.stopTest();
+
+        Leave_Balance__c r = row('Anniv3', REFRESH, GRANT_YEAR);
+        System.assertNotEquals(null, r, 'a later day in the anniversary month still grants');
+        System.assertEquals(3, r.Entitlement_Days__c);
+        System.assertEquals(Date.newInstance(2026, 3, 14), r.Granted_On__c,
+            'stamped for the day it actually ran');
     }
 
     @isTest
@@ -306,27 +332,58 @@ public with sharing class LeaveManagementControllerTest {
             'seven years keeps matching the highest configured tier');
     }
 
+    /*
+     * February 29 used to need a special case, because the joining day never came round
+     * in a common year. Matching the month removes the problem rather than handling it.
+     */
     @isTest
-    static void refreshGrantFallsBackToFeb28InNonLeapYears() {
+    static void aFebruary29JoinerIsGrantedLikeAnyoneElse() {
         useFixtures();
         Test.startTest();
-        LeaveManagementController.runDaily(Date.newInstance(2026, 2, 28));
+        LeaveManagementController.runDaily(Date.newInstance(2026, 2, 1));
         Test.stopTest();
 
-        System.assertNotEquals(null, row('LeapJoin', REFRESH, GRANT_YEAR),
-            'a February 29 joiner is granted on February 28 when the year is not a leap year');
+        Leave_Balance__c r = row('LeapJoin', REFRESH, GRANT_YEAR);
+        System.assertNotEquals(null, r,
+            'the anniversary month arrives every year, leap or not');
+        System.assertEquals(Date.newInstance(2026, 2, 1), r.Granted_On__c);
     }
 
     @isTest
-    static void refreshGrantIgnoresNonAnniversaryDays() {
+    static void refreshGrantIgnoresMonthsThatAreNotTheAnniversary() {
         useFixtures();
         Test.startTest();
-        LeaveManagementController.runDaily(Date.newInstance(2026, 3, 14));
+        // Anniv3 joined in March; April is nobody's business.
+        LeaveManagementController.runDaily(Date.newInstance(2026, 4, 14));
         Test.stopTest();
 
         Leave_Balance__c r = row('Anniv3', REFRESH, GRANT_YEAR);
         System.assert(r == null || r.Granted_On__c == null,
-            'the day before the anniversary grants nothing');
+            'a month that is not the anniversary month grants nothing');
+    }
+
+    /*
+     * What makes "the start of the month" true with a job that runs every day: the first
+     * run in the anniversary month stamps Granted_On__c and every later run that month
+     * finds it set and skips. Without this the grant would repeat daily all month.
+     */
+    @isTest
+    static void refreshGrantHappensOncePerAnniversaryMonth() {
+        useFixtures();
+        Test.startTest();
+        LeaveManagementController.runDaily(Date.newInstance(2026, 3, 1));
+        update new Leave_Balance__c(Id = [SELECT Id FROM Leave_Balance__c
+            WHERE Employee__r.LastName = 'Anniv3' AND Leave_Type__c = :REFRESH].Id,
+            Used_Days__c = 2);
+        LeaveManagementController.runDaily(Date.newInstance(2026, 3, 2));
+        LeaveManagementController.runDaily(Date.newInstance(2026, 3, 20));
+        Test.stopTest();
+
+        Leave_Balance__c r = row('Anniv3', REFRESH, GRANT_YEAR);
+        System.assertEquals(Date.newInstance(2026, 3, 1), r.Granted_On__c,
+            'still stamped for the first run of the month');
+        System.assertEquals(2, r.Used_Days__c,
+            'and later runs in the same month do not re-grant over what was spent');
     }
 
     @isTest
@@ -414,15 +471,24 @@ public with sharing class LeaveManagementControllerTest {
         LeaveManagementController.runDaily(Date.newInstance(2026, 3, 15));   // grant, expires Apr 15
         LeaveManagementController.runDaily(Date.newInstance(2026, 4, 16));   // sweeps it to zero
 
-        // No fixture has a May anniversary and no row carries an expiry between these
-        // dates, so a run on May 20 has nothing legitimate to write. Any DML here would
-        // be the lapsed row being pointlessly re-upserted.
-        Integer dmlBefore = Limits.getDmlRows();
+        /*
+         * Asserted against this row rather than against Limits.getDmlRows(). The grant
+         * engine queries User, and tests see the org's real users however the fixtures
+         * are built, so a colleague with a May anniversary makes a transaction-wide DML
+         * count depend on the staff list. What matters here is narrower and stable: the
+         * lapsed row itself is not rewritten.
+         */
+        Datetime touchedBefore = [SELECT LastModifiedDate FROM Leave_Balance__c
+                                  WHERE Employee__r.LastName = 'Anniv3'
+                                    AND Leave_Type__c = :REFRESH].LastModifiedDate;
         LeaveManagementController.runDaily(Date.newInstance(2026, 5, 20));
-        Integer dmlAfter = Limits.getDmlRows();
         Test.stopTest();
 
-        System.assertEquals(dmlBefore, dmlAfter, 'the later run must write nothing');
+        System.assertEquals(touchedBefore,
+            [SELECT LastModifiedDate FROM Leave_Balance__c
+             WHERE Employee__r.LastName = 'Anniv3'
+               AND Leave_Type__c = :REFRESH].LastModifiedDate,
+            'the lapsed row must not be rewritten by a later run');
 
         Leave_Balance__c r = row('Anniv3', REFRESH, GRANT_YEAR);
         System.assertEquals(0, r.Entitlement_Days__c, 'still zero');
@@ -444,4 +510,5 @@ public with sharing class LeaveManagementControllerTest {
         System.assertEquals(Date.newInstance(GRANT_YEAR, 6, 30), r.Carry_Over_Expiry__c,
             'the freshly written expiry date is not swept by the same run');
     }
+
 }

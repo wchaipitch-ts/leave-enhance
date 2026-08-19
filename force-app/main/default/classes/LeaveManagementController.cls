@@ -170,8 +170,14 @@ public with sharing class LeaveManagementController implements Schedulable {
     }
 
     /*
-     * LEAVE-8 / LEAVE-27 — refreshment grant, on the anniversary.
+     * LEAVE-8 / LEAVE-27 / LEAVE-41 — refreshment grant, at the start of the
+     * anniversary MONTH rather than on the anniversary date.
+     *
      * Tier by completed years of service; expires one month later and is then wiped.
+     * Someone who joined on the 25th now receives the grant on the 1st, up to
+     * twenty-four days before the anniversary itself. The tier is unaffected:
+     * monthsBetween ignores the day component, so 1 March and 25 March of the fourth
+     * year both read as forty-eight months.
      */
     private static void grantRefreshLeave(Date today, Map<String, Leave_Balance__c> staged,
                                           List<String> logDetails) {
@@ -180,8 +186,15 @@ public with sharing class LeaveManagementController implements Schedulable {
         Leave_Type_Policy__mdt refreshPolicy = anniversaryPolicy();
         if (rules.isEmpty() || refreshPolicy == null) return;
 
-        // The day is matched in Apex rather than SOQL so that February 29 joiners
-        // can be caught on February 28 in non-leap years.
+        /*
+         * LEAVE-41: the anniversary MONTH, not the anniversary day. Matching the month
+         * is now the whole rule, so this query is the rule — there is no day-level check
+         * after it, and the February 29 special case it used to need has gone with it.
+         *
+         * What makes the grant land once, at the start of the month, is Granted_On__c:
+         * the first daily run in the anniversary month stamps it and every later run
+         * that month skips. A missed 1st simply grants on the next day the job runs.
+         */
         List<User> candidates = [
             SELECT Id, Name, Start_Date__c
             FROM User
@@ -195,14 +208,19 @@ public with sharing class LeaveManagementController implements Schedulable {
         Map<String, Leave_Balance__c> existing = loadBalances(idsOf(candidates), new Set<Integer>{ yr });
 
         for (User usr : candidates) {
-            if (!isAnniversary(usr.Start_Date__c, today)) continue;
-
-            Leave_Balance__c row = stage(staged, existing, usr.Id, refreshPolicy, yr);
-            if (row.Granted_On__c != null) continue;
-
+            /*
+             * Entitlement is decided before the row is touched, because stage() does not
+             * merely read — it puts the row in the staged map and everything there is
+             * upserted. Staging first meant somebody in their joining month with no
+             * completed year, who matches no tier, still had an empty Refresh Leave row
+             * written for them. Harmless-looking, and it made the expiry sweep churn.
+             */
             Integer years = usr.Start_Date__c.monthsBetween(today) / 12;
             Refresh_Leave_Rule__mdt rule = tierFor(rules, years);
             if (rule == null) continue;
+
+            Leave_Balance__c row = stage(staged, existing, usr.Id, refreshPolicy, yr);
+            if (row.Granted_On__c != null) continue;
 
             Integer window = rule.Grant_Window_Months__c == null ? 1 : rule.Grant_Window_Months__c.intValue();
 
@@ -406,14 +424,6 @@ public with sharing class LeaveManagementController implements Schedulable {
      * True when today is the anniversary of startDate. A February 29 joiner has no
      * anniversary in a non-leap year, so February 28 stands in for it.
      */
-    private static Boolean isAnniversary(Date startDate, Date today) {
-        if (startDate.month() == today.month() && startDate.day() == today.day()) {
-            return true;
-        }
-        return startDate.month() == 2 && startDate.day() == 29
-            && today.month() == 2 && today.day() == 28
-            && !Date.isLeapYear(today.year());
-    }
 
     /*
      * The highest active tier at or below the employee's completed years of service.
