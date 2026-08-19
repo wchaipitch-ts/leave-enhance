@@ -1,0 +1,179 @@
+<template>
+    <!-- Errors are shown on their own: without the figures there is nothing to render. -->
+    <template if:true={hasError}>
+        <div class="slds-card slds-p-around_medium">
+            <div class="slds-text-color_error">{error}</div>
+        </div>
+    </template>
+
+    <!-- Anything that is not an unpaid request has nothing to convert, so no card. -->
+    <template if:true={isUnpaidRequest}>
+        <article class="slds-card conversion-card">
+
+            <header class="slds-card__header conversion-header">
+                <div class="slds-grid slds-grid_align-spread slds-wrap slds-p-around_medium">
+                    <div class="slds-media slds-media_center slds-no-space">
+                        <div class="slds-media__figure">
+                            <lightning-icon icon-name="standard:event" size="small"></lightning-icon>
+                        </div>
+                        <div class="slds-media__body">
+                            <h2 class="slds-text-heading_small conversion-title">Unpaid Leave Conversion</h2>
+                            <p class="slds-text-body_small slds-text-color_weak">
+                                You can convert this unpaid leave to paid leave if the employee has
+                                sufficient balance in the future.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="slds-no-flex slds-grid conversion-actions">
+                        <lightning-button
+                            label="Convert to Paid Leave"
+                            variant="brand-outline"
+                            disabled={convertDisabled}
+                            onclick={openConvertModal}
+                            class="slds-m-right_x-small">
+                        </lightning-button>
+                        <lightning-button
+                            label="Reject &amp; Revert"
+                            variant="destructive-text"
+                            disabled={rejectDisabled}
+                            onclick={openRejectModal}>
+                        </lightning-button>
+                    </div>
+                </div>
+            </header>
+
+            <div class="slds-card__body slds-p-horizontal_medium slds-p-bottom_medium">
+                <template if:true={busy}>
+                    <lightning-spinner alternative-text="Working" size="small"></lightning-spinner>
+                </template>
+
+                <div class="slds-grid slds-wrap slds-gutters">
+                    <template for:each={stats} for:item="stat">
+                        <div key={stat.key} class="slds-col slds-size_1-of-2 slds-medium-size_1-of-4">
+                            <div class="slds-text-body_small slds-text-color_weak">{stat.label}</div>
+                            <div class="stat-value">{stat.value}</div>
+                        </div>
+                    </template>
+                </div>
+
+                <!--
+                    The days are not paid until this Draft is approved, so the card has to
+                    lead somewhere: a Converted Days figure with no way to reach what it
+                    counts is how a Draft nobody submitted goes unnoticed.
+                -->
+                <template if:true={hasConvertedRequests}>
+                    <div class="slds-m-top_medium slds-border_top slds-p-top_small">
+                        <div class="slds-text-title_caps slds-m-bottom_xx-small">Converted requests</div>
+                        <template for:each={convertedRequests} for:item="made">
+                            <div key={made.recordId} class="slds-grid slds-grid_align-spread slds-p-vertical_xx-small">
+                                <a data-id={made.recordId} onclick={handleOpenRequest}>{made.name}</a>
+                                <div class="slds-text-body_small">
+                                    <lightning-formatted-number
+                                        value={made.days}
+                                        minimum-fraction-digits="2">
+                                    </lightning-formatted-number>
+                                    <span> days · </span>
+                                    <template if:true={made.awaitingApproval}>
+                                        <span class="slds-text-color_weak">{made.status} — not yet approved</span>
+                                    </template>
+                                    <template if:false={made.awaitingApproval}>
+                                        <span class="slds-text-color_success">{made.status}</span>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+
+                <template if:true={blockedNote}>
+                    <div class="slds-m-top_medium slds-text-body_small slds-text-color_weak">
+                        <lightning-icon icon-name="utility:info" size="xx-small" class="slds-m-right_xx-small"></lightning-icon>
+                        {blockedNote}
+                    </div>
+                </template>
+            </div>
+        </article>
+    </template>
+
+    <!-- ============================================================ convert modal -->
+    <template if:true={showConvertModal}>
+        <section role="dialog" tabindex="-1" class="slds-modal slds-fade-in-open slds-modal_small">
+            <div class="slds-modal__container">
+                <header class="slds-modal__header">
+                    <button class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse"
+                            title="Close" onclick={closeConvertModal}>
+                        <lightning-icon icon-name="utility:close" alternative-text="close"
+                                        variant="inverse" size="small"></lightning-icon>
+                        <span class="slds-assistive-text">Close</span>
+                    </button>
+                    <h2 class="slds-text-heading_medium">Convert to Paid Leave</h2>
+                </header>
+
+                <div class="slds-modal__content slds-p-around_medium">
+                    <p class="slds-m-bottom_small slds-text-body_small slds-text-color_weak">
+                        {convertHelp}
+                    </p>
+                    <lightning-input
+                        type="number"
+                        label="Days to convert"
+                        min="1"
+                        step="1"
+                        value={daysToConvert}
+                        onchange={handleDaysChange}>
+                    </lightning-input>
+                    <p class="slds-m-top_small slds-text-body_small slds-text-color_weak">
+                        The converted days become an Annual leave request in Draft. The owner
+                        submits it for approval — nothing is deducted from the Annual balance
+                        until it is approved. The earliest days are converted first.
+                    </p>
+                </div>
+
+                <footer class="slds-modal__footer">
+                    <lightning-button label="Cancel" onclick={closeConvertModal}
+                                      class="slds-m-right_x-small"></lightning-button>
+                    <lightning-button label="Convert" variant="brand" disabled={busy}
+                                      onclick={handleConvert}></lightning-button>
+                </footer>
+            </div>
+        </section>
+        <div class="slds-backdrop slds-backdrop_open"></div>
+    </template>
+
+    <!-- ============================================================= reject modal -->
+    <template if:true={showRejectModal}>
+        <section role="dialog" tabindex="-1" class="slds-modal slds-fade-in-open slds-modal_small">
+            <div class="slds-modal__container">
+                <header class="slds-modal__header">
+                    <button class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse"
+                            title="Close" onclick={closeRejectModal}>
+                        <lightning-icon icon-name="utility:close" alternative-text="close"
+                                        variant="inverse" size="small"></lightning-icon>
+                        <span class="slds-assistive-text">Close</span>
+                    </button>
+                    <h2 class="slds-text-heading_medium">Reject &amp; Revert</h2>
+                </header>
+
+                <div class="slds-modal__content slds-p-around_medium">
+                    <p class="slds-m-bottom_small slds-text-body_small slds-text-color_weak">
+                        {rejectWarning}
+                    </p>
+                    <lightning-textarea
+                        label="Reason"
+                        required
+                        value={rejectReason}
+                        onchange={handleReasonChange}>
+                    </lightning-textarea>
+                </div>
+
+                <footer class="slds-modal__footer">
+                    <lightning-button label="Cancel" onclick={closeRejectModal}
+                                      class="slds-m-right_x-small"></lightning-button>
+                    <lightning-button label="Reject &amp; Revert" variant="destructive" disabled={busy}
+                                      onclick={handleReject}></lightning-button>
+                </footer>
+            </div>
+        </section>
+        <div class="slds-backdrop slds-backdrop_open"></div>
+    </template>
+</template>

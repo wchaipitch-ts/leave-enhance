@@ -283,7 +283,9 @@ private class LeaveConversionTest {
         System.assertEquals(2, v.convertedDays, 'two days converted');
         System.assertEquals(2, v.remainingUnpaidDays, 'two still unpaid');
         System.assertEquals('Partially Converted', v.conversionStatus, 'which is what that is called');
-        System.assertEquals(1, v.convertedRequestIds.size(), 'and the card can link to what it made');
+        System.assertEquals(1, v.convertedRequests.size(), 'and the card can link to what it made');
+        System.assertEquals('Draft', v.convertedRequests[0].status, 'which is still waiting on the owner');
+        System.assertEquals(true, v.convertedRequests[0].awaitingApproval, 'nobody is paid for it yet');
         System.assertEquals(false, v.canConvert,
             'the balance is spoken for by the Draft, so nothing more is offered');
     }

@@ -86,8 +86,23 @@ public without sharing class LeaveConversionService {
         @AuraEnabled public Boolean  canReject;
         /** Why conversion is unavailable, in words fit to show the employee. */
         @AuraEnabled public String   blockedReason;
-        /** The Annual requests this conversion produced, newest last. */
-        @AuraEnabled public List<Id> convertedRequestIds;
+        /** The Annual requests this conversion produced, oldest first. */
+        @AuraEnabled public List<ConvertedRequest> convertedRequests;
+    }
+
+    /*
+     * Enough of a converted request to name it and link to it. The card has to be able
+     * to reach the Draft it made: nobody is paid for these days until the owner submits
+     * it, and a number on a card the owner cannot click through is how that gets
+     * forgotten.
+     */
+    public class ConvertedRequest {
+        @AuraEnabled public Id      recordId;
+        @AuraEnabled public String  name;
+        @AuraEnabled public Decimal days;
+        @AuraEnabled public String  status;
+        /** True while the days are still only asked for, not granted. */
+        @AuraEnabled public Boolean awaitingApproval;
     }
 
     // ==================================================================== reading
@@ -252,11 +267,11 @@ public without sharing class LeaveConversionService {
         v.canReject    = !STATUS_REJECTED.equals(src.Status__c)
                          && !ApplicationItemTriggerHandler.isOvertimeRequest(src);
 
-        v.convertedRequestIds = new List<Id>();
+        v.convertedRequests = new List<ConvertedRequest>();
         Decimal converted = 0;
         Decimal awaitingApproval = 0;
         for (ApplicationItem__c child : [
-            SELECT Id, Leave_Days__c, Status__c
+            SELECT Id, Name, Leave_Days__c, Status__c
             FROM ApplicationItem__c
             WHERE Split_From__c = :src.Id AND Converted_From_Unpaid__c = true
             ORDER BY CreatedDate
@@ -268,7 +283,14 @@ public without sharing class LeaveConversionService {
                 continue;
             }
             converted += zeroIfNull(child.Leave_Days__c);
-            v.convertedRequestIds.add(child.Id);
+
+            ConvertedRequest made   = new ConvertedRequest();
+            made.recordId           = child.Id;
+            made.name               = child.Name;
+            made.days               = zeroIfNull(child.Leave_Days__c);
+            made.status             = child.Status__c;
+            made.awaitingApproval   = !STATUS_APPROVED.equals(child.Status__c);
+            v.convertedRequests.add(made);
             /*
              * A converted request in Draft or Pending has not spent the balance yet —
              * the approval will. Counting it as spent anyway is what stops the card

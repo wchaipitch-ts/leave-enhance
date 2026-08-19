@@ -1,0 +1,31 @@
+.conversion-card {
+    position: relative;
+}
+
+/* The header sits on its own ground so the card reads as one panel with a strip
+   across the top, the way the rest of the leave screens are laid out. */
+.conversion-header {
+    background-color: #f3f3f3;
+    border-bottom: 1px solid #dddbda;
+    padding: 0;
+}
+
+.conversion-title {
+    font-weight: 700;
+    color: #181818;
+}
+
+.conversion-actions {
+    align-items: flex-start;
+}
+
+.stat-value {
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: #181818;
+    margin-top: 0.15rem;
+}
+
+a {
+    cursor: pointer;
+}
