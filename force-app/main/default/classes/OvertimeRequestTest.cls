@@ -76,8 +76,16 @@ private class OvertimeRequestTest {
 
     /** 18:00 to 21:00 - three hours. */
     private static ApplicationItem__c overtimeRequest() {
+        /*
+         * LEAVE-43. Overtime is raised by a manager on somebody else's behalf now, so saving
+         * one needs the creation permission and an Employee to attribute it to. Employee__c is
+         * the user these tests already owned the record as, and OwnerId is copied from it - so
+         * every assertion below measures exactly what it measured before.
+         */
+        OvertimeRequestGuard.permittedOverride = true;
         return new ApplicationItem__c(
             RecordTypeId = overtimeRecordTypeId(),
+            Employee__c  = testUserId(),
             Term_From__c = Date.newInstance(testYear(), 3, 2),
             OT_Start__c  = Time.newInstance(18, 0, 0, 0),
             OT_End__c    = Time.newInstance(21, 0, 0, 0),

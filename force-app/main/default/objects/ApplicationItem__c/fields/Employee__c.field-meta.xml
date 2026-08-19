@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Employee__c</fullName>
+    <deleteConstraint>SetNull</deleteConstraint>
+    <description>LEAVE-43. The person an Overtime Request is for, which is not the person who raises it - overtime is entered by a manager on the employee&apos;s behalf.
+
+OvertimeRequestGuard copies this into OwnerId when the request is APPROVED, not when it is saved. OwnerId is what every reader downstream keys on - OvertimeSummaryService, the OT tab in TimesheetController.getApplicationItems, the Man_hour__c booking and Owner_Name__c - and the first two look only at approved records, so the delay costs nothing. Transferring at save left the manager unable to edit the record they had just created, ApplicationItem__c being Public Read Only.
+
+Required for Overtime Requests by Overtime_Employee_Required rather than at field level: a required User lookup demands a delete constraint Salesforce forbids.</description>
+    <label>Employee</label>
+    <referenceTo>User</referenceTo>
+    <relationshipLabel>Overtime Requests</relationshipLabel>
+    <relationshipName>Overtime_Requests</relationshipName>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Lookup</type>
+</CustomField>

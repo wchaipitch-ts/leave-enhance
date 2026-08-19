@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">
+    <customPermissions>
+        <enabled>true</enabled>
+        <name>Create_Overtime_Request</name>
+    </customPermissions>
+    <description>LEAVE-43. What a manager or admin needs to raise overtime: the Overtime Request record type, the Employee field, CRUD on ApplicationItem__c and the custom permission the trigger checks. View All and Modify All are off, so sharing still applies.</description>
+    <fieldPermissions>
+        <editable>true</editable>
+        <field>ApplicationItem__c.Employee__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <hasActivationRequired>false</hasActivationRequired>
+    <label>Overtime Request Manager</label>
+    <objectPermissions>
+        <allowCreate>true</allowCreate>
+        <allowDelete>true</allowDelete>
+        <allowEdit>true</allowEdit>
+        <allowRead>true</allowRead>
+        <modifyAllRecords>false</modifyAllRecords>
+        <object>ApplicationItem__c</object>
+        <viewAllRecords>false</viewAllRecords>
+    </objectPermissions>
+    <recordTypeVisibilities>
+        <recordType>ApplicationItem__c.Overtime_Request</recordType>
+        <visible>true</visible>
+    </recordTypeVisibilities>
+</PermissionSet>

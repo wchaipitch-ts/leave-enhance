@@ -51,14 +51,23 @@ public class ApplicationItemTriggerHandler {
      * the day count is right from Draft onward. It must run before deductLeaveBalance,
      * which reads the figure it writes.
      */
+    /*
+     * LEAVE-43. OvertimeRequestGuard runs before calculateOvertimeHours because it is what
+     * decides whose record this is - it copies Employee__c into OwnerId, and everything
+     * that later reads the owner depends on that having happened first.
+     */
     public void onBeforeInsert(List<ApplicationItem__c> newList) {
         beforeSave(leaveRequests(newList), null);
-        logic.calculateOvertimeHours(overtimeRequests(newList));
+        List<ApplicationItem__c> overtime = overtimeRequests(newList);
+        OvertimeRequestGuard.enforce(overtime, null);
+        logic.calculateOvertimeHours(overtime);
     }
 
     public void onBeforeUpdate(List<ApplicationItem__c> newList, Map<Id, ApplicationItem__c> oldMap) {
         beforeSave(leaveRequests(newList), oldMap);
-        logic.calculateOvertimeHours(overtimeRequests(newList));
+        List<ApplicationItem__c> overtime = overtimeRequests(newList);
+        OvertimeRequestGuard.enforce(overtime, oldMap);
+        logic.calculateOvertimeHours(overtime);
         // LEAVE-34. Entering and leaving Approved are disjoint sets, so this cannot
         // collide with the deduction above.
         LeaveReversalService.restoreBalances(justUnapproved(newList, oldMap));
