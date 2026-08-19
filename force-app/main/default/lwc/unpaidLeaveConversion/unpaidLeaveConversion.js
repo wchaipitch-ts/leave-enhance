@@ -17,9 +17,7 @@ import { notifyRecordUpdateAvailable } from 'lightning/uiRecordApi';
 
 import getUnpaidConversion from '@salesforce/apex/TimesheetController.getUnpaidConversion';
 import convertUnpaidLeave from '@salesforce/apex/TimesheetController.convertUnpaidLeave';
-import rejectUnpaidLeave from '@salesforce/apex/TimesheetController.rejectUnpaidLeave';
-
-const UNPAID = 'Unpaid leave';
+import revertConversion from '@salesforce/apex/TimesheetController.revertConversion';
 
 export default class UnpaidLeaveConversion extends NavigationMixin(LightningElement) {
     @api recordId;
@@ -30,9 +28,9 @@ export default class UnpaidLeaveConversion extends NavigationMixin(LightningElem
     busy = false;
 
     showConvertModal = false;
-    showRejectModal = false;
+    showRevertModal = false;
     daysToConvert;
-    rejectReason = '';
+    revertReason = '';
 
     @wire(getUnpaidConversion, { requestId: '$recordId' })
     wiredConversion(result) {
@@ -49,13 +47,13 @@ export default class UnpaidLeaveConversion extends NavigationMixin(LightningElem
     // ------------------------------------------------------------------ what to show
 
     /*
-     * The card is meaningless on anything but an unpaid request, so it removes itself
-     * rather than sitting there explaining why it has nothing to say. A record page can
-     * carry both kinds — the split raises the paid and unpaid halves of one absence as
-     * two records of the same object.
+     * Whether this record has anything to do with conversion at all — an unpaid request,
+     * or a paid one a conversion produced. Apex decides, because the second case is what
+     * keeps a conversion made in error reachable, and a rule about which records that
+     * covers belongs beside the rule that produced them.
      */
-    get isUnpaidRequest() {
-        return !!this.view && this.view.requestType === UNPAID;
+    get showsCard() {
+        return !!this.view && this.view.showsConversion;
     }
 
     get hasError() {
@@ -84,13 +82,23 @@ export default class UnpaidLeaveConversion extends NavigationMixin(LightningElem
         return this.busy || !this.view || !this.view.canConvert;
     }
 
-    get rejectDisabled() {
-        return this.busy || !this.view || !this.view.canReject;
+    get revertDisabled() {
+        return this.busy || !this.view || !this.view.canRevert;
     }
 
-    /* Only worth saying when the button it explains is the one that is off. */
+    /*
+     * Only worth saying when the button it explains is the one that is off. The revert
+     * note is held back while conversion is still available, because "nothing to revert"
+     * is the ordinary state of a request nobody has converted yet, not a problem.
+     */
     get blockedNote() {
         return this.view && !this.view.canConvert ? this.view.blockedReason : undefined;
+    }
+
+    get revertNote() {
+        return this.view && !this.view.canConvert && !this.view.canRevert
+            ? this.view.revertBlockedReason
+            : undefined;
     }
 
     get convertHelp() {
@@ -101,15 +109,19 @@ export default class UnpaidLeaveConversion extends NavigationMixin(LightningElem
     }
 
     /*
-     * An approved request is not simply marked rejected: its balance, its calendar
-     * entries and its timesheet bookings all come back with it. Somebody about to press
-     * the button should be told that before they do, not after.
+     * What reverting is about to do, in the terms the person pressing it is thinking in.
+     * "Reject" on its own reads as refusing the absence; what it refuses is the paid
+     * request the conversion made, and the days themselves stay exactly where they were.
      */
-    get rejectWarning() {
-        return this.view && this.view.status === 'Approved'
-            ? 'This request is approved. Rejecting it gives the unpaid days back to the '
-              + 'balance and removes the calendar entries and timesheet bookings it created.'
-            : 'This request has not been approved, so nothing has been booked against it yet.';
+    get revertWarning() {
+        const spent = this.convertedRequests.some((made) => !made.awaitingApproval);
+        return spent
+            ? 'The converted request has been approved. Revoking it gives those Annual leave '
+              + 'days back to the balance and removes the calendar entries and timesheet '
+              + 'bookings it created. The days go back to being unpaid, as they were before '
+              + 'the conversion.'
+            : 'The converted request has not been approved, so no Annual leave has been spent. '
+              + 'The days go back to being unpaid, as they were before the conversion.';
     }
 
     days(value) {
@@ -155,40 +167,44 @@ export default class UnpaidLeaveConversion extends NavigationMixin(LightningElem
         }
     }
 
-    // ------------------------------------------------------------------ reject
+    // ------------------------------------------------------------------ revert
 
-    openRejectModal() {
-        this.rejectReason = '';
-        this.showRejectModal = true;
+    openRevertModal() {
+        this.revertReason = '';
+        this.showRevertModal = true;
     }
 
-    closeRejectModal() {
-        this.showRejectModal = false;
+    closeRevertModal() {
+        this.showRevertModal = false;
     }
 
     handleReasonChange(event) {
-        this.rejectReason = event.detail.value;
+        this.revertReason = event.detail.value;
     }
 
-    async handleReject() {
+    async handleRevert() {
         /*
          * Required here rather than in Apex, which accepts a blank reason: the service
-         * has other callers and a missing note is not a data error. On this button it
-         * is the only record of why a settled absence was taken back.
+         * has other callers and a missing note is not a data error. On this button it is
+         * the only record of why a conversion somebody made deliberately was undone.
          */
-        if (!this.rejectReason || !this.rejectReason.trim()) {
-            this.toast('A reason is required', 'Say why this request is being reverted.', 'warning');
+        if (!this.revertReason || !this.revertReason.trim()) {
+            this.toast('A reason is required', 'Say why this conversion is being reverted.', 'warning');
             return;
         }
 
         this.busy = true;
         try {
-            await rejectUnpaidLeave({ requestId: this.recordId, reason: this.rejectReason });
-            this.showRejectModal = false;
-            this.toast('Request reverted', 'The unpaid days have been given back.', 'success');
+            await revertConversion({ requestId: this.recordId, reason: this.revertReason });
+            this.showRevertModal = false;
+            this.toast(
+                'Conversion reverted',
+                'The paid request has been rejected and the days are unpaid again.',
+                'success'
+            );
             await this.refresh();
         } catch (e) {
-            this.toast('Could not revert this request', this.messageOf(e), 'error');
+            this.toast('Could not revert this conversion', this.messageOf(e), 'error');
         } finally {
             this.busy = false;
         }

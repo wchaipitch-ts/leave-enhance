@@ -644,13 +644,16 @@ public without sharing class TimesheetController {
     }
 
     /**
-     * Rejects the request and reverses what its approval did — the balance, the calendar
-     * entries, the timesheet bookings. That is the standard reversal path; this is a
-     * button in front of it rather than a second implementation of it.
+     * Revokes the paid requests a conversion produced and puts the days back as unpaid,
+     * as they were before it — approved days come back approved.
+     *
+     * Revoking is a rejection, so the Annual balance, calendar entries and man hours the
+     * converted request had spent come back through LeaveReversalService, the same path
+     * every other reversal takes.
      */
     @AuraEnabled
-    public static LeaveConversionService.ConversionView rejectUnpaidLeave(Id requestId,
-                                                                         String reason) {
-        return LeaveConversionService.reject(requestId, reason);
+    public static LeaveConversionService.ConversionView revertConversion(Id requestId,
+                                                                        String reason) {
+        return LeaveConversionService.revert(requestId, reason);
     }
 }

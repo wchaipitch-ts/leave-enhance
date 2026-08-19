@@ -96,14 +96,25 @@ private class LeaveConversionTest {
 
     private static ApplicationItem__c reload(Id applId) {
         return [SELECT Request_Type__c, Status__c, Leave_Days__c, Term_From__c, Term_To__c,
-                       Converted_From_Unpaid__c, Converted_On__c, Converted_By__c, Split_From__c
+                       Converted_From_Unpaid__c, Converted_From_Status__c, Converted_On__c,
+                       Converted_By__c, Split_From__c
                 FROM ApplicationItem__c WHERE Id = :applId];
     }
 
     private static List<ApplicationItem__c> childrenOf(Id parentId) {
         return [SELECT Request_Type__c, Status__c, Leave_Days__c, Term_From__c, Term_To__c,
-                       Converted_From_Unpaid__c, Converted_By__c
+                       Converted_From_Unpaid__c, Converted_From_Status__c, Converted_By__c
                 FROM ApplicationItem__c WHERE Split_From__c = :parentId
+                ORDER BY Term_From__c];
+    }
+
+    /** What a revert put back: the unpaid records raised beside a revoked conversion. */
+    private static List<ApplicationItem__c> restoredUnpaidUnder(Id parentId) {
+        return [SELECT Request_Type__c, Status__c, Leave_Days__c, Term_From__c, Term_To__c
+                FROM ApplicationItem__c
+                WHERE Split_From__c = :parentId
+                  AND Request_Type__c = 'Unpaid leave'
+                  AND Status__c != 'Rejected'
                 ORDER BY Term_From__c];
     }
 
@@ -170,6 +181,8 @@ private class LeaveConversionTest {
         System.assertEquals('Draft', raised[0].Status__c, 'which the owner still has to submit');
         System.assertEquals(2, raised[0].Leave_Days__c, 'for the days that were unpaid');
         System.assertEquals(true, raised[0].Converted_From_Unpaid__c, 'and it says where it came from');
+        System.assertEquals('Approved', raised[0].Converted_From_Status__c,
+            'including what the days were, which is what reverting has to put back');
 
         System.assertEquals(0, balance('Annual leave').Used_Days__c,
             'nothing is spent until that Draft is approved');
@@ -290,23 +303,117 @@ private class LeaveConversionTest {
             'the balance is spoken for by the Draft, so nothing more is offered');
     }
 
-    // --------------------------------------------------------------------- reject
+    // --------------------------------------------------------------------- revert
 
+    /*
+     * Reverting is not rejecting the absence. It revokes the paid request the conversion
+     * produced and puts the days back as unpaid — and because these days had been
+     * approved unpaid, they come back approved unpaid. Sending the employee round for a
+     * second signature on days they already took, because somebody tried a correction
+     * and undid it, would be an odd thing to do to them.
+     */
     @isTest
-    static void rejectingGivesTheDaysBackWithoutConvertingAnything() {
+    static void revertingAnApprovedConversionPutsTheDaysBackAsTheyWere() {
         useTestPolicies();
         ApplicationItem__c appl = raiseUnpaid(2, 'Approved');
 
         Test.startTest();
-        LeaveConversionService.ConversionView v =
-            TimesheetController.rejectUnpaidLeave(appl.Id, 'raised in error');
+        TimesheetController.convertUnpaidLeave(appl.Id, null);
+        System.assertEquals(0, balance('Unpaid leave').Used_Days__c,
+            'the conversion gave the unpaid days back first');
+        TimesheetController.revertConversion(appl.Id, 'converted by mistake');
         Test.stopTest();
 
-        System.assertEquals('Rejected', reload(appl.Id).Status__c, 'the request is reversed');
-        System.assertEquals(0, balance('Unpaid leave').Used_Days__c, 'and its days come back');
-        System.assertEquals(0, v.convertedDays, 'nothing was converted on the way past');
-        System.assertEquals(false, v.canConvert, 'and a rejected request has nothing left to convert');
-        System.assert(reload(appl.Id).Term_From__c != null, 'the absence record itself is kept');
+        List<ApplicationItem__c> paid = [
+            SELECT Status__c FROM ApplicationItem__c
+            WHERE Split_From__c = :appl.Id AND Request_Type__c = 'Annual leave'
+        ];
+        System.assertEquals(1, paid.size(), 'the paid request is still there');
+        System.assertEquals('Rejected', paid[0].Status__c, 'but revoked');
+
+        List<ApplicationItem__c> back = restoredUnpaidUnder(appl.Id);
+        System.assertEquals(1, back.size(), 'and the days are unpaid again');
+        System.assertEquals('Approved', back[0].Status__c,
+            'approved, as they were before anybody converted them');
+        System.assertEquals(2, back[0].Leave_Days__c, 'all of them');
+
+        Leave_Balance__c unpaid = balance('Unpaid leave');
+        System.assertEquals(2, unpaid.Used_Days__c, 'charged to the unpaid balance again');
+        System.assertEquals(2, unpaid.Entitlement_Days__c, 'with the entitlement granted to match');
+    }
+
+    /*
+     * A Draft was shortened rather than replaced, so undoing it can put the days back on
+     * the record they came off and leave the absence as one request again — the shape it
+     * had before anybody pressed anything.
+     */
+    @isTest
+    static void revertingADraftConversionGivesTheRequestItsDaysBack() {
+        useTestPolicies();
+        ApplicationItem__c appl = raiseUnpaid(4, 'Draft');
+        List<Date> days = nWorkingDays(Date.newInstance(testYear(), 3, 2), 4);
+
+        Test.startTest();
+        TimesheetController.convertUnpaidLeave(appl.Id, 2);
+        System.assertEquals(days[2], reload(appl.Id).Term_From__c, 'shortened by the conversion');
+        TimesheetController.revertConversion(appl.Id, 'not needed after all');
+        Test.stopTest();
+
+        ApplicationItem__c after = reload(appl.Id);
+        System.assertEquals(days[0], after.Term_From__c, 'and given its start date back');
+        System.assertEquals(4, after.Leave_Days__c, 'all four days unpaid again');
+        System.assertEquals('Unpaid leave', after.Request_Type__c, 'on the original record');
+        System.assertEquals(0, restoredUnpaidUnder(appl.Id).size(),
+            'with nothing raised beside it: the absence is one request, as it started');
+    }
+
+    /*
+     * A Draft converted in full became the paid request itself. The card follows it there
+     * — otherwise a conversion made in error on a Draft would be undoable only by hand,
+     * which is exactly the case somebody is most likely to want back.
+     */
+    @isTest
+    static void revertingAConversionMadeInPlaceTurnsTheRequestBack() {
+        useTestPolicies();
+        ApplicationItem__c appl = raiseUnpaid(2, 'Draft');
+
+        Test.startTest();
+        TimesheetController.convertUnpaidLeave(appl.Id, null);
+        System.assertEquals('Annual leave', reload(appl.Id).Request_Type__c, 'converted in place');
+        LeaveConversionService.ConversionView v =
+            TimesheetController.getUnpaidConversion(appl.Id);
+        System.assertEquals(true, v.showsConversion,
+            'and the card stays on it, because this record is now the conversion');
+        System.assertEquals(true, v.canRevert, 'offering the way back');
+
+        TimesheetController.revertConversion(appl.Id, 'wrong request');
+        Test.stopTest();
+
+        ApplicationItem__c after = reload(appl.Id);
+        System.assertEquals('Unpaid leave', after.Request_Type__c, 'and back it goes');
+        System.assertEquals('Draft', after.Status__c, 'to the state it was converted from');
+        System.assertEquals(false, after.Converted_From_Unpaid__c, 'with the stamp cleared');
+    }
+
+    @isTest
+    static void thereIsNothingToRevertOnARequestNobodyConverted() {
+        useTestPolicies();
+        ApplicationItem__c appl = raiseUnpaid(2, 'Approved');
+
+        Test.startTest();
+        LeaveConversionService.ConversionView v = TimesheetController.getUnpaidConversion(appl.Id);
+        System.assertEquals(false, v.canRevert, 'nothing has been converted, so nothing to revoke');
+
+        try {
+            TimesheetController.revertConversion(appl.Id, 'no reason');
+            System.assert(false, 'and pressing it anyway is refused');
+        } catch (AuraHandledException e) {
+            // expected
+        }
+        Test.stopTest();
+
+        System.assertEquals('Approved', reload(appl.Id).Status__c,
+            'the absence itself is untouched: reverting is about the conversion, not the leave');
     }
 
     @isTest
@@ -324,6 +431,7 @@ private class LeaveConversionTest {
         Test.stopTest();
 
         System.assertEquals(false, v.canConvert, 'paid leave has nothing to convert');
-        System.assertEquals('Unavailable', v.conversionStatus, 'so the card says so');
+        System.assertEquals(false, v.showsConversion,
+            'and no conversion produced it either, so the card removes itself');
     }
 }

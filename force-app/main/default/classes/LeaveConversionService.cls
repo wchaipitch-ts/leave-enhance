@@ -39,6 +39,19 @@
  * genuinely still unpaid is then re-raised already Approved, so days that were signed
  * for once are not sent round for signature again — only the converted days are, and
  * those are in Draft where the owner can see them before anyone else does.
+ *
+ * REVERTING
+ *
+ * A conversion is a decision, and decisions are made in error. Reverting revokes the
+ * paid request the conversion produced and puts the days back as unpaid — as they were,
+ * which is the whole meaning of the word. Converted_From_Status__c is what makes "as
+ * they were" knowable: once the source has been rejected and replaced, nothing else on
+ * the record says whether those days had been approved. Guessing would either re-grant
+ * days nobody signed for or take away days somebody did.
+ *
+ * Revoking the paid request is a rejection, so the reversal of whatever it had spent —
+ * Annual balance, calendar entries, man hours — is LeaveReversalService's, exactly as
+ * it is everywhere else. Nothing is unwound here by hand.
  */
 public without sharing class LeaveConversionService {
 
@@ -83,9 +96,18 @@ public without sharing class LeaveConversionService {
         @AuraEnabled public Decimal  annualAvailable;
         @AuraEnabled public String   conversionStatus;
         @AuraEnabled public Boolean  canConvert;
-        @AuraEnabled public Boolean  canReject;
+        @AuraEnabled public Boolean  canRevert;
+        /*
+         * Whether this record has anything to do with unpaid conversion at all. False
+         * on ordinary leave, and the card removes itself. True on an unpaid request and
+         * on a paid one that a conversion produced — the second is how a conversion made
+         * in error stays reachable rather than only being undoable by hand.
+         */
+        @AuraEnabled public Boolean  showsConversion;
         /** Why conversion is unavailable, in words fit to show the employee. */
         @AuraEnabled public String   blockedReason;
+        /** Why there is nothing to revert. Null when the button is live. */
+        @AuraEnabled public String   revertBlockedReason;
         /** The Annual requests this conversion produced, oldest first. */
         @AuraEnabled public List<ConvertedRequest> convertedRequests;
     }
@@ -179,6 +201,7 @@ public without sharing class LeaveConversionService {
                 Request_Type__c          = TYPE_ANNUAL,
                 Remark__c                = remarkWith(src.Remark__c, convertedNote(src)),
                 Converted_From_Unpaid__c = true,
+                Converted_From_Status__c = src.Status__c,
                 Converted_On__c          = System.now(),
                 Converted_By__c          = UserInfo.getUserId()
             );
@@ -219,40 +242,120 @@ public without sharing class LeaveConversionService {
         insert raised;
     }
 
-    // ==================================================================== rejecting
+    // ==================================================================== reverting
 
     /**
-     * Rejects the request and reverses everything its approval did — the balance, the
-     * calendar entries, the timesheet bookings. All of that is LeaveReversalService,
-     * reached through the status transition; nothing is undone here by hand.
+     * Revokes the paid requests a conversion produced and puts the days back as unpaid.
      *
-     * @param reason appended to the remark. Optional, but it is the only record of why
-     *               a settled absence was taken back.
+     * The paid request is rejected rather than deleted, so whatever it had spent comes
+     * back the way it does everywhere else — LeaveReversalService, driven by the status
+     * transition. A converted request still in Draft has spent nothing and simply stops
+     * being asked for.
+     *
+     * The days then return as they were before the conversion, which is what
+     * Converted_From_Status__c is for. Days that were approved unpaid come back approved
+     * unpaid: they were taken, the absence happened, and asking somebody to sign for them
+     * a second time because a correction was tried and undone would be an odd thing to
+     * do to an employee.
+     *
+     * @param reason appended to the remark. It is the only record of why a conversion
+     *               that somebody made deliberately was taken back.
      */
-    public static ConversionView reject(Id requestId, String reason) {
+    public static ConversionView revert(Id requestId, String reason) {
         ApplicationItem__c src = load(requestId);
         LeaveBalanceService.assertCanView(src.OwnerId);
 
-        if (STATUS_REJECTED.equals(src.Status__c)) {
-            throw new AuraHandledException('This request has already been rejected.');
-        }
-        if (ApplicationItemTriggerHandler.isOvertimeRequest(src)) {
-            throw new AuraHandledException('This is an overtime claim, not a leave request.');
+        List<ApplicationItem__c> made = convertedChildrenOf(src.Id);
+        Boolean isItselfConverted = src.Converted_From_Unpaid__c == true
+                                    && !STATUS_REJECTED.equals(src.Status__c);
+        if (made.isEmpty() && !isItselfConverted) {
+            throw new AuraHandledException(revertBlockedReasonFor(src, null));
         }
 
         try {
-            update new ApplicationItem__c(
-                Id        = src.Id,
-                Status__c = STATUS_REJECTED,
-                Remark__c = String.isBlank(reason)
-                            ? src.Remark__c
-                            : remarkWith(src.Remark__c, ' [reverted: ' + reason.trim() + ']')
-            );
+            if (!made.isEmpty()) {
+                revertChildren(src, made, reason);
+            } else {
+                revertInPlace(src, reason);
+            }
         } catch (DmlException e) {
             throw new AuraHandledException(e.getNumDml() > 0 ? e.getDmlMessage(0) : e.getMessage());
         }
 
         return buildView(load(requestId));
+    }
+
+    /*
+     * The ordinary case: this record is the unpaid absence, and the conversion raised
+     * paid requests beside it.
+     */
+    private static void revertChildren(ApplicationItem__c src, List<ApplicationItem__c> made,
+                                       String reason) {
+        List<ApplicationItem__c> toReject = new List<ApplicationItem__c>();
+        Date earliest;
+        for (ApplicationItem__c one : made) {
+            toReject.add(new ApplicationItem__c(
+                Id        = one.Id,
+                Status__c = STATUS_REJECTED,
+                Remark__c = remarkWith(one.Remark__c, revertedNote(reason))
+            ));
+            if (earliest == null || one.Term_From__c < earliest) {
+                earliest = one.Term_From__c;
+            }
+        }
+        // Before the days are put back, so no two records claim the same dates.
+        update toReject;
+
+        /*
+         * A Draft source was shortened rather than replaced when it was converted, so
+         * the days can simply go back onto it and the absence is one record again — the
+         * shape it had before anybody pressed anything. Anything else has to be raised
+         * beside it: the source was rejected and replaced, and an approved record cannot
+         * be widened in any case.
+         */
+        Boolean absorb = TYPE_UNPAID.equals(src.Request_Type__c)
+                      && STATUS_DRAFT.equals(src.Status__c)
+                      && src.Term_From__c != null
+                      && earliest != null
+                      && earliest < src.Term_From__c;
+        if (absorb) {
+            update new ApplicationItem__c(Id = src.Id, Term_From__c = earliest);
+            return;
+        }
+
+        List<ApplicationItem__c> restored = new List<ApplicationItem__c>();
+        for (ApplicationItem__c one : made) {
+            restored.add(restoredUnpaid(src, one));
+        }
+        insert restored;
+    }
+
+    /*
+     * A Draft converted in place: this record IS the conversion. Nothing was raised
+     * beside it, so reverting is turning it back into what it was rather than rejecting
+     * anything — unless it has since been approved, in which case it has spent Annual
+     * balance and booked its days, and only a rejection gives those back.
+     */
+    private static void revertInPlace(ApplicationItem__c src, String reason) {
+        if (STATUS_DRAFT.equals(src.Status__c)) {
+            update new ApplicationItem__c(
+                Id                       = src.Id,
+                Request_Type__c          = TYPE_UNPAID,
+                Status__c                = statusOrDraft(src.Converted_From_Status__c),
+                Remark__c                = remarkWith(src.Remark__c, revertedNote(reason)),
+                Converted_From_Unpaid__c = false,
+                Converted_From_Status__c = null,
+                Converted_On__c          = null,
+                Converted_By__c          = null
+            );
+            return;
+        }
+        update new ApplicationItem__c(
+            Id        = src.Id,
+            Status__c = STATUS_REJECTED,
+            Remark__c = remarkWith(src.Remark__c, revertedNote(reason))
+        );
+        insert restoredUnpaid(src, src);
     }
 
     // ==================================================================== the view
@@ -264,8 +367,16 @@ public without sharing class LeaveConversionService {
         v.requestType  = src.Request_Type__c;
         v.status       = src.Status__c;
         v.leaveYear    = src.Term_From__c == null ? null : src.Term_From__c.year();
-        v.canReject    = !STATUS_REJECTED.equals(src.Status__c)
-                         && !ApplicationItemTriggerHandler.isOvertimeRequest(src);
+
+        /*
+         * A record this conversion produced, rather than one it was produced from. It is
+         * a paid request now, so none of the unpaid arithmetic below applies to it — what
+         * the card offers on it is the way back.
+         */
+        Boolean isItselfConverted = src.Converted_From_Unpaid__c == true
+                                    && !STATUS_REJECTED.equals(src.Status__c);
+        v.showsConversion = !ApplicationItemTriggerHandler.isOvertimeRequest(src)
+                            && (TYPE_UNPAID.equals(src.Request_Type__c) || isItselfConverted);
 
         v.convertedRequests = new List<ConvertedRequest>();
         Decimal converted = 0;
@@ -302,7 +413,14 @@ public without sharing class LeaveConversionService {
                 awaitingApproval += zeroIfNull(child.Leave_Days__c);
             }
         }
-        v.convertedDays = converted;
+        /*
+         * A record converted in place is its own converted days: the conversion did not
+         * raise anything beside it, so counting only children would report a fully
+         * converted absence as having converted nothing.
+         */
+        v.convertedDays = isItselfConverted && converted == 0
+            ? zeroIfNull(src.Leave_Days__c)
+            : converted;
 
         Boolean stillCounts = !STATUS_REJECTED.equals(src.Status__c)
                               && TYPE_UNPAID.equals(src.Request_Type__c);
@@ -319,8 +437,30 @@ public without sharing class LeaveConversionService {
         v.convertibleDays = v.canConvert
             ? wholeDays(min(v.remainingUnpaidDays, spendable))
             : 0;
-        v.conversionStatus = statusLabel(v);
+        v.revertBlockedReason = revertBlockedReasonFor(src, v.convertedRequests);
+        v.canRevert           = v.revertBlockedReason == null;
+        v.conversionStatus    = statusLabel(v);
         return v;
+    }
+
+    /*
+     * Revert revokes the paid requests a conversion produced, so what stops it is having
+     * produced none — or none that are still standing.
+     */
+    private static String revertBlockedReasonFor(ApplicationItem__c src,
+                                                 List<ConvertedRequest> made) {
+        if (ApplicationItemTriggerHandler.isOvertimeRequest(src)) {
+            return 'An overtime claim has no conversion to revert.';
+        }
+        if (made != null && !made.isEmpty()) {
+            return null;
+        }
+        if (src.Converted_From_Unpaid__c == true) {
+            return STATUS_REJECTED.equals(src.Status__c)
+                ? 'This converted request has already been rejected.'
+                : null;
+        }
+        return 'Nothing has been converted from this request, so there is nothing to revert.';
     }
 
     /*
@@ -440,9 +580,59 @@ public without sharing class LeaveConversionService {
             OwnerId                  = src.OwnerId,
             Split_From__c            = src.Id,
             Converted_From_Unpaid__c = true,
+            // What the days were before this, so reverting can put them back as they were.
+            Converted_From_Status__c = src.Status__c,
             Converted_On__c          = System.now(),
             Converted_By__c          = UserInfo.getUserId()
         );
+    }
+
+    /*
+     * The unpaid days of one revoked conversion, back as their own request. `made` is
+     * the paid request being revoked — its dates are the days to restore, and the status
+     * it recorded at conversion is the state to restore them to.
+     */
+    private static ApplicationItem__c restoredUnpaid(ApplicationItem__c src, ApplicationItem__c made) {
+        return new ApplicationItem__c(
+            RecordTypeId    = src.RecordTypeId,
+            Request_Type__c = TYPE_UNPAID,
+            Period_Leave__c = 'All day',
+            Term_From__c    = made.Term_From__c,
+            Term_To__c      = made.Term_To__c,
+            Remark__c       = remarkWith(src.Remark__c, ' [unpaid days restored from ' + made.Name + ']'),
+            Status__c       = statusOrDraft(made.Converted_From_Status__c),
+            OwnerId         = src.OwnerId,
+            // The absence this belongs to, unless the revoked request was the absence.
+            Split_From__c   = src.Id == made.Id ? src.Split_From__c : src.Id
+        );
+    }
+
+    private static List<ApplicationItem__c> convertedChildrenOf(Id parentId) {
+        return [
+            SELECT Id, Name, Term_From__c, Term_To__c, Status__c, Remark__c,
+                   Leave_Days__c, Converted_From_Status__c
+            FROM ApplicationItem__c
+            WHERE Split_From__c = :parentId
+              AND Converted_From_Unpaid__c = true
+              AND Status__c != :STATUS_REJECTED
+            ORDER BY Term_From__c
+        ];
+    }
+
+    /*
+     * Anything unrecognised restores as a Draft. A record converted before this was
+     * stamped has no recorded status, and asking for a signature on days that may not
+     * have had one is the safe way round: the alternative grants unpaid days, and the
+     * entitlement behind them, that nobody approved.
+     */
+    private static String statusOrDraft(String status) {
+        return STATUS_APPROVED.equals(status) ? STATUS_APPROVED : STATUS_DRAFT;
+    }
+
+    private static String revertedNote(String reason) {
+        return String.isBlank(reason)
+            ? ' [conversion reverted]'
+            : ' [conversion reverted: ' + reason.trim() + ']';
     }
 
     private static ApplicationItem__c unpaidRemainder(ApplicationItem__c src, Date startDay) {
@@ -480,7 +670,8 @@ public without sharing class LeaveConversionService {
         List<ApplicationItem__c> found = [
             SELECT Id, Name, OwnerId, RecordTypeId, Request_Type__c, Period_Leave__c,
                    Status__c, Term_From__c, Term_To__c, Leave_Days__c, Remark__c,
-                   Split_From__c, Balance_Applied_Days__c, Leave_Balance__c
+                   Split_From__c, Balance_Applied_Days__c, Leave_Balance__c,
+                   Converted_From_Unpaid__c, Converted_From_Status__c
             FROM ApplicationItem__c WHERE Id = :requestId LIMIT 1
         ];
         if (found.isEmpty()) {
