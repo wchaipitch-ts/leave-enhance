@@ -23,6 +23,7 @@ public class CreateLeaveRecordOnManInputTriggerLogic {
         Decimal hours;
         String kind;   // KIND_LEAVE or KIND_OVERTIME - picks the yearly project
         String work;   // what lands in Man_hour__c.Work__c
+        Id projectId;  // filled in by resolveProjects before the assignment is looked up
         Booking(ApplicationItem__c appl, Date performedOn, Decimal hours, String kind, String work) {
             this.appl = appl;
             this.performedOn = performedOn;
@@ -147,89 +148,64 @@ public class CreateLeaveRecordOnManInputTriggerLogic {
             return;
         }
 
-        Set<String> projectNames = new Set<String>();
+        // Pass 1 - give every booking a concrete project, creating the yearly one on
+        // first use. Split out so the rest of this method has a project Id to key on.
+        resolveProjects(bookings);
+
+        Set<Id> projectIds = new Set<Id>();
         Set<Id> ownerIds = new Set<Id>();
-        Map<String, Date> anyDateForProject = new Map<String, Date>();
-        Map<String, String> kindForProject = new Map<String, String>();
         for (Booking booking : bookings) {
-            String name = projectNameFor(booking.kind, booking.performedOn);
-            projectNames.add(name);
+            if (booking.projectId == null) {
+                continue;
+            }
+            projectIds.add(booking.projectId);
             ownerIds.add(booking.appl.OwnerId);
-            anyDateForProject.put(name, booking.performedOn);
-            kindForProject.put(name, booking.kind);
+        }
+        if (projectIds.isEmpty()) {
+            return;
         }
 
+        /*
+         * Queried after pass 1 rather than before it, because a project created moments
+         * ago cannot appear in a query issued earlier. Keyed on Project_No__c rather
+         * than on the project name: names are unique only among the yearly projects this
+         * class invents, and keying on Id costs nothing extra.
+         */
         List<ProjectAssign__c> existingAssigns = [
-            SELECT Id, Project_Name__c, Assignee__c, Start_Date__c, Due_Date__c
+            SELECT Id, Project_No__c, Assignee__c, Start_Date__c, Due_Date__c
             FROM ProjectAssign__c
-            WHERE Project_Name__c IN :projectNames
+            WHERE Project_No__c IN :projectIds
               AND Assignee__c IN :ownerIds
             ORDER BY Id
         ];
-
-        Map<String, Project__c> projectByName = new Map<String, Project__c>();
-        for (Project__c p : [
-            SELECT Id, Project_Name__c FROM Project__c
-            WHERE Project_Name__c IN :projectNames ORDER BY Id
-        ]) {
-            if (!projectByName.containsKey(p.Project_Name__c)) {
-                projectByName.put(p.Project_Name__c, p);
-            }
-        }
-
-        // Pass 1 - create any missing yearly project
-        List<Project__c> newProjects = new List<Project__c>();
-        for (String name : projectNames) {
-            if (projectByName.containsKey(name)) {
-                continue;
-            }
-            Date sample = anyDateForProject.get(name);
-            String kind = kindForProject.get(name);
-            newProjects.add(new Project__c(
-                OwnerId           = UserInfo.getUserId(),
-                RecordTypeId      = nonChargedRecordTypeId(),
-                Project_Name__c   = name,
-                Remark__c         = 'for ' + kind + ' in FY' + twoDigitYear(sample),
-                Project_Detail__c = 'for user input a ' + kind + ' record',
-                Start_Date__c     = Date.newInstance(sample.year(), 1, 1),
-                Close_Date__c     = Date.newInstance(sample.year(), 12, 31)
-            ));
-        }
-        if (!newProjects.isEmpty()) {
-            insert newProjects;
-            for (Project__c p : newProjects) {
-                projectByName.put(p.Project_Name__c, p);
-            }
-        }
 
         // Pass 2 - resolve one assignment per project / owner / month of the booking
         Map<String, ProjectAssign__c> assignByKey = new Map<String, ProjectAssign__c>();
         Map<String, ProjectAssign__c> assignsToCreate = new Map<String, ProjectAssign__c>();
         for (Booking booking : bookings) {
-            String name = projectNameFor(booking.kind, booking.performedOn);
+            if (booking.projectId == null) {
+                continue;
+            }
             Date monthStart = booking.performedOn.toStartOfMonth();
             Date monthEnd = Date.newInstance(
                 monthStart.year(), monthStart.month(),
                 Date.daysInMonth(monthStart.year(), monthStart.month())
             );
-            String key = assignKey(name, booking.appl.OwnerId, monthStart);
+            String key = assignKey(booking.projectId, booking.appl.OwnerId, monthStart);
             if (assignByKey.containsKey(key) || assignsToCreate.containsKey(key)) {
                 continue;
             }
 
-            ProjectAssign__c match = findAssign(existingAssigns, name, booking.appl.OwnerId, monthStart, monthEnd);
+            ProjectAssign__c match = findAssign(
+                existingAssigns, booking.projectId, booking.appl.OwnerId, monthStart, monthEnd);
             if (match != null) {
                 assignByKey.put(key, match);
                 continue;
             }
 
-            Project__c parent = projectByName.get(name);
-            if (parent == null) {
-                continue;
-            }
             assignsToCreate.put(key, new ProjectAssign__c(
                 Assignee__c   = booking.appl.OwnerId,
-                Project_No__c = parent.Id,
+                Project_No__c = booking.projectId,
                 Start_Date__c = monthStart,
                 Due_Date__c   = monthEnd
             ));
@@ -242,8 +218,11 @@ public class CreateLeaveRecordOnManInputTriggerLogic {
         // Pass 3 - one man hour record per booked date
         List<Man_hour__c> manHours = new List<Man_hour__c>();
         for (Booking booking : bookings) {
+            if (booking.projectId == null) {
+                continue;
+            }
             ProjectAssign__c assign = assignByKey.get(assignKey(
-                projectNameFor(booking.kind, booking.performedOn),
+                booking.projectId,
                 booking.appl.OwnerId,
                 booking.performedOn.toStartOfMonth()
             ));
@@ -266,13 +245,78 @@ public class CreateLeaveRecordOnManInputTriggerLogic {
     }
 
     /*
+     * Sets Booking.projectId on every booking that does not already carry one, from the
+     * per-year "Leave FYxx" / "Overtime FYxx" Project__c, which is created on first use.
+     */
+    private void resolveProjects(List<Booking> bookings) {
+        Map<String, Date> sampleDateForProject = new Map<String, Date>();
+        Map<String, String> kindForProject = new Map<String, String>();
+        for (Booking booking : bookings) {
+            if (booking.projectId != null) {
+                continue;
+            }
+            String name = projectNameFor(booking.kind, booking.performedOn);
+            sampleDateForProject.put(name, booking.performedOn);
+            kindForProject.put(name, booking.kind);
+        }
+        if (sampleDateForProject.isEmpty()) {
+            return;
+        }
+
+        Set<String> projectNames = sampleDateForProject.keySet();
+        Map<String, Project__c> projectByName = new Map<String, Project__c>();
+        for (Project__c p : [
+            SELECT Id, Project_Name__c FROM Project__c
+            WHERE Project_Name__c IN :projectNames ORDER BY Id
+        ]) {
+            if (!projectByName.containsKey(p.Project_Name__c)) {
+                projectByName.put(p.Project_Name__c, p);
+            }
+        }
+
+        List<Project__c> newProjects = new List<Project__c>();
+        for (String name : projectNames) {
+            if (projectByName.containsKey(name)) {
+                continue;
+            }
+            Date sample = sampleDateForProject.get(name);
+            String kind = kindForProject.get(name);
+            newProjects.add(new Project__c(
+                OwnerId           = UserInfo.getUserId(),
+                RecordTypeId      = nonChargedRecordTypeId(),
+                Project_Name__c   = name,
+                Remark__c         = 'for ' + kind + ' in FY' + twoDigitYear(sample),
+                Project_Detail__c = 'for user input a ' + kind + ' record',
+                Start_Date__c     = Date.newInstance(sample.year(), 1, 1),
+                Close_Date__c     = Date.newInstance(sample.year(), 12, 31)
+            ));
+        }
+        if (!newProjects.isEmpty()) {
+            insert newProjects;
+            for (Project__c p : newProjects) {
+                projectByName.put(p.Project_Name__c, p);
+            }
+        }
+
+        for (Booking booking : bookings) {
+            if (booking.projectId != null) {
+                continue;
+            }
+            Project__c parent = projectByName.get(projectNameFor(booking.kind, booking.performedOn));
+            if (parent != null) {
+                booking.projectId = parent.Id;
+            }
+        }
+    }
+
+    /*
      * Mirrors the original overlap test: an assignment counts as covering the month
      * if either end of it falls inside that month.
      */
-    private ProjectAssign__c findAssign(List<ProjectAssign__c> assigns, String name,
+    private ProjectAssign__c findAssign(List<ProjectAssign__c> assigns, Id projectId,
                                         Id ownerId, Date monthStart, Date monthEnd) {
         for (ProjectAssign__c pa : assigns) {
-            if (pa.Project_Name__c != name || pa.Assignee__c != ownerId) {
+            if (pa.Project_No__c != projectId || pa.Assignee__c != ownerId) {
                 continue;
             }
             Boolean startsInMonth = pa.Start_Date__c != null
@@ -286,8 +330,8 @@ public class CreateLeaveRecordOnManInputTriggerLogic {
         return null;
     }
 
-    private static String assignKey(String projectName, Id ownerId, Date monthStart) {
-        return projectName + '|' + ownerId + '|' + monthStart;
+    private static String assignKey(Id projectId, Id ownerId, Date monthStart) {
+        return projectId + '|' + ownerId + '|' + monthStart;
     }
 
     private static String twoDigitYear(Date d) {
