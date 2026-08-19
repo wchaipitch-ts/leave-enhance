@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">
+    <customPermissions>
+        <enabled>true</enabled>
+        <name>Bypass_Leave_Request_Rules</name>
+    </customPermissions>
+    <description>LEAVE-42. Carries Bypass_Leave_Request_Rules and nothing else, so granting the override cannot smuggle in unrelated access. Kept separate from Leave Management Admin, which is assigned more widely than this should be.</description>
+    <hasActivationRequired>false</hasActivationRequired>
+    <label>Leave Request Rule Bypass</label>
+</PermissionSet>

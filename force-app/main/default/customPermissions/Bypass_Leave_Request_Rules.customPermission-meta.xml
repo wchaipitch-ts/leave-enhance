@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomPermission xmlns="http://soap.sforce.com/2006/04/metadata">
+    <description>LEAVE-42. Lifts all three leave request rules: the per-type day cap, the document required to submit, and the lock on removing the last document from a submitted request. Broad by design - see LeaveDocumentPolicy for why it is one key rather than three.</description>
+    <isLicensed>false</isLicensed>
+    <label>Bypass Leave Request Rules</label>
+</CustomPermission>

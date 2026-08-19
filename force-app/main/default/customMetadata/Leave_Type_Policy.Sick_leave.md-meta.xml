@@ -19,6 +19,10 @@
         <value xsi:type="xsd:boolean">true</value>
     </values>
     <values>
+        <field>Document_Required_From_Days__c</field>
+        <value xsi:type="xsd:double">3.0</value>
+    </values>
+    <values>
         <field>Entitlement_Days__c</field>
         <value xsi:type="xsd:double">30.0</value>
     </values>
@@ -33,6 +37,10 @@
     <values>
         <field>Locked_During_Probation__c</field>
         <value xsi:type="xsd:boolean">false</value>
+    </values>
+    <values>
+        <field>Max_Days_Per_Request__c</field>
+        <value xsi:nil="true"/>
     </values>
     <values>
         <field>Reset_Basis__c</field>

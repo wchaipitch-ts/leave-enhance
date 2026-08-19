@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Max_Days_Per_Request__c</fullName>
+    <description>LEAVE-42. The most one request of this type may cover. Blank means uncapped, which is every type but Personal leave.
+
+Enforced against both Leave_Days__c and the calendar span. The span check is what stops a Saturday-to-Sunday request slipping through: it counts zero working days, so the day count alone would read it as within any cap.</description>
+    <externalId>false</externalId>
+    <fieldManageability>DeveloperControlled</fieldManageability>
+    <label>Max Days Per Request</label>
+    <precision>4</precision>
+    <required>false</required>
+    <scale>1</scale>
+    <type>Number</type>
+    <unique>false</unique>
+</CustomField>

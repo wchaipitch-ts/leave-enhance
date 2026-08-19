@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Document_Required_From_Days__c</fullName>
+    <description>LEAVE-42. The day count at which a supporting document must be attached before the request can be submitted for approval. Blank means never required; 0 means always, including a half day. Measured against Leave_Days__c, which counts working days, so Friday to Monday is two days and needs no certificate.
+
+Judged per record. A request that LeaveSplitService shortens is measured on the days it is left holding, not on what was originally asked for - see LeaveDocumentPolicy for what that permits.</description>
+    <externalId>false</externalId>
+    <fieldManageability>DeveloperControlled</fieldManageability>
+    <label>Document Required From Days</label>
+    <precision>4</precision>
+    <required>false</required>
+    <scale>1</scale>
+    <type>Number</type>
+    <unique>false</unique>
+</CustomField>

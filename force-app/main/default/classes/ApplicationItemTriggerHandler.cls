@@ -65,11 +65,17 @@ public class ApplicationItemTriggerHandler {
     }
 
     /*
-     * Order matters: calculateLeaveDays writes Leave_Days__c, and deductLeaveBalance
-     * reads it to decide how much balance to move.
+     * Order matters: calculateLeaveDays writes Leave_Days__c, and both LeaveRequestGuard
+     * and deductLeaveBalance read it - the guard to measure the day cap and the document
+     * threshold, the deduction to decide how much balance to move.
+     *
+     * LEAVE-42. The guard runs before the deduction so a request that breaks a policy
+     * fails on its own terms rather than alongside a balance error it only caused by
+     * being the wrong shape.
      */
     private void beforeSave(List<ApplicationItem__c> requests, Map<Id, ApplicationItem__c> oldMap) {
         logic.calculateLeaveDays(requests);
+        LeaveRequestGuard.enforce(requests, oldMap);
         logic.deductLeaveBalance(justApproved(requests, oldMap));
     }
 
@@ -116,6 +122,10 @@ public class ApplicationItemTriggerHandler {
         // The lookup from Man_hour__c is nulled as part of the delete, so the rows have
         // to be identified while it still points somewhere.
         LeaveReversalService.rememberBookingsOf(oldList);
+        // LEAVE-42. Same shape of problem: the platform takes the ContentDocumentLinks
+        // with the request, and without this note the removal lock would read that
+        // cascade as somebody stripping the certificate off an approved request.
+        LeaveDocumentPolicy.noteRequestsBeingDeleted(oldList);
     }
 
     public void onAfterDelete(List<ApplicationItem__c> oldList) {
