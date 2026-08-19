@@ -270,7 +270,6 @@ public without sharing class TimesheetController {
         }
     }
 
-    // ==================================================================== LEAVE-38
     /*
      * One call for everything the leave cards and the Leave Balance page need.
      *
@@ -340,7 +339,7 @@ public without sharing class TimesheetController {
          */
         Date today = System.today();
         /*
-         * LEAVE-39. Asserted here rather than left to the first balance call, which also
+         * Asserted here rather than left to the first balance call, which also
          * enforces it. Relying on that made the guard positional: reorder the four lines
          * below and it would disappear without a test noticing.
          */
@@ -429,7 +428,7 @@ public without sharing class TimesheetController {
      * The three categories are kept disjoint so no request appears under two tabs.
      * Under the split model an over-balance request becomes two records - the shortened
      * paid one and an Unpaid leave continuation - so the request type is the whole test.
-     * The tabs used to also read LWOP_Days__c, from the model LEAVE-33 replaced; that
+     * The tabs used to also read LWOP_Days__c, from the model  replaced; that
      * field is deleted and its clause matched nothing, so it has gone with it.
      */
 
@@ -604,5 +603,54 @@ public without sharing class TimesheetController {
         List<ApplicationItem__c> saved = Database.query(
             'SELECT ' + ITEM_FIELDS + ' FROM ApplicationItem__c WHERE Id = :recordId LIMIT 1');
         return saved.isEmpty() ? null : saved[0];
+    }
+
+    // ======================================================== unpaid leave conversion
+    /*
+     * The three entry points behind the Unpaid Leave Conversion card. The mechanics are
+     * LeaveConversionService's — these exist so the card talks to the same controller as
+     * the rest of the leave screens, and so every one of them is gated on the same
+     * permission rule LeaveBalanceService owns.
+     */
+
+    /**
+     * The card's figures for one Unpaid leave request: what can be converted, what
+     * already has been, and what is still unpaid.
+     *
+     * Every number is derived on read from the record, its converted children and the
+     * Annual balance. None of them is stored on the request — a stored "convertible
+     * days" goes stale the moment anyone else's request is approved against the same
+     * balance.
+     */
+    @AuraEnabled(cacheable=true)
+    public static LeaveConversionService.ConversionView getUnpaidConversion(Id requestId) {
+        return LeaveConversionService.view(requestId);
+    }
+
+    /**
+     * Turns unpaid days into an Annual leave request in Draft, which the owner then
+     * submits for approval. Nothing here spends Annual balance: the approval does, as
+     * it does for every other request.
+     *
+     * @param days whole days to convert; null converts everything currently convertible.
+     * @return the card's figures read back afterwards. Worth reading rather than
+     *         assuming: converting an approved request rejects and replaces it, so the
+     *         record the client was holding is not the one that survives.
+     */
+    @AuraEnabled
+    public static LeaveConversionService.ConversionView convertUnpaidLeave(Id requestId,
+                                                                          Decimal days) {
+        return LeaveConversionService.convert(requestId, days);
+    }
+
+    /**
+     * Rejects the request and reverses what its approval did — the balance, the calendar
+     * entries, the timesheet bookings. That is the standard reversal path; this is a
+     * button in front of it rather than a second implementation of it.
+     */
+    @AuraEnabled
+    public static LeaveConversionService.ConversionView rejectUnpaidLeave(Id requestId,
+                                                                         String reason) {
+        return LeaveConversionService.reject(requestId, reason);
     }
 }

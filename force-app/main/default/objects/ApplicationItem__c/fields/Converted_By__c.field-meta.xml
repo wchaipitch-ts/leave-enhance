@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Converted_By__c</fullName>
+    <deleteConstraint>SetNull</deleteConstraint>
+    <description>Who converted the unpaid days to Annual leave. Not always the owner: the conversion is available to anyone who may view the employee&apos;s timesheet, so the person who made the correction is recorded separately from the person the leave belongs to.</description>
+    <inlineHelpText>Who performed the unpaid leave conversion. Set automatically.</inlineHelpText>
+    <label>Converted By</label>
+    <referenceTo>User</referenceTo>
+    <relationshipLabel>Converted Leave Requests</relationshipLabel>
+    <relationshipName>Converted_Leave_Requests</relationshipName>
+    <required>false</required>
+    <trackTrending>false</trackTrending>
+    <type>Lookup</type>
+</CustomField>
