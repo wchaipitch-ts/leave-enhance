@@ -26,6 +26,8 @@ sf apex run --file scripts/apex/01_fix_grant_year_and_allocations.apex --target-
 | 02 | `02_backfill_sick_personal_allocations.apex` | Fills `Sick_Leave_Allocated__c = 30` and `Personal_Leave_Allocated__c = 3` where null. Fills nulls only, so any deliberately different value survives. |
 | 03 | `03_backfill_leave_balances.apex` | Creates one `Leave_Balance__c` per employee per active `Leave_Type_Policy__mdt` row for the target year, seeded from the User fields. Upserts on `External_Key__c`, and stamps `Granted_On__c`. Leaves the User fields untouched — they are the frozen fallback. |
 | 04 | `04_stamp_granted_on.apex` | Backfills `Granted_On__c` on any row created before that field existed. Only needed where script 03 was run from a version that predates the field. Stamps blanks only, and deliberately leaves ungranted Refreshment rows blank so the anniversary grant can still fire. |
+| 05 | `05_backfill_balance_lookup.apex` | Points `ApplicationItem__c.Leave_Balance__c` at the row each approved request drew from, so a later rejection knows what to give back. Sets the lookup only — it does **not** move `Used_Days__c`, because the balance already reflects those days. |
+| 06 | `06_fix_expiry_dates.apex` | Corrects the two dates script 03 copied verbatim from the User fields instead of deriving them: `Carry_Over_Expiry__c` (30 June of the balance year) and `Expiry_Date__c` (`Granted_On__c` + the grant window). Both being wrong means days that should lapse never do. **Dry run by default** — set `APPLY = true` to write. Idempotent. |
 
 > ### ⚠️ Script 03 is a one-way migration, not a repair tool
 >
