@@ -52,10 +52,34 @@ public class ApplicationItemTriggerLogic {
         return policies().get(leaveType);
     }
 
-    /** True for the types LeaveSplitService may cut down: currently Annual and Sick. */
-    private static Boolean countsTowardSplit(ApplicationItem__c appl) {
-        Leave_Type_Policy__mdt policy = policyFor(appl.Request_Type__c);
-        return policy != null && policy.Counts_Toward_LWOP_Check__c == true;
+    /*
+     * Which pool a type overflows into when it runs dry, or null if it never does.
+     * The chain itself is walked by LeaveSplitService; this is here so the refusal
+     * message below can name the same destination the split would have used.
+     */
+    private static String overflowTargetFor(String leaveType) {
+        Leave_Type_Policy__mdt policy = policyFor(leaveType);
+        return policy == null || String.isBlank(policy.Overflow_To__c)
+            ? null
+            : policy.Overflow_To__c;
+    }
+
+    /*
+     * Two refusals, because there are two remedies. A type that overflows can be split,
+     * so the approver is told to send it back and let the days beyond the balance
+     * separate themselves out. A type that does not has nowhere to put them, and the
+     * only honest answer is that the request is too long.
+     */
+    private static String overdrawMessage(ApplicationItem__c appl, Leave_Type_Policy__mdt policy,
+                                          Decimal available, Decimal payable) {
+        String head = appl.Request_Type__c + ': only ' + available
+            + ' day(s) remain but this request is for ' + payable + '. ';
+        String target = overflowTargetFor(appl.Request_Type__c);
+        return target == null
+            ? head + 'Shorten it to what the balance covers, or raise the remaining days '
+                   + 'as a separate request of another type.'
+            : head + 'Raise it unapproved first so the days beyond the balance are '
+                   + 'separated out into a ' + target + ' request, then approve both.';
     }
 
     /*
@@ -276,23 +300,28 @@ public class ApplicationItemTriggerLogic {
             appl.Leave_Balance__c = bal.Id;
 
             /*
-             * ckstop. The split is calculated when the request is saved, so
+             * The backstop. The split is calculated when the request is saved, so
              * it reflects the balance at that moment. If two requests were raised while
              * both looked affordable and the other one was approved first, this one is
-             * now too big and its unpaid half was never created.
+             * now too big and its continuation was never created.
              *
              * Used_Days__c is the running in-transaction figure, so this also catches
              * two such approvals arriving in the same batch. Refusing is the point:
              * the alternative is a balance quietly going negative.
+             *
+             * LEAVE-46: keyed on Grants_On_Use__c rather than on whether the type can be
+             * split. Those are not the same question, and Refresh Leave sat between
+             * them — split by nothing and refused by nothing, so an over-long request
+             * drove the balance to a figure like -7 and the page read "-7 available".
+             * What matters here is whether the pool is finite: a grant-on-use type
+             * raises its own entitlement as it is spent and can never be overdrawn,
+             * every other type can.
              */
             Decimal available = zeroIfNull(bal.Accrued_Days__c)
                               + zeroIfNull(bal.Carry_Over_Days__c)
                               - zeroIfNull(bal.Used_Days__c);
-            if (countsTowardSplit(appl) && payable > available) {
-                appl.addError(appl.Request_Type__c + ': only ' + available
-                    + ' day(s) remain but this request is for ' + payable + '. Raise it '
-                    + 'unapproved first so the days beyond the balance are separated out '
-                    + 'into an Unpaid leave request, then approve both.');
+            if (policy.Grants_On_Use__c != true && payable > available) {
+                appl.addError(overdrawMessage(appl, policy, available, payable));
                 continue;
             }
 

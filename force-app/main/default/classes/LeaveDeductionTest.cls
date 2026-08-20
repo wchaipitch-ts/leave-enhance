@@ -245,6 +245,13 @@ private class LeaveDeductionTest {
 
     @isTest
     static void sickAndPersonalUseTheirOwnRows() {
+        /*
+         * LEAVE-42 gave Personal leave a document requirement from day zero, which
+         * refuses any Personal leave request created already Pending. This test is
+         * about which balance row the deduction lands on, so the document gate is
+         * stood down rather than satisfied with a file that proves nothing here.
+         */
+        LeaveDocumentPolicy.bypassOverride = true;
         ApplicationItem__c sick = request('Sick leave', 'All day');
         ApplicationItem__c personal = request('Personal leave', 'PM leave');
         insert new List<ApplicationItem__c>{ sick, personal };

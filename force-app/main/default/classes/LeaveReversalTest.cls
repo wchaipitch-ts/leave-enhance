@@ -39,19 +39,17 @@ private class LeaveReversalTest {
     private static void useTestPolicies() {
         ApplicationItemTriggerLogic.policyOverride = new List<Leave_Type_Policy__mdt>{
             new Leave_Type_Policy__mdt(Leave_Type__c = 'Annual leave', Active__c = true,
-                Deducts_Balance__c = true, Counts_Toward_LWOP_Check__c = true),
+                Deducts_Balance__c = true, Overflow_To__c = 'Unpaid leave'),
             new Leave_Type_Policy__mdt(Leave_Type__c = 'Unpaid leave', Active__c = true,
-                Deducts_Balance__c = true, Counts_Toward_LWOP_Check__c = false,
-                Grants_On_Use__c = true),
+                Deducts_Balance__c = true, Grants_On_Use__c = true),
             /*
              * A statutory type, to prove the unwind follows the flag rather than the
-             * Unpaid leave name it used to be hardcoded to. Counts_Toward_LWOP_Check__c
-             * stays false: a type with no pool cannot run short, and making it splittable
+             * Unpaid leave name it used to be hardcoded to. Overflow_To__c
+             * stays blank: a type with no pool cannot run short, and making it splittable
              * would send every request straight to Unpaid leave instead.
              */
             new Leave_Type_Policy__mdt(Leave_Type__c = 'Bereavement leave', Active__c = true,
-                Deducts_Balance__c = true, Counts_Toward_LWOP_Check__c = false,
-                Grants_On_Use__c = true)
+                Deducts_Balance__c = true, Grants_On_Use__c = true)
         };
     }
 

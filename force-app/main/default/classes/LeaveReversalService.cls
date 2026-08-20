@@ -22,8 +22,6 @@
  */
 public without sharing class LeaveReversalService {
 
-    private static final String TYPE_UNPAID = 'Unpaid leave';
-
     /*
      * Man_hour__c ids captured while the request still exists. On delete the lookup to
      * the parent is set to null as part of the delete, so by the after context there is
@@ -142,42 +140,73 @@ public without sharing class LeaveReversalService {
         if (rejectedParentIds.isEmpty()) {
             return;
         }
-        List<ApplicationItem__c> tails = [
+        List<ApplicationItem__c> siblings = [
             SELECT Id, Request_Type__c, Status__c, Term_From__c, Term_To__c, OwnerId,
                    Split_From__c, Split_From__r.Request_Type__c, RecordTypeId, Leave_Days__c
             FROM ApplicationItem__c
             WHERE Split_From__c IN :rejectedParentIds
-              AND Request_Type__c = :TYPE_UNPAID
               AND Status__c NOT IN ('Approved', 'Rejected')
+            ORDER BY Split_From__c, Term_From__c
         ];
-        if (tails.isEmpty()) {
+        if (siblings.isEmpty()) {
             return;
         }
 
-        List<ApplicationItem__c> promoted = new List<ApplicationItem__c>();
-        for (ApplicationItem__c tail : tails) {
-            String originalType = tail.Split_From__r.Request_Type__c;
-            // The parent may itself have been converted to Unpaid leave when nothing
-            // was affordable. Promoting to Unpaid leave would be a no-op.
-            if (String.isBlank(originalType) || TYPE_UNPAID.equals(originalType)) {
+        Map<Id, List<ApplicationItem__c>> byParent = new Map<Id, List<ApplicationItem__c>>();
+        for (ApplicationItem__c sib : siblings) {
+            if (!byParent.containsKey(sib.Split_From__c)) {
+                byParent.put(sib.Split_From__c, new List<ApplicationItem__c>());
+            }
+            byParent.get(sib.Split_From__c).add(sib);
+        }
+
+        List<ApplicationItem__c> keep = new List<ApplicationItem__c>();
+        List<ApplicationItem__c> discard = new List<ApplicationItem__c>();
+
+        for (List<ApplicationItem__c> family : byParent.values()) {
+            String originalType = family[0].Split_From__r.Request_Type__c;
+            /*
+             * The parent may itself have been rewritten to a later type in the chain
+             * when nothing above it was affordable. Promoting to what the record already
+             * is would be a no-op, and with a single survivor there is nothing to merge
+             * either, so the family is left as it stands.
+             */
+            if (String.isBlank(originalType)
+                || (family.size() == 1 && originalType.equals(family[0].Request_Type__c))) {
                 continue;
             }
-            tail.Request_Type__c = originalType;
-            promoted.add(tail);
-        }
-        if (promoted.isEmpty()) {
-            return;
-        }
 
-        update promoted;
+            /*
+             * The survivors are merged onto the earliest of them, which takes the type
+             * the employee originally asked for and the whole span the family covered.
+             * The walk then divides it again from the top of the chain.
+             *
+             * Moving each record up one place instead would be wrong as often as it was
+             * right: with Refresh -> Annual -> Unpaid, how far the Annual and Unpaid
+             * stretches shift depends on how many refresh days the rejection freed, not
+             * on their position. Rebuilding asks the question once and gets every shape.
+             */
+            ApplicationItem__c head = family[0];
+            Date furthest = endOf(head);
+            for (Integer i = 1; i < family.size(); i++) {
+                Date candidate = endOf(family[i]);
+                if (candidate > furthest) {
+                    furthest = candidate;
+                }
+                discard.add(family[i]);
+            }
+            head.Request_Type__c = originalType;
+            head.Term_To__c = furthest;
+            keep.add(head);
+        }
 
         // Re-measured against the balance the rejection just freed. Anything still
-        // beyond it splits back out as a fresh unpaid tail.
-        LeaveSplitService.reevaluate([
-            SELECT Id, OwnerId, Request_Type__c, Status__c, Term_From__c, Term_To__c,
-                   Leave_Days__c, Split_From__c, RecordTypeId, Remark__c
-            FROM ApplicationItem__c WHERE Id IN :promoted
-        ]);
+        // beyond it splits back out down the chain as before.
+        LeaveSplitService.rebuildFrom(keep, discard);
+    }
+
+    private static Date endOf(ApplicationItem__c appl) {
+        return appl.Term_To__c == null ? appl.Term_From__c : appl.Term_To__c;
     }
 
     private static Decimal floorAtZero(Decimal value) {

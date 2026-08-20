@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ApprovalProcess xmlns="http://soap.sforce.com/2006/04/metadata">
-    <active>false</active>
+    <active>true</active>
     <allowRecall>false</allowRecall>
     <allowedSubmitters>
         <type>owner</type>
@@ -25,31 +25,9 @@
                 <type>userHierarchyField</type>
             </approver>
         </assignedApprover>
-        <description>The absence itself. Approving here no longer stamps the record Approved - that moved to the process level so an unpaid request is not deducted and booked before the Managing Director has seen it.</description>
+        <description>The only step. Every leave request goes to the line manager and to nobody else - LEAVE-47 removed the Managing Director step that v2 added for Unpaid leave, so an unpaid stretch produced by a split is signed off by the same person as the paid stretch beside it.</description>
         <label>Manager Approval</label>
         <name>Manager_Approval</name>
-    </approvalStep>
-    <approvalStep>
-        <allowDelegate>false</allowDelegate>
-        <assignedApprover>
-            <approver>
-                <name>yuta.kuribayashi@terrasky.co.th</name>
-                <type>user</type>
-            </approver>
-            <whenMultipleApprovers>FirstResponse</whenMultipleApprovers>
-        </assignedApprover>
-        <entryCriteria>
-            <criteriaItems>
-                <field>ApplicationItem__c.Request_Type__c</field>
-                <operation>equals</operation>
-                <value>Unpaid leave</value>
-            </criteriaItems>
-        </entryCriteria>
-        <label>Managing Director Approval</label>
-        <name>Managing_Director_Approval</name>
-        <rejectBehavior>
-            <type>RejectRequest</type>
-        </rejectBehavior>
     </approvalStep>
     <emailTemplate>ApplicationItem_Approval/Leave_Request_Email_Template</emailTemplate>
     <enableMobileDeviceAccess>false</enableMobileDeviceAccess>
@@ -88,7 +66,7 @@
             <type>FieldUpdate</type>
         </action>
     </initialSubmissionActions>
-    <label>Appli Leave Request Approval Process v2</label>
+    <label>Appli Leave Request Approval Process v3</label>
     <nextAutomatedApprover>
         <useApproverFieldOfRecordOwner>false</useApproverFieldOfRecordOwner>
         <userHierarchyField>Manager</userHierarchyField>

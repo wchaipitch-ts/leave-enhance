@@ -5,7 +5,7 @@
  * Custom Metadata cannot be inserted by DML, and the two fields these rules turn on are
  * manual edits nobody has necessarily made in the org the tests happen to run against.
  *
- * Counts_Toward_LWOP_Check__c is deliberately OFF for every type here. It is what makes
+ * Overflow_To__c is deliberately blank for every type here. It is what makes
  * LeaveSplitService cut a request down, and a request quietly shortened mid-test would
  * change the very day count these assertions are about. The split has its own test class.
  *
@@ -33,13 +33,12 @@ private class LeaveRequestGuardTest {
         LeaveDocumentPolicy.bypassOverride = false;
         ApplicationItemTriggerLogic.policyOverride = new List<Leave_Type_Policy__mdt>{
             new Leave_Type_Policy__mdt(Leave_Type__c = 'Sick leave', Active__c = true,
-                Deducts_Balance__c = true, Counts_Toward_LWOP_Check__c = false,
-                Document_Required_From_Days__c = 3),
+                Deducts_Balance__c = true, Document_Required_From_Days__c = 3),
             new Leave_Type_Policy__mdt(Leave_Type__c = 'Personal leave', Active__c = true,
-                Deducts_Balance__c = true, Counts_Toward_LWOP_Check__c = false,
+                Deducts_Balance__c = true,
                 Document_Required_From_Days__c = 0, Max_Days_Per_Request__c = 1),
             new Leave_Type_Policy__mdt(Leave_Type__c = 'Annual leave', Active__c = true,
-                Deducts_Balance__c = true, Counts_Toward_LWOP_Check__c = false)
+                Deducts_Balance__c = true)
         };
     }
 

@@ -43,16 +43,15 @@ private class LeaveSplitTest {
     private static void useTestPolicies() {
         ApplicationItemTriggerLogic.policyOverride = new List<Leave_Type_Policy__mdt>{
             new Leave_Type_Policy__mdt(Leave_Type__c = 'Annual leave', Active__c = true,
-                Deducts_Balance__c = true, Counts_Toward_LWOP_Check__c = true),
+                Deducts_Balance__c = true, Overflow_To__c = 'Unpaid leave'),
             new Leave_Type_Policy__mdt(Leave_Type__c = 'Sick leave', Active__c = true,
-                Deducts_Balance__c = true, Counts_Toward_LWOP_Check__c = true),
+                Deducts_Balance__c = true, Overflow_To__c = 'Unpaid leave'),
             new Leave_Type_Policy__mdt(Leave_Type__c = 'Personal leave', Active__c = true,
-                Deducts_Balance__c = true, Counts_Toward_LWOP_Check__c = false),
+                Deducts_Balance__c = true),
             // Grants_On_Use__c is what raises the entitlement as unpaid days are taken,
             // so theUnpaidBalanceNeverReadsNegative depends on it being set here.
             new Leave_Type_Policy__mdt(Leave_Type__c = 'Unpaid leave', Active__c = true,
-                Deducts_Balance__c = true, Counts_Toward_LWOP_Check__c = false,
-                Grants_On_Use__c = true)
+                Deducts_Balance__c = true, Grants_On_Use__c = true)
         };
     }
 

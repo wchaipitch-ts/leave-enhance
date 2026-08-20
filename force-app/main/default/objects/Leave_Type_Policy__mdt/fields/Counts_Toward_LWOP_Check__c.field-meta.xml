@@ -2,7 +2,7 @@
 <CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>Counts_Toward_LWOP_Check__c</fullName>
     <defaultValue>false</defaultValue>
-    <description>True only for Annual and Sick leave. Insufficient balance on these types re-labels the request as Leave Without Pay.</description>
+    <description>SUPERSEDED by Overflow_To__c and read by nothing as of LEAVE-46. It meant both "may be split" and "splits into unpaid", which are different questions - Refresh Leave needed the first without the second, and with the flag off it was split by nothing and refused by nothing. Kept only so existing rows do not lose data; safe to delete once no org still carries it.</description>
     <fieldManageability>DeveloperControlled</fieldManageability>
     <label>Counts Toward LWOP Check</label>
     <type>Checkbox</type>
