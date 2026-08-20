@@ -3,42 +3,19 @@
         <lightning-button label="New" slot="actions" onclick={handleNew}></lightning-button>
         
         <lightning-tabset variant="scoped">
-            <!-- แท็บที่ 1: My Leave Request -->
             <lightning-tab label="My Leave Request">
                 <div style="height: 300px;">
-                    <lightning-datatable
-                        key-field="Id"
-                        data={leaveData}
-                        columns={columns}
-                        hide-checkbox-column="false"
-                        onrowaction={handleRowAction}>
-                    </lightning-datatable>
+                    <lightning-datatable key-field="Id" data={leaveData} columns={columns} hide-checkbox-column="false" onrowaction={handleRowAction}></lightning-datatable>
                 </div>
             </lightning-tab>
-
-            <!-- แท็บที่ 2: My LWOP Request -->
             <lightning-tab label="My LWOP Request">
                 <div style="height: 300px;">
-                    <lightning-datatable
-                        key-field="Id"
-                        data={lwopData}
-                        columns={columns}
-                        hide-checkbox-column="false"
-                        onrowaction={handleRowAction}>
-                    </lightning-datatable>
+                    <lightning-datatable key-field="Id" data={lwopData} columns={columns} hide-checkbox-column="false" onrowaction={handleRowAction}></lightning-datatable>
                 </div>
             </lightning-tab>
-
-            <!-- แท็บที่ 3: My OT Request -->
             <lightning-tab label="My OT Request">
                 <div style="height: 300px;">
-                    <lightning-datatable
-                        key-field="Id"
-                        data={otData}
-                        columns={columns}
-                        hide-checkbox-column="false"
-                        onrowaction={handleRowAction}>
-                    </lightning-datatable>
+                    <lightning-datatable key-field="Id" data={otData} columns={columns} hide-checkbox-column="false" onrowaction={handleRowAction}></lightning-datatable>
                 </div>
             </lightning-tab>
         </lightning-tabset>
@@ -49,12 +26,131 @@
     </lightning-card>
 
     <!-- ===================================== -->
-    <!-- Edit Modal Section -->
+    <!-- NEW Record Modal Flow (Real-time Validation Form) -->
+    <!-- ===================================== -->
+    <template if:true={isNewModalOpen}>
+        <section role="dialog" tabindex="-1" class="slds-modal slds-fade-in-open slds-modal_small">
+            <div class="slds-modal__container">
+                
+                <header class="slds-modal__header">
+                    <button class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse" title="Close" onclick={closeNewModal}>
+                        <lightning-icon icon-name="utility:close" alternative-text="close" variant="inverse" size="small"></lightning-icon>
+                        <span class="slds-assistive-text">Close</span>
+                    </button>
+                    <h2 class="slds-text-heading_medium slds-hyphenate">
+                        <template if:true={isSelectingRecordType}>New ApplicationItem</template>
+                        <template if:true={isFormStep}>New Request</template>
+                    </h2>
+                </header>
+
+                <div class="slds-modal__content slds-p-around_medium">
+                    <!-- Step 1: Select Record Type -->
+                    <template if:true={isSelectingRecordType}>
+                        <div class="slds-p-around_medium">
+                            <lightning-radio-group 
+                                name="recordTypeRadio"
+                                label="Select a record type"
+                                options={recordTypeOptions}
+                                value={selectedRecordTypeId}
+                                onchange={handleRecordTypeSelection}
+                                type="radio">
+                            </lightning-radio-group>
+                        </div>
+                    </template>
+
+                    <!-- Step 2: Record Edit Form with Real-time Validation -->
+                    <template if:true={isFormStep}>
+                        <lightning-record-edit-form
+                            object-api-name="ApplicationItem__c"
+                            record-type-id={selectedRecordTypeId}
+                            onsubmit={handleNewSubmit}
+                            onsuccess={handleNewSuccess}>
+                            
+                            <lightning-messages></lightning-messages>
+
+                            <div class="slds-grid slds-wrap slds-gutters">
+                                
+                                <!-- Leave Request Layout -->
+                                <template if:true={isLeaveForm}>
+                                    <div class="slds-col slds-size_1-of-2 slds-m-bottom_medium">
+                                        <lightning-input-field field-name="Request_Type__c" required onchange={handleFieldChange}></lightning-input-field>
+                                    </div>
+                                    <div class="slds-col slds-size_1-of-2 slds-m-bottom_medium">
+                                        <lightning-input-field field-name="Period_Leave__c" required onchange={handleFieldChange}></lightning-input-field>
+                                    </div>
+                                    <div class="slds-col slds-size_1-of-2 slds-m-bottom_medium">
+                                        <lightning-input-field field-name="Term_From__c" required onchange={handleFieldChange}></lightning-input-field>
+                                    </div>
+                                    <div class="slds-col slds-size_1-of-2 slds-m-bottom_medium">
+                                        <lightning-input-field field-name="Term_To__c" onchange={handleFieldChange}></lightning-input-field>
+                                    </div>
+                                    <div class="slds-col slds-size_1-of-1 slds-m-bottom_medium">
+                                        <lightning-input-field field-name="Remark__c" required></lightning-input-field>
+                                    </div>
+                                </template>
+
+                                <!-- Overtime Request Layout -->
+                                <template if:true={isOvertimeForm}>
+                                    <div class="slds-col slds-size_1-of-2 slds-m-bottom_medium">
+                                        <lightning-input-field field-name="Term_From__c" required onchange={handleFieldChange}></lightning-input-field>
+                                    </div>
+                                    <div class="slds-col slds-size_1-of-2 slds-m-bottom_medium">
+                                        <lightning-input-field field-name="Term_To__c" onchange={handleFieldChange}></lightning-input-field>
+                                    </div>
+                                    <div class="slds-col slds-size_1-of-2 slds-m-bottom_medium">
+                                        <lightning-input-field field-name="OT_Start__c" required onchange={handleFieldChange}></lightning-input-field>
+                                    </div>
+                                    <div class="slds-col slds-size_1-of-2 slds-m-bottom_medium">
+                                        <lightning-input-field field-name="OT_End__c" required onchange={handleFieldChange}></lightning-input-field>
+                                    </div>
+                                    <div class="slds-col slds-size_1-of-1 slds-m-bottom_medium">
+                                        <lightning-input-field field-name="Project__c"></lightning-input-field>
+                                    </div>
+                                    <div class="slds-col slds-size_1-of-1 slds-m-bottom_medium">
+                                        <lightning-input-field field-name="Remark__c" required></lightning-input-field>
+                                    </div>
+                                </template>
+                            </div>
+
+                            <!-- Warning Message UI -->
+                            <template if:true={showLeaveWarning}>
+                                <div class="slds-scoped-notification slds-media slds-media_center slds-theme_warning slds-m-top_medium slds-m-bottom_medium" role="status">
+                                    <div class="slds-media__figure">
+                                        <lightning-icon icon-name="utility:warning" size="small"></lightning-icon>
+                                    </div>
+                                    <div class="slds-media__body slds-p-left_small">
+                                        <p style="color: #000; font-weight: bold;">{leaveWarningMessage}</p>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <div class="slds-m-top_large slds-text-align_right">
+                                <lightning-button label="Cancel" onclick={closeNewModal} class="slds-m-right_x-small"></lightning-button>
+                                <lightning-button variant="brand" type="submit" label="Save"></lightning-button>
+                            </div>
+
+                        </lightning-record-edit-form>
+                    </template>
+                </div>
+
+                <template if:true={isSelectingRecordType}>
+                    <footer class="slds-modal__footer">
+                        <lightning-button label="Cancel" onclick={closeNewModal} class="slds-m-right_x-small"></lightning-button>
+                        <lightning-button label="Next" variant="brand" onclick={handleNextToForm}></lightning-button>
+                    </footer>
+                </template>
+            </div>
+        </section>
+        <div class="slds-backdrop slds-backdrop_open"></div>
+    </template>
+
+    <!-- ===================================== -->
+    <!-- EDIT Record Modal Flow (Custom UI for Apex update) -->
     <!-- ===================================== -->
     <template if:true={isEditModalOpen}>
         <section role="dialog" tabindex="-1" class="slds-modal slds-fade-in-open slds-modal_small">
             <div class="slds-modal__container">
-                <!-- Modal Header -->
+                
                 <header class="slds-modal__header">
                     <button class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse" title="Close" onclick={closeEditModal}>
                         <lightning-icon icon-name="utility:close" alternative-text="close" variant="inverse" size="small"></lightning-icon>
@@ -63,31 +159,55 @@
                     <h2 class="slds-text-heading_medium slds-hyphenate">Edit Application Item</h2>
                 </header>
 
-                <!-- Modal Body (Input Fields) -->
                 <div class="slds-modal__content slds-p-around_medium">
-                    <div class="slds-grid slds-wrap slds-gutters">
-                        <div class="slds-col slds-size_1-of-2 slds-m-bottom_medium">
-                            <lightning-input label="Start Date" type="date" value={editRecord.Term_From__c} data-field="Term_From__c" onchange={handleInputChange}></lightning-input>
+                    <template if:false={isPicklistReady}>
+                        <div style="height: 150px; position:relative;">
+                            <lightning-spinner alternative-text="Loading Picklists" size="medium"></lightning-spinner>
                         </div>
-                        <div class="slds-col slds-size_1-of-2 slds-m-bottom_medium">
-                            <lightning-input label="End Date" type="date" value={editRecord.Term_To__c} data-field="Term_To__c" onchange={handleInputChange}></lightning-input>
+                    </template>
+
+                    <template if:true={isPicklistReady}>
+                        <div class="slds-grid slds-wrap slds-gutters">
+                            <div class="slds-col slds-size_1-of-2 slds-m-bottom_medium">
+                                <lightning-input label="Start Date" type="date" value={editRecord.Term_From__c} data-field="Term_From__c" onchange={handleInputChange}></lightning-input>
+                            </div>
+                            <div class="slds-col slds-size_1-of-2 slds-m-bottom_medium">
+                                <lightning-input label="End Date" type="date" value={editRecord.Term_To__c} data-field="Term_To__c" onchange={handleInputChange}></lightning-input>
+                            </div>
+                            
+                            <div class="slds-col slds-size_1-of-2 slds-m-bottom_medium">
+                                <lightning-combobox 
+                                    label="Request Type" 
+                                    value={editRecord.Request_Type__c} 
+                                    data-field="Request_Type__c" 
+                                    options={requestTypeOptions}
+                                    onchange={handleInputChange}
+                                    dropdown-alignment="auto">
+                                </lightning-combobox>
+                            </div>
+
+                            <div class="slds-col slds-size_1-of-2 slds-m-bottom_medium">
+                                <lightning-combobox 
+                                    label="Period Leave" 
+                                    value={editRecord.Period_Leave__c} 
+                                    data-field="Period_Leave__c" 
+                                    options={periodLeaveOptions}
+                                    onchange={handleInputChange}
+                                    dropdown-alignment="auto">
+                                </lightning-combobox>
+                            </div>
+
+                            <div class="slds-col slds-size_2-of-2">
+                                <lightning-textarea label="Remark" value={editRecord.Remark__c} data-field="Remark__c" onchange={handleInputChange}></lightning-textarea>
+                            </div>
                         </div>
-                        <div class="slds-col slds-size_1-of-2 slds-m-bottom_medium">
-                            <lightning-input label="Request Type" type="text" value={editRecord.Request_Type__c} data-field="Request_Type__c" onchange={handleInputChange}></lightning-input>
-                        </div>
-                        <div class="slds-col slds-size_1-of-2 slds-m-bottom_medium">
-                            <lightning-input label="Period Leave" type="text" value={editRecord.Period_Leave__c} data-field="Period_Leave__c" onchange={handleInputChange}></lightning-input>
-                        </div>
-                        <div class="slds-col slds-size_2-of-2">
-                            <lightning-textarea label="Remark" value={editRecord.Remark__c} data-field="Remark__c" onchange={handleInputChange}></lightning-textarea>
-                        </div>
-                    </div>
+                    </template>
                 </div>
 
-                <!-- Modal Footer -->
                 <footer class="slds-modal__footer">
                     <lightning-button label="Cancel" onclick={closeEditModal} class="slds-m-right_x-small"></lightning-button>
-                    <lightning-button label="Save" variant="brand" onclick={saveEditRecord}></lightning-button>
+                    <!-- 🌟 ใช้วิธีเรียก Getter เพื่อหลีกเลี่ยง Error LWC1208 -->
+                    <lightning-button label="Save" variant="brand" onclick={saveEditRecord} disabled={isSaveButtonDisabled}></lightning-button>
                 </footer>
             </div>
         </section>

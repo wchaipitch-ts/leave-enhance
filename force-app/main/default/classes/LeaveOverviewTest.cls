@@ -263,6 +263,157 @@ private class LeaveOverviewTest {
             'and an authorised caller still resolves to the employee asked for');
     }
 
+    // ------------------------------------------------------------- monthly hours
+
+    /*
+     * The working day is configured as Custom Labels, and an org is free to change them,
+     * so these read the labels rather than hard coding 7.5 and 08:30. What is asserted is
+     * the arithmetic over whatever is configured.
+     */
+    private static Decimal labelHours(String raw) {
+        return Decimal.valueOf(raw.trim());
+    }
+
+    private static Decimal regularDay() {
+        return labelHours(System.Label.MaxHourPerDay);
+    }
+
+    /* A weekday in the requested month that no Holiday record falls on. */
+    private static Date aPlainWeekdayIn(Integer yr, Integer mo) {
+        Set<Date> holidays = ApplicationItemTriggerLogic.holidaysBetween(
+            Date.newInstance(yr, mo, 1),
+            Date.newInstance(yr, mo, Date.daysInMonth(yr, mo)));
+        Date cursor = Date.newInstance(yr, mo, 1);
+        Date monthEnd = Date.newInstance(yr, mo, Date.daysInMonth(yr, mo));
+        while (cursor <= monthEnd) {
+            if (Math.mod(Date.newInstance(1900, 1, 1).daysBetween(cursor), 7) < 5
+                && !holidays.contains(cursor)) {
+                return cursor;
+            }
+            cursor = cursor.addDays(1);
+        }
+        return null;
+    }
+
+    private static void stamp(Id ownerId, Date d, Time timeIn, Time timeOut) {
+        insert new Timestamp__c(
+            OwnerId = ownerId, Stamped_Date__c = d,
+            Stamped_TimeIn__c = timeIn, Stamped_TimeOut__c = timeOut);
+    }
+
+    /* Approved leave on one day, owned by the employee the overview is asked about. */
+    private static void approvedLeave(Id ownerId, Date d, String periodLeave) {
+        insert new ApplicationItem__c(
+            RecordTypeId = Schema.SObjectType.ApplicationItem__c
+                .getRecordTypeInfosByDeveloperName().get('Leave_Request').getRecordTypeId(),
+            Request_Type__c = 'Annual leave', Period_Leave__c = periodLeave,
+            Term_From__c = d, Remark__c = 'monthly hours', Status__c = 'Approved',
+            OwnerId = ownerId);
+    }
+
+    @isTest
+    static void standardWorkIsAFullDayForEveryWorkingDayOfTheMonth() {
+        Integer yr = testYear();
+        Date monthStart = Date.newInstance(yr, 8, 1);
+        Date monthEnd = Date.newInstance(yr, 8, Date.daysInMonth(yr, 8));
+        Set<Date> holidays = ApplicationItemTriggerLogic.holidaysBetween(monthStart, monthEnd);
+
+        Integer workingDays = 0;
+        for (Date d = monthStart; d <= monthEnd; d = d.addDays(1)) {
+            if (Math.mod(Date.newInstance(1900, 1, 1).daysBetween(d), 7) < 5
+                && !holidays.contains(d)) {
+                workingDays++;
+            }
+        }
+
+        Test.startTest();
+        TimesheetController.LeaveOverview o =
+            TimesheetController.getLeaveOverview(employeeId(), yr, 8);
+        Test.stopTest();
+
+        System.assertEquals(regularDay() * workingDays, o.standardWork,
+            'weekdays that are not company holidays, at a full day each');
+    }
+
+    @isTest
+    static void anEmptyMonthWorksNoHours() {
+        TimesheetController.LeaveOverview o =
+            TimesheetController.getLeaveOverview(employeeId(), testYear(), 8);
+
+        System.assertEquals(0, o.workedHours, 'nobody stamped');
+        System.assertEquals(o.overtimeHours, o.totalHours,
+            'total is overtime alone when nothing was worked');
+    }
+
+    /*
+     * The figure this replaces included overtime: the screen it is ported from leaves its
+     * afternoon segment uncapped, so stamping out at eight in the evening inflated Worked
+     * Hours. Overtime is counted from approved requests, so a day here stops at a full one.
+     */
+    @isTest
+    static void aLongDayStillCountsAsOneWorkingDay() {
+        Integer yr = testYear();
+        Date day = aPlainWeekdayIn(yr, 8);
+        stamp(employeeId(), day, Time.newInstance(7, 0, 0, 0), Time.newInstance(22, 0, 0, 0));
+
+        Test.startTest();
+        TimesheetController.LeaveOverview o =
+            TimesheetController.getLeaveOverview(employeeId(), yr, 8);
+        Test.stopTest();
+
+        System.assertEquals(regularDay(), o.workedHours,
+            'fifteen hours on the clock is still one working day of attendance');
+    }
+
+    @isTest
+    static void totalHoursIsWorkedPlusApprovedOvertime() {
+        Integer yr = testYear();
+        Date day = aPlainWeekdayIn(yr, 8);
+        stamp(employeeId(), day, Time.newInstance(7, 0, 0, 0), Time.newInstance(22, 0, 0, 0));
+
+        Test.startTest();
+        TimesheetController.LeaveOverview o =
+            TimesheetController.getLeaveOverview(employeeId(), yr, 8);
+        Test.stopTest();
+
+        System.assertEquals(o.workedHours + o.overtimeHours, o.totalHours,
+            'the two figures are disjoint, so they add');
+    }
+
+    /* Half the day is leave, so at most half a day of it can be attendance. */
+    @isTest
+    static void amLeaveLeavesOnlyTheAfternoonToWork() {
+        Integer yr = testYear();
+        Date day = aPlainWeekdayIn(yr, 8);
+        approvedLeave(employeeId(), day, 'AM leave');
+        stamp(employeeId(), day, Time.newInstance(7, 0, 0, 0), Time.newInstance(22, 0, 0, 0));
+
+        Test.startTest();
+        TimesheetController.LeaveOverview o =
+            TimesheetController.getLeaveOverview(employeeId(), yr, 8);
+        Test.stopTest();
+
+        System.assert(o.workedHours > 0, 'the afternoon was worked');
+        System.assert(o.workedHours < regularDay(),
+            'but the morning was leave, so it is short of a full day');
+    }
+
+    @isTest
+    static void aFullDayOfLeaveIsNotWorkedHours() {
+        Integer yr = testYear();
+        Date day = aPlainWeekdayIn(yr, 8);
+        approvedLeave(employeeId(), day, 'All day');
+        stamp(employeeId(), day, Time.newInstance(8, 30, 0, 0), Time.newInstance(17, 0, 0, 0));
+
+        Test.startTest();
+        TimesheetController.LeaveOverview o =
+            TimesheetController.getLeaveOverview(employeeId(), yr, 8);
+        Test.stopTest();
+
+        System.assertEquals(0, o.workedHours,
+            'the day is leave, whatever the clock says');
+    }
+
     @isTest
     static void anEmployeeWithNoBalanceRowsStillRenders() {
         Test.startTest();

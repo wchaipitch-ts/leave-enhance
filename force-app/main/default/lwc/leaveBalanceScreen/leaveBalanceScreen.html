@@ -76,13 +76,19 @@
         </div>
     </div>
 
-    <!-- ======================================================= -->
+<!-- ======================================================= -->
     <!-- 📍 ท่อนกลาง: ตารางประวัติคำขอ (เรียกใช้ Component เดิม) -->
     <!-- ======================================================= -->
+<!-- ======================================================= -->
+    <!-- 📍 ท่อนกลาง: ตารางประวัติคำขอ -->
+    <!-- ======================================================= -->
     <div class="slds-m-bottom_medium">
-        <!-- ส่ง employee.userId ที่ได้จาก Mock ไปให้ตัวลูกทำงานต่อ -->
-        <template if:true={employee.userId}>
-            <c-application-item-list-view target-user-id={employee.userId}></c-application-item-list-view>
+        <template if:true={receivedUserId}>
+            <!-- 🌟 เพิ่ม leave-balances ลงไป เพื่อส่งให้ลูกเอาไป Validate -->
+            <c-application-item-list-view 
+                target-user-id={receivedUserId}
+                leave-balances={tableData}>
+            </c-application-item-list-view>
         </template>
     </div>
 

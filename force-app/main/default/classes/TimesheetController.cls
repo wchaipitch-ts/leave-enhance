@@ -323,6 +323,16 @@ public without sharing class TimesheetController {
          * lifting it here keeps that swap to one line.
          */
         @AuraEnabled public Decimal annualAvailable;
+        /*
+         * The three figures the timesheet header shows, in hours, for the requested
+         * month. Ported from timesheetManagementScreen so the leave card and the
+         * timesheet grid cannot print different totals for the same month.
+         */
+        @AuraEnabled public Decimal standardWork;
+        /** Attendance only, overtime excluded and each day capped at a full day. */
+        @AuraEnabled public Decimal workedHours;
+        /** workedHours + overtimeHours, the approved overtime above. */
+        @AuraEnabled public Decimal totalHours;
     }
 
     /**
@@ -357,7 +367,190 @@ public without sharing class TimesheetController {
         overview.nextRefreshmentGrant =
             nextAnniversary(overview.employee.startDate, today);
         overview.annualAvailable = availableFor(overview.balances, 'Annual leave');
+        applyMonthlyHours(overview, target, yr, mo);
         return overview;
+    }
+
+    // ============================================================== monthly hours
+    /*
+     * Standard work, worked hours and total hours for one month.
+     *
+     * Ported from timesheetManagementScreen.setTimesheetData, which computes the same
+     * three figures in the browser from the stamps it has already drawn. Doing it again
+     * here rather than reading the screen's numbers keeps the card independent of which
+     * month the grid happens to be showing.
+     *
+     * Two deliberate differences from that screen:
+     *
+     *  - Overtime is the approved overtime already on the overview - what somebody
+     *    signed off - not stamped time past the end of the day. Worked hours are
+     *    therefore attendance alone and the two never double count, which is what makes
+     *    totalHours their sum.
+     *  - A day contributes at most a full working day. The screen's afternoon segment is
+     *    uncapped (the capped line is commented out beside it), so its Worked Hours
+     *    silently include overtime; capped here, this figure is the smaller of the two
+     *    on any day somebody stamped out late.
+     */
+    private static void applyMonthlyHours(LeaveOverview overview, Id target,
+                                          Integer yr, Integer mo) {
+        Date monthStart = Date.newInstance(yr, mo, 1);
+        Date monthEnd = Date.newInstance(yr, mo, Date.daysInMonth(yr, mo));
+        Set<Date> holidays = ApplicationItemTriggerLogic.holidaysBetween(monthStart, monthEnd);
+
+        Decimal regular = labelHours('MaxHourPerDay');
+        Decimal standard = 0;
+        for (Date d = monthStart; d <= monthEnd; d = d.addDays(1)) {
+            if (!isWeekend(d) && !holidays.contains(d)) {
+                standard += regular;
+            }
+        }
+
+        Map<Date, String> leaveDays = approvedLeaveDays(target, monthStart, monthEnd, holidays);
+
+        Decimal worked = 0;
+        for (Timestamp__c stamp : [
+            SELECT Stamped_Date__c, Stamped_TimeIn__c, Stamped_TimeOut__c
+            FROM Timestamp__c
+            WHERE OwnerId = :target
+              AND Stamped_Date__c >= :monthStart
+              AND Stamped_Date__c <= :monthEnd
+        ]) {
+            Date d = stamp.Stamped_Date__c;
+            /*
+             * Weekends and company holidays are left out for the same reason the screen
+             * leaves them out: whatever was worked on one is overtime, and overtime is
+             * counted from the approved requests instead.
+             */
+            if (d == null || isWeekend(d) || holidays.contains(d)) {
+                continue;
+            }
+            Decimal dayHours = workedHoursFor(stamp, leaveDays.get(d), regular);
+            worked += dayHours > regular ? regular : dayHours;
+        }
+
+        overview.standardWork = standard;
+        overview.workedHours = worked;
+        overview.totalHours = worked
+            + (overview.overtimeHours == null ? 0 : overview.overtimeHours);
+    }
+
+    /*
+     * One day's attendance, before the daily cap.
+     *
+     * The morning runs from the start of the day to the start of lunch and the afternoon
+     * from the end of lunch onwards, each clipped to when the person was actually here.
+     * A half day of approved leave removes the half it covers; a full day removes both,
+     * leaving zero even if somebody stamped - the leave, not the stamp, is what that day
+     * is. Same shape as the screen's calculation.
+     */
+    private static Decimal workedHoursFor(Timestamp__c stamp, String periodLeave, Decimal regular) {
+        if (stamp.Stamped_TimeIn__c == null || stamp.Stamped_TimeOut__c == null) {
+            return 0;
+        }
+        Decimal timeIn = labelHours('TimeIn');
+        Decimal timeOut = labelHours('TimeOut');
+        Decimal breakIn = labelHours('TimeBreakIn');
+        Decimal breakOut = labelHours('TimeBreakOut');
+
+        Decimal stampIn = hoursOf(stamp.Stamped_TimeIn__c);
+        Decimal stampOut = hoursOf(stamp.Stamped_TimeOut__c);
+        // Stamped in after the day was already over: nothing here is ordinary work.
+        if (timeOut < stampIn) {
+            return 0;
+        }
+
+        Boolean amLeave = 'AM leave'.equals(periodLeave);
+        Boolean pmLeave = 'PM leave'.equals(periodLeave);
+        Boolean fullDayLeave = periodLeave != null && !amLeave && !pmLeave;
+        if (fullDayLeave) {
+            return 0;
+        }
+
+        Decimal morning = 0;
+        if (!amLeave) {
+            Decimal lastOut = stampOut < breakIn ? stampOut : breakIn;
+            morning = stampIn > lastOut
+                      ? 0
+                      : lastOut - (stampIn > timeIn ? stampIn : timeIn);
+        }
+        Decimal afternoon = 0;
+        if (!pmLeave) {
+            Decimal firstIn = stampIn > breakOut ? stampIn : breakOut;
+            // Capped at the end of the day: past it is overtime, counted elsewhere.
+            Decimal lastIn = stampOut < timeOut ? stampOut : timeOut;
+            afternoon = lastIn < firstIn ? 0 : lastIn - firstIn;
+        }
+        Decimal total = morning + afternoon;
+        return total < 0 ? 0 : total;
+    }
+
+    /*
+     * Which days of the month approved leave covers, and as what - the Period_Leave__c
+     * value, so a half day can be told from a whole one.
+     *
+     * Expanded through ApplicationItemTriggerLogic.workingDaysFor, the same routine the
+     * trigger uses to decide which days a request consumes, so a range skips weekends
+     * and holidays here exactly as it does when the balance is deducted.
+     */
+    private static Map<Date, String> approvedLeaveDays(Id target, Date monthStart,
+                                                       Date monthEnd, Set<Date> holidays) {
+        Map<Date, String> days = new Map<Date, String>();
+        for (ApplicationItem__c appl : [
+            SELECT Term_From__c, Term_To__c, Period_Leave__c
+            FROM ApplicationItem__c
+            WHERE RecordType.DeveloperName = 'Leave_Request'
+              AND Status__c = 'Approved'
+              AND OwnerId = :target
+              AND Term_From__c <= :monthEnd
+              AND (Term_To__c >= :monthStart
+                   OR (Term_To__c = null AND Term_From__c >= :monthStart))
+        ]) {
+            for (Date d : ApplicationItemTriggerLogic.workingDaysFor(appl, holidays)) {
+                if (d >= monthStart && d <= monthEnd) {
+                    days.put(d, appl.Period_Leave__c);
+                }
+            }
+        }
+        return days;
+    }
+
+    /*
+     * The working day is configured as Custom Labels holding decimal hours - 8.5 is half
+     * past eight, 7.5 is a full day. Read with the same parse the screen uses so a change
+     * to a label moves both together. A label that will not parse is a misconfiguration,
+     * and reaching the user as a message beats a card quietly reporting zero.
+     */
+    private static Map<String, Decimal> labelCache = new Map<String, Decimal>();
+
+    private static Decimal labelHours(String labelName) {
+        if (labelCache.containsKey(labelName)) {
+            return labelCache.get(labelName);
+        }
+        String raw;
+        if ('MaxHourPerDay'.equals(labelName))      { raw = System.Label.MaxHourPerDay; }
+        else if ('TimeIn'.equals(labelName))        { raw = System.Label.TimeIn; }
+        else if ('TimeOut'.equals(labelName))       { raw = System.Label.TimeOut; }
+        else if ('TimeBreakIn'.equals(labelName))   { raw = System.Label.TimeBreakIn; }
+        else if ('TimeBreakOut'.equals(labelName))  { raw = System.Label.TimeBreakOut; }
+        try {
+            Decimal parsed = Decimal.valueOf(raw.trim());
+            labelCache.put(labelName, parsed);
+            return parsed;
+        } catch (Exception e) {
+            throw new AuraHandledException(
+                'The ' + labelName + ' custom label is not a number.');
+        }
+    }
+
+    private static Decimal hoursOf(Time t) {
+        return Decimal.valueOf(t.hour())
+             + Decimal.valueOf(t.minute()) / 60;
+    }
+
+    private static final Date MONDAY = Date.newInstance(1900, 1, 1);
+
+    private static Boolean isWeekend(Date d) {
+        return Math.mod(MONDAY.daysBetween(d), 7) >= 5;
     }
 
     private static EmployeeSummary employeeSummary(Id target, Date today) {
