@@ -420,13 +420,21 @@ public class ApplicationItemTriggerLogic {
             ? DateTime.newInstance(d.year(), d.month(), d.day(), MORNING_END_HOUR, 0, 0)
             : DateTime.newInstance(d.year(), d.month(), d.day(), WORKDAY_END_HOUR, 0, 0);
 
+        /*
+         * Is_Leave_Booking__c is what tells the before-delete flow "only System
+         * Administrators can delete Events" that this entry belongs to a leave
+         * request, so LeaveReversalService.clearBookings can remove it when the
+         * request is rejected. Without it the flow refuses the delete for anyone
+         * who is not an admin, and the rejection fails with it.
+         */
         return new Event(
-            WhatId        = appl.Id,
-            Subject       = appl.Request_Type__c,
-            OwnerId       = appl.OwnerId,
-            StartDateTime = startDateTime,
-            EndDateTime   = endDateTime,
-            Description   = singleDay ? appl.Period_Leave__c : 'All day'
+            WhatId              = appl.Id,
+            Subject             = appl.Request_Type__c,
+            OwnerId             = appl.OwnerId,
+            StartDateTime       = startDateTime,
+            EndDateTime         = endDateTime,
+            Description         = singleDay ? appl.Period_Leave__c : 'All day',
+            Is_Leave_Booking__c = true
         );
     }
 

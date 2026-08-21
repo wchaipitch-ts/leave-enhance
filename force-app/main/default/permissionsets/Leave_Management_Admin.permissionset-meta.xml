@@ -2,6 +2,11 @@
 <PermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">
     <description>Full access to Leave Balance records and fields. Needed because custom fields deployed via the Metadata API have no field-level security by default - only universally required fields are visible without it.</description>
     <fieldPermissions>
+        <editable>false</editable>
+        <field>Activity.Is_Leave_Booking__c</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
         <editable>true</editable>
         <field>ApplicationItem__c.Balance_Applied_Days__c</field>
         <readable>true</readable>

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Is_Leave_Booking__c</fullName>
+    <description>Set by ApplicationItemTriggerLogic.buildEvent on the calendar entries an approved leave request creates. The before-delete flow "only System Administrators can delete Events" lets these through so LeaveReversalService.clearBookings can unwind a rejected request; every other Event stays admin-only. Read-only to non-admins on purpose - a user who could tick this could delete any meeting. Lives on Activity because Event takes no custom fields of its own, so it appears on Task as well and means nothing there.</description>
+    <externalId>false</externalId>
+    <label>Is Leave Booking</label>
+    <trackHistory>false</trackHistory>
+    <trackTrending>false</trackTrending>
+    <type>Checkbox</type>
+    <defaultValue>false</defaultValue>
+</CustomField>

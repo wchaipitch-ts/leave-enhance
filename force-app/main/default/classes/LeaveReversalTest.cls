@@ -201,6 +201,36 @@ private class LeaveReversalTest {
             'a refused absence leaves nothing in the diary');
     }
 
+    /*
+     * The org refuses Event deletes from anyone but a System Administrator, and it does
+     * so from a before-delete flow rather than a validation rule — so no sharing keyword
+     * on LeaveReversalService reaches it and the profile it checks is the employee's,
+     * not the trigger's. Is_Leave_Booking__c is what tells the flow these entries are
+     * the trigger's own. Without it the delete in clearBookings throws, and because it
+     * throws in the after context it takes the whole rejection down with it: the
+     * employee is told their leave could not be refused, for a reason about calendars.
+     */
+    @isTest
+    static void anOrdinaryUserCanRejectAndClearTheDiary() {
+        useTestPolicies();
+        ApplicationItem__c a = raise('Annual leave', 3, 'Pending');
+        insert a;
+        update new ApplicationItem__c(Id = a.Id, Status__c = 'Approved');
+
+        System.assertEquals(3,
+            [SELECT COUNT() FROM Event WHERE WhatId = :a.Id AND Is_Leave_Booking__c = true],
+            'the approval stamps every entry it books');
+
+        Test.startTest();
+        System.runAs(new User(Id = employeeId())) {
+            update new ApplicationItem__c(Id = a.Id, Status__c = 'Rejected');
+        }
+        Test.stopTest();
+
+        System.assertEquals(0, [SELECT COUNT() FROM Event WHERE WhatId = :a.Id],
+            'a non-admin refusing leave still empties the diary');
+    }
+
     @isTest
     static void rejectionRemovesTheTimesheetBookings() {
         useTestPolicies();
