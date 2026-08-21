@@ -9,63 +9,14 @@
 			<!-- คอลัมน์ที่ 1: ข้อมูลพนักงาน (25%) -->
 			<!-- ========================================== -->
 			<!-- 🌟 แก้ไข: ใช้ slds-p-around_large เพื่อเพิ่มช่องไฟรอบๆ ให้โปร่งสวยงามตาม Design -->
-			<div class="slds-col slds-size_3-of-12 slds-border_right slds-p-around_large">
-				
-				<div class="slds-grid slds-m-bottom_medium">
-					<!-- รูป Avatar -->
-					<div class="slds-col slds-grow-none slds-m-right_medium">
-						<!-- 🌟 แก้ไข: ปรับขนาดรูป Avatar ให้ใหญ่ขึ้นเป็น 90px เพื่อให้สมดุลกับความสูงของกล่องข้อความ -->
-						<span class="slds-avatar slds-avatar_circle" style="width: 90px; height: 90px; cursor: pointer;" onclick={onUserRefresh}>
-							<img alt={userName} src={userAvatar} title={userName} />
-						</span>
-					</div>
-					<!-- ข้อมูล Text -->
-					<div class="slds-col" style="font-size: 0.8rem; color: #000;">
-						<div class="slds-text-title_bold" style="font-size: 0.75rem;">Name</div>
-						<div class="slds-m-bottom_x-small slds-truncate">
-							<lightning-formatted-url value={userPath} tooltip={userName} label={userName} target="_blank"></lightning-formatted-url>
-						</div>
-						
-						<div class="slds-text-title_bold" style="font-size: 0.75rem;">Employee Number</div>
-						<div class="slds-m-bottom_x-small slds-truncate text-blue">{employeeNumber}</div>
-						
-						<div class="slds-text-title_bold" style="font-size: 0.75rem;">Department</div>
-						<div class="slds-m-bottom_x-small slds-truncate text-blue">{userDepartment}</div>
-						
-						<div class="slds-text-title_bold" style="font-size: 0.75rem;">Start Date</div>
-						<div class="slds-truncate text-blue">{userStartDate}</div>
-					</div>
-				</div>
 
-				<!-- เส้นคั่นแนวนอน -->
-				<div class="slds-border_top slds-m-vertical_medium"></div>
-
-				<!-- ส่วนล่าง: สรุปเวลาทำงาน -->
-				<div class="slds-grid slds-wrap" style="font-size: 0.8rem; color: #000;">
-					<div class="slds-col slds-size_1-of-2 slds-m-bottom_medium">
-						<div class="slds-text-title_bold" style="font-size: 0.75rem;">Standard Work</div>
-						<div class="text-blue">{standardWork}</div>
-					</div>
-					<div class="slds-col slds-size_1-of-2 slds-m-bottom_medium">
-						<div class="slds-text-title_bold" style="font-size: 0.75rem;">Worked Hours</div>
-						<div class="text-blue">{workedHours}</div>
-					</div>
-					<div class="slds-col slds-size_1-of-2">
-						<div class="slds-text-title_bold" style="font-size: 0.75rem;">Total Hours</div>
-						<div class="text-blue">{totalHours}</div>
-					</div>
-					<div class="slds-col slds-size_1-of-2">
-						<div class="slds-text-title_bold" style="font-size: 0.75rem;">Overtime Hours</div>
-						<div class="text-blue">{overtimeHours}</div>
-					</div>
-				</div>
-			</div>
 
 			<!-- ========================================== -->
 			<!-- คอลัมน์ที่ 2: หน้าสรุปวันลา (50%) -->
 			<!-- ========================================== -->
 			<!-- 🌟 แก้ไข: แทรก padding-top: 3rem ตามที่คุณทดสอบไว้ใน Developer Tools -->
-			<div class="slds-col slds-size_6-of-12 slds-border_right slds-p-vertical_medium" style="padding-top: 3rem;">
+			<!-- 🌟 MODIFIED: Change from size_6-of-12 to size_9-of-12 to fill the empty space -->
+			<div class="slds-col slds-size_9-of-12 slds-border_right slds-p-vertical_medium" style="padding-top: 3rem;">
 				<!-- Pass variables from Parent (Timesheet) to Child (LeaveSummaryCard) -->
 				<c-leave-summary-card 
 					target-user-id={userId} 

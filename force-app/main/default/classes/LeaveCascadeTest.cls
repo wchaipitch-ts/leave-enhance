@@ -414,7 +414,7 @@ private class LeaveCascadeTest {
         }
         Test.stopTest();
 
-        System.assert(message.contains('Annual leave request'),
+        System.assert(message.contains('separated out as Annual leave'),
             'the remedy names the pool it would overflow into: ' + message);
     }
 

@@ -1,139 +1,197 @@
 <template>
-    <div class="slds-grid slds-p-horizontal_medium">
+    <!-- 🌟 Main Container (Wraps everything inside the card) -->
+    <div class="slds-grid slds-grid_stretch slds-box slds-p-around_none slds-theme_default slds-m-bottom_medium" style="border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); overflow: hidden;">
         
         <!-- ========================================== -->
-        <!-- ฝั่งซ้าย: Annual Leave -->
+        <!-- 🌟 Column 1: User Info & Monthly Hours (Takes up 1/3 of the card) -->
         <!-- ========================================== -->
-        <div class="slds-col slds-size_1-of-2 slds-border_right slds-p-right_large">
+        <div class="slds-col slds-size_1-of-3 slds-border_right slds-p-around_large">
             
-            <div class="slds-grid slds-grid_align-spread slds-m-bottom_large">
-                <div class="slds-col slds-text-heading_small">
-                    <lightning-icon icon-name="standard:event" size="small" class="slds-m-right_x-small"></lightning-icon>
-                    <b style="color: #000;">Annual Leave</b>
+            <!-- 1.1 User Info (Top Part) -->
+            <div class="slds-grid slds-m-bottom_medium">
+                <!-- Avatar -->
+                <div class="slds-col slds-grow-none slds-m-right_medium">
+                    <span class="slds-avatar slds-avatar_circle" style="width: 90px; height: 90px;">
+                        <img alt={userName} src={userAvatar} title={userName} />
+                    </span>
                 </div>
-                <div class="slds-col">
-                    <button class="pill-btn pill-green" onclick={handleViewAnnualDetails}>View Details</button>
-                </div>
-            </div>
-
-            <!-- Body -->
-            <div class="slds-grid">
-                <div class="slds-col slds-size_1-of-3 slds-text-align_center slds-border_right slds-p-right_medium">
-                    <div class="slds-m-bottom_xx-small" style="color: #747474; font-size: 0.8rem;">Available</div>
+                <!-- User Text Info -->
+                <div class="slds-col" style="font-size: 0.8rem; color: #000;">
+                    <div class="slds-text-title_bold" style="font-size: 0.75rem;">Name</div>
+                    <div class="slds-m-bottom_x-small slds-truncate">
+                        <lightning-formatted-url value={userPath} tooltip={userName} label={userName} target="_blank"></lightning-formatted-url>
+                    </div>
                     
-                    <template if:true={isOnProbation}>
-                        <div class="text-green" style="font-size: 3.5rem; line-height: 0.9; font-weight: 700;">0</div>
-                        <div class="text-green slds-text-title_bold slds-m-bottom_small">Days</div>
-                        <div class="text-red" style="font-size: 0.7rem;">Locked during<br/>probation period</div>
-                    </template>
-
-                    <template if:false={isOnProbation}>
-                        <div class="text-green" style="font-size: 3.5rem; line-height: 0.9; font-weight: 700;">{annualLeave.availableDays}</div>
-                        <div class="text-green slds-text-title_bold slds-m-bottom_small">Days</div>
-                        <div style="color: #747474; font-size: 0.8rem;">of {annualLeave.allocation} Days</div>
-                    </template>
-                </div>
-                
-                <div class="slds-col slds-size_2-of-3 slds-p-left_medium">
-                    <div class="slds-grid slds-wrap" style="color: #000; font-size: 0.8rem;">
-                        <div class="slds-col slds-size_1-of-2 slds-p-bottom_small">Annual Allocation</div>
-                        <div class="slds-col slds-size_1-of-2 slds-text-align_right slds-p-bottom_small">
-                            <b>{annualLeave.allocation} Days</b>
-                        </div>
-                        
-                        <div class="slds-col slds-size_1-of-2 slds-p-bottom_small">Accrued to Date</div>
-                        <div class="slds-col slds-size_1-of-2 slds-text-align_right slds-p-bottom_small">
-                            <b><template if:true={isOnProbation}>0</template><template if:false={isOnProbation}>{annualLeave.accrued}</template> Days</b>
-                        </div>
-                        
-                        <div class="slds-col slds-size_1-of-2 slds-p-bottom_small">Used</div>
-                        <div class="slds-col slds-size_1-of-2 slds-text-align_right slds-p-bottom_small">
-                            <b><template if:true={isOnProbation}>0</template><template if:false={isOnProbation}>{annualLeave.used}</template> Days</b>
-                        </div>
-                        
-                        <div class="slds-col slds-size_1-of-2">Carry-Over <span style="font-size:0.65rem; color: #747474;">(From 2025)</span></div>
-                        <div class="slds-col slds-size_1-of-2 slds-text-align_right">
-                            <b><template if:true={isOnProbation}>0</template><template if:false={isOnProbation}>{annualLeave.carryOver}</template> Days</b>
-                        </div>
-                    </div>
+                    <div class="slds-text-title_bold" style="font-size: 0.75rem;">Employee Number</div>
+                    <div class="slds-m-bottom_x-small slds-truncate text-blue">{employeeNumber}</div>
+                    
+                    <div class="slds-text-title_bold" style="font-size: 0.75rem;">Department</div>
+                    <div class="slds-m-bottom_x-small slds-truncate text-blue">{userDepartment}</div>
+                    
+                    <div class="slds-text-title_bold" style="font-size: 0.75rem;">Start Date</div>
+                    <div class="slds-truncate text-blue">{userStartDate}</div>
                 </div>
             </div>
 
-            <!-- Footer -->
-            <div class="slds-m-top_large slds-text-align_center" style="color: #747474; font-size: 0.8rem;">
-                <template if:true={isOnProbation}>
-                    <div class="warning-box">
-                        <lightning-icon icon-name="utility:lock" size="x-small" class="slds-m-right_small"></lightning-icon>
-                        <span>Annual Leave is not available during the probation period.<br/>Accrued leave will available after successful completion of Probation.</span>
-                    </div>
-                </template>
-                <template if:false={isOnProbation}>
-                    Year Period <span style="color: #0070d2; font-weight: 600;">{annualLeave.period}</span>
-                </template>
+            <!-- Horizontal Divider (เส้นคั่นบางๆ) -->
+            <div class="slds-border_top slds-m-vertical_medium"></div>
+
+            <!-- 1.2 Monthly Working Hours (Bottom Part) -->
+            <div class="slds-grid slds-wrap" style="font-size: 0.8rem; color: #000;">
+                <div class="slds-col slds-size_1-of-2 slds-m-bottom_medium">
+                    <div class="slds-text-title_bold" style="font-size: 0.75rem; color: #333;">Standard Work</div>
+                    <div class="text-blue slds-text-heading_small" style="font-weight: 500;">{standardWorkStr}</div>
+                </div>
+                <div class="slds-col slds-size_1-of-2 slds-m-bottom_medium">
+                    <div class="slds-text-title_bold" style="font-size: 0.75rem; color: #333;">Worked Hours</div>
+                    <div class="text-blue slds-text-heading_small" style="font-weight: 500;">{workedHoursStr}</div>
+                </div>
+                <div class="slds-col slds-size_1-of-2">
+                    <div class="slds-text-title_bold" style="font-size: 0.75rem; color: #333;">Total Hours</div>
+                    <div class="text-blue slds-text-heading_small" style="font-weight: 500;">{totalHoursStr}</div>
+                </div>
+                <div class="slds-col slds-size_1-of-2">
+                    <div class="slds-text-title_bold" style="font-size: 0.75rem; color: #333;">Overtime Hours</div>
+                    <div class="text-blue slds-text-heading_small" style="font-weight: 500;">{overtimeHoursStr}</div>
+                </div>
             </div>
+
         </div>
 
         <!-- ========================================== -->
-        <!-- ฝั่งขวา: Refreshment Leave -->
+        <!-- 🌟 Column 2 & 3: Leave Balances (Takes up 2/3 of the card) -->
         <!-- ========================================== -->
-        <div class="slds-col slds-size_1-of-2 slds-p-left_large">
+        <div class="slds-col slds-size_2-of-3 slds-p-vertical_medium">
             
-            <div class="slds-grid slds-grid_align-spread slds-m-bottom_large">
-                <div class="slds-col slds-text-heading_small">
-                    <lightning-icon icon-name="standard:sync" size="small" class="slds-m-right_x-small"></lightning-icon>
-                    <b style="color: #000;">Refreshment Leave</b>
-                </div>
-                <div class="slds-col">
-                    <button class="pill-btn pill-blue" onclick={handleViewRefreshmentDetails}>View Details</button>
-                </div>
-            </div>
-
-            <!-- Body -->
-            <div class="slds-grid">
-                <div class="slds-col slds-size_1-of-3 slds-text-align_center slds-border_right slds-p-right_medium">
-                    <div class="slds-m-bottom_xx-small" style="color: #747474; font-size: 0.8rem;">Available</div>
-                    
-                    <template if:true={isOnProbation}>
-                        <div class="text-blue" style="font-size: 3.5rem; line-height: 0.9; font-weight: 700;">0</div>
-                        <div class="text-blue slds-text-title_bold slds-m-bottom_small">Days</div>
-                        <div class="text-red" style="font-size: 0.7rem;">Not yet eligible</div>
-                    </template>
-
-                    <template if:false={isOnProbation}>
-                        <div class="text-blue" style="font-size: 3.5rem; line-height: 0.9; font-weight: 700;">{refreshmentLeave.availableDays}</div>
-                        <div class="text-blue slds-text-title_bold slds-m-bottom_small">Days</div>
-                        <div style="color: #747474; font-size: 0.8rem;">of {refreshmentLeave.allocation} Days</div>
-                    </template>
-                </div>
+            <div class="slds-grid slds-p-horizontal_medium">
                 
-                <div class="slds-col slds-size_2-of-3 slds-p-left_medium">
-                    <div class="slds-grid slds-wrap slds-m-top_small" style="color: #000; font-size: 0.8rem;">
-                        <div class="slds-col slds-size_1-of-2 slds-p-bottom_small">Refreshment Allocation</div>
-                        <div class="slds-col slds-size_1-of-2 slds-text-align_right slds-p-bottom_small">
-                            <b><template if:true={isOnProbation}>0</template><template if:false={isOnProbation}>{refreshmentLeave.allocation}</template> Days</b>
+                <!-- ฝั่งซ้าย: Annual Leave -->
+                <div class="slds-col slds-size_1-of-2 slds-border_right slds-p-right_large">
+                    <div class="slds-grid slds-grid_align-spread slds-m-bottom_large">
+                        <div class="slds-col slds-text-heading_small">
+                            <lightning-icon icon-name="standard:event" size="small" class="slds-m-right_x-small"></lightning-icon>
+                            <b style="color: #000;">Annual Leave</b>
+                        </div>
+                        <div class="slds-col">
+                            <button class="pill-btn pill-green" onclick={handleViewAnnualDetails}>View Details</button>
+                        </div>
+                    </div>
+
+                    <div class="slds-grid">
+                        <div class="slds-col slds-size_1-of-3 slds-text-align_center slds-border_right slds-p-right_medium">
+                            <div class="slds-m-bottom_xx-small" style="color: #747474; font-size: 0.8rem;">Available</div>
+                            
+                            <template if:true={isOnProbation}>
+                                <div class="text-green" style="font-size: 3.5rem; line-height: 0.9; font-weight: 700;">0</div>
+                                <div class="text-green slds-text-title_bold slds-m-bottom_small">Days</div>
+                                <div class="text-red" style="font-size: 0.7rem;">Locked during<br/>probation period</div>
+                            </template>
+
+                            <template if:false={isOnProbation}>
+                                <div class="text-green" style="font-size: 3.5rem; line-height: 0.9; font-weight: 700;">{annualLeave.availableDays}</div>
+                                <div class="text-green slds-text-title_bold slds-m-bottom_small">Days</div>
+                                <div style="color: #747474; font-size: 0.8rem;">of {annualLeave.allocation} Days</div>
+                            </template>
                         </div>
                         
-                        <div class="slds-col slds-size_1-of-2">Used</div>
-                        <div class="slds-col slds-size_1-of-2 slds-text-align_right">
-                            <b><template if:true={isOnProbation}>0</template><template if:false={isOnProbation}>{refreshmentLeave.used}</template> Days</b>
+                        <div class="slds-col slds-size_2-of-3 slds-p-left_medium">
+                            <div class="slds-grid slds-wrap" style="color: #000; font-size: 0.8rem;">
+                                <div class="slds-col slds-size_1-of-2 slds-p-bottom_small">Annual Allocation</div>
+                                <div class="slds-col slds-size_1-of-2 slds-text-align_right slds-p-bottom_small">
+                                    <b>{annualLeave.allocation} Days</b>
+                                </div>
+                                
+                                <div class="slds-col slds-size_1-of-2 slds-p-bottom_small">Accrued to Date</div>
+                                <div class="slds-col slds-size_1-of-2 slds-text-align_right slds-p-bottom_small">
+                                    <b><template if:true={isOnProbation}>0</template><template if:false={isOnProbation}>{annualLeave.accrued}</template> Days</b>
+                                </div>
+                                
+                                <div class="slds-col slds-size_1-of-2 slds-p-bottom_small">Used</div>
+                                <div class="slds-col slds-size_1-of-2 slds-text-align_right slds-p-bottom_small">
+                                    <b><template if:true={isOnProbation}>0</template><template if:false={isOnProbation}>{annualLeave.used}</template> Days</b>
+                                </div>
+                                
+                                <div class="slds-col slds-size_1-of-2">Carry-Over <span style="font-size:0.65rem; color: #747474;">(From 2025)</span></div>
+                                <div class="slds-col slds-size_1-of-2 slds-text-align_right">
+                                    <b><template if:true={isOnProbation}>0</template><template if:false={isOnProbation}>{annualLeave.carryOver}</template> Days</b>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                </div>
-            </div>
 
-            <!-- Footer -->
-            <div class="slds-text-align_center" style="margin-top: 3.2rem; color: #747474; font-size: 0.8rem;">
-                <template if:true={isOnProbation}>
-                    <div class="info-box">
-                        <lightning-icon icon-name="utility:lock" size="x-small" class="slds-m-right_small"></lightning-icon>
-                        <span>Refreshment Leave will be available on your next anniversary date.</span>
+                    <div class="slds-m-top_large slds-text-align_center" style="color: #747474; font-size: 0.8rem;">
+                        <template if:true={isOnProbation}>
+                            <div class="warning-box">
+                                <lightning-icon icon-name="utility:lock" size="x-small" class="slds-m-right_small"></lightning-icon>
+                                <span>Annual Leave is not available during the probation period.<br/>Accrued leave will available after successful completion of Probation.</span>
+                            </div>
+                        </template>
+                        <template if:false={isOnProbation}>
+                            Year Period <span style="color: #0070d2; font-weight: 600;">{annualLeave.period}</span>
+                        </template>
                     </div>
-                </template>
-                <template if:false={isOnProbation}>
-                    Next Refresh on <span style="color: #0070d2; font-weight: 600;">{refreshmentLeave.nextRefresh}</span> (In {refreshmentLeave.daysUntilRefresh} Days)
-                </template>
-            </div>
-        </div>
+                </div>
 
-    </div>
+                <!-- ฝั่งขวา: Refreshment Leave -->
+                <div class="slds-col slds-size_1-of-2 slds-p-left_large">
+                    <div class="slds-grid slds-grid_align-spread slds-m-bottom_large">
+                        <div class="slds-col slds-text-heading_small">
+                            <lightning-icon icon-name="standard:sync" size="small" class="slds-m-right_x-small"></lightning-icon>
+                            <b style="color: #000;">Refreshment Leave</b>
+                        </div>
+                        <div class="slds-col">
+                            <button class="pill-btn pill-blue" onclick={handleViewRefreshmentDetails}>View Details</button>
+                        </div>
+                    </div>
+
+                    <div class="slds-grid">
+                        <div class="slds-col slds-size_1-of-3 slds-text-align_center slds-border_right slds-p-right_medium">
+                            <div class="slds-m-bottom_xx-small" style="color: #747474; font-size: 0.8rem;">Available</div>
+                            
+                            <template if:true={isOnProbation}>
+                                <div class="text-blue" style="font-size: 3.5rem; line-height: 0.9; font-weight: 700;">0</div>
+                                <div class="text-blue slds-text-title_bold slds-m-bottom_small">Days</div>
+                                <div class="text-red" style="font-size: 0.7rem;">Not yet eligible</div>
+                            </template>
+
+                            <template if:false={isOnProbation}>
+                                <div class="text-blue" style="font-size: 3.5rem; line-height: 0.9; font-weight: 700;">{refreshmentLeave.availableDays}</div>
+                                <div class="text-blue slds-text-title_bold slds-m-bottom_small">Days</div>
+                                <div style="color: #747474; font-size: 0.8rem;">of {refreshmentLeave.allocation} Days</div>
+                            </template>
+                        </div>
+                        
+                        <div class="slds-col slds-size_2-of-3 slds-p-left_medium">
+                            <div class="slds-grid slds-wrap slds-m-top_small" style="color: #000; font-size: 0.8rem;">
+                                <div class="slds-col slds-size_1-of-2 slds-p-bottom_small">Refreshment Allocation</div>
+                                <div class="slds-col slds-size_1-of-2 slds-text-align_right slds-p-bottom_small">
+                                    <b><template if:true={isOnProbation}>0</template><template if:false={isOnProbation}>{refreshmentLeave.allocation}</template> Days</b>
+                                </div>
+                                
+                                <div class="slds-col slds-size_1-of-2">Used</div>
+                                <div class="slds-col slds-size_1-of-2 slds-text-align_right">
+                                    <b><template if:true={isOnProbation}>0</template><template if:false={isOnProbation}>{refreshmentLeave.used}</template> Days</b>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="slds-text-align_center" style="margin-top: 3.2rem; color: #747474; font-size: 0.8rem;">
+                        <template if:true={isOnProbation}>
+                            <div class="info-box">
+                                <lightning-icon icon-name="utility:lock" size="x-small" class="slds-m-right_small"></lightning-icon>
+                                <span>Refreshment Leave will be available on your next anniversary date.</span>
+                            </div>
+                        </template>
+                        <template if:false={isOnProbation}>
+                            Next Refresh on <span style="color: #0070d2; font-weight: 600;">{refreshmentLeave.nextRefresh}</span> (In {refreshmentLeave.daysUntilRefresh} Days)
+                        </template>
+                    </div>
+                </div>
+
+            </div> <!-- ปิด slds-grid ของกล่องวันลา -->
+
+        </div> <!-- ปิด Column 2 & 3 -->
+
+    </div> <!-- ปิด Main Container -->
 </template>

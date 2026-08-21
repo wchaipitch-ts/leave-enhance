@@ -87,12 +87,18 @@ export default class timesheetManagementScreen extends NavigationMixin(Lightning
 	@track defaultLunchBreak = this.breakTimeIn_Str + ' ~ ' + this.breakTimeOut_Str;
 	@track defaultTimeFormat = 'HH:MM';
 
-	// Default Inform Variable
+	// // Default Inform Variable
 	@track standardWork = '0:00';
 	@track workedHours = '0:00';
 	@track overtimeHours = '0:00';
 	@track leaveHours = '0:00';
 	@track totalHours = '0:00';
+
+	// 🌟 ADD THIS: Mapped variables for Monthly Working Hours (Formatted as String 'HH:MM')
+    @track standardWorkStr = '00:00';
+    @track workedHoursStr = '00:00';
+    @track totalHoursStr = '00:00';
+    @track overtimeHoursStr = '00:00';
 
 	// Default Date Variable
 	@track todayDate = new Date();

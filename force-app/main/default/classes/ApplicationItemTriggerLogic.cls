@@ -79,7 +79,7 @@ public class ApplicationItemTriggerLogic {
             ? head + 'Shorten it to what the balance covers, or raise the remaining days '
                    + 'as a separate request of another type.'
             : head + 'Raise it unapproved first so the days beyond the balance are '
-                   + 'separated out into a ' + target + ' request, then approve both.';
+                   + 'separated out as ' + target + ', then approve both.';
     }
 
     /*

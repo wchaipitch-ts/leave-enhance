@@ -1,38 +1,45 @@
 import { LightningElement, api, wire, track } from 'lwc';
 import { NavigationMixin } from 'lightning/navigation'; 
 
-// Import the Apex method to fetch leave balance overview[cite: 34, 35]
+// Import the Apex method to fetch leave balance overview
 import getLeaveOverview from '@salesforce/apex/TimesheetController.getLeaveOverview';
 
 export default class LeaveSummaryCard extends NavigationMixin(LightningElement) {
     
     // ==========================================
-    // Public properties to receive parameters from the parent component
-    // We set default values using JavaScript Date object to ensure 
-    // the component always has a valid year and month on initial load.
+    // INPUT PARAMETERS (Data from parent component)
     // ==========================================
     @api targetUserId; 
-    
-    // Set default targetYear to the current year (e.g., 2026)
     @api targetYear = new Date().getFullYear(); 
-    
-    // Set default targetMonth to the current month (e.g., 8 for August)
-    // Note: getMonth() returns 0-11 (Jan = 0), so we add 1 to match Salesforce (1-12)
     @api targetMonth = new Date().getMonth() + 1; 
 
-    // Reactive properties for UI binding[cite: 35]
+    // ==========================================
+    // STATE VARIABLES (UI Binding)
+    // ==========================================
     @track isOnProbation = false;
-    
-    // Initialize with default values to prevent UI rendering issues before data arrives[cite: 35]
     @track annualLeave = { availableDays: 0, allocation: 0, accrued: 0, used: 0, carryOver: 0, period: '-' };
     @track refreshmentLeave = { availableDays: 0, allocation: 0, used: 0, nextRefresh: '-', daysUntilRefresh: 0 };
 
-    // Properties to store data for navigation[cite: 35]
+    // User Info variables
+    @track userAvatar = '';
+    @track userName = '';
+    @track userPath = '';
+    @track employeeNumber = '';
+    @track userDepartment = '';
+    @track userStartDate = '';
+
+    // Variables for Monthly Working Hours
+    @track standardWorkStr = '00:00';
+    @track workedHoursStr = '00:00';
+    @track totalHoursStr = '00:00';
+    @track overtimeHoursStr = '00:00';
+
     @track rawEmployeeData = {}; 
     @track selectedYear = null;
 
-    // Wire adapter to fetch Leave Overview data from Apex[cite: 34, 35]
-    // Executes automatically when $targetUserId, $targetYear, or $targetMonth changes
+    // ==========================================
+    // WIRE METHOD: Fetch data from Apex
+    // ==========================================
     @wire(getLeaveOverview, { employeeId: '$targetUserId', year: '$targetYear', month: '$targetMonth' })
     wiredLeaveOverview({ error, data }) {
         if (data) {
@@ -42,20 +49,44 @@ export default class LeaveSummaryCard extends NavigationMixin(LightningElement) 
         }
     }
 
-    // Helper method to extract and map backend data to UI properties[cite: 35]
+    // ==========================================
+    // HELPER METHOD: Process and Map Backend Data
+    // ==========================================
     processBackendData(backendData) {
         
-        // Evaluate probation status securely using optional chaining and nullish coalescing[cite: 35]
+        // Map User Info securely
+        const emp = backendData.employee;
+        if (emp) {
+            this.userAvatar = emp.photoUrl ?? '';
+            this.userName = emp.name ?? '-';
+            this.userPath = emp.userId ? '/' + emp.userId : '#';
+            this.employeeNumber = emp.employeeNumber ?? '-';
+            this.userDepartment = emp.department ?? '-';
+            
+            if (emp.startDate) {
+                const sd = new Date(emp.startDate);
+                this.userStartDate = sd.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+            } else {
+                this.userStartDate = '-';
+            }
+        }
+
+        // Map Monthly Hours
+        this.standardWorkStr = this.formatDecimalToTime(backendData.standardWork ?? 0);
+        this.workedHoursStr = this.formatDecimalToTime(backendData.workedHours ?? 0);
+        this.totalHoursStr = this.formatDecimalToTime(backendData.totalHours ?? 0);
+        this.overtimeHoursStr = this.formatDecimalToTime(backendData.overtimeHours ?? 0);
+
+        // Extract probation and year
         this.isOnProbation = backendData.employee?.onProbation ?? false;
-        
-        this.rawEmployeeData = backendData.employee ?? {};
+        // 🌟 Fix: Store employee data safely to avoid Navigation Error
+        this.rawEmployeeData = backendData.employee ?? { userId: this.targetUserId }; 
         this.selectedYear = backendData.year;
 
         const balances = backendData.balances ?? [];
 
-        // Map Annual Leave data[cite: 35]
+        // Map Annual Leave data
         const annualData = balances.find(item => item.leaveType === 'Annual leave');
-        
         if (annualData) {
             this.annualLeave = {
                 availableDays: annualData.available ?? 0,
@@ -67,9 +98,8 @@ export default class LeaveSummaryCard extends NavigationMixin(LightningElement) 
             };
         }
 
-        // Map Refreshment Leave data[cite: 35]
+        // Map Refreshment Leave data
         const refreshData = balances.find(item => item.leaveType === 'Refresh Leave');
-
         if (refreshData) {
             let daysUntil = 0;
             let formattedDate = '-';
@@ -79,7 +109,6 @@ export default class LeaveSummaryCard extends NavigationMixin(LightningElement) 
                 const today = new Date();
                 const diffTime = refreshDate - today;
                 
-                // Convert milliseconds to days and round up[cite: 35]
                 daysUntil = diffTime > 0 ? Math.ceil(diffTime / (1000 * 60 * 60 * 24)) : 0;
                 
                 const options = { day: 'numeric', month: 'short', year: 'numeric' };
@@ -96,7 +125,25 @@ export default class LeaveSummaryCard extends NavigationMixin(LightningElement) 
         }
     }
 
-    // Navigation handler for Annual Leave "View Details" button[cite: 35]
+    /**
+     * HELPER METHOD: Converts decimal hours to HH:MM format
+     * Example: 7.5 -> '07:30'
+     */
+    formatDecimalToTime(decimalHours) {
+        if (!decimalHours || isNaN(decimalHours)) return '00:00';
+        
+        const hours = Math.floor(decimalHours);
+        const minutes = Math.round((decimalHours - hours) * 60);
+        
+        const paddedHours = String(hours).padStart(2, '0');
+        const paddedMinutes = String(minutes).padStart(2, '0');
+        
+        return `${paddedHours}:${paddedMinutes}`;
+    }
+
+    // ==========================================
+    // NAVIGATION METHODS
+    // ==========================================
     handleViewAnnualDetails() {
         this[NavigationMixin.Navigate]({
             type: 'standard__navItemPage',
@@ -105,7 +152,6 @@ export default class LeaveSummaryCard extends NavigationMixin(LightningElement) 
         });
     }
 
-    // Navigation handler for Refreshment Leave "View Details" button[cite: 35]
     handleViewRefreshmentDetails() {
         this[NavigationMixin.Navigate]({
             type: 'standard__navItemPage',
