@@ -2,27 +2,38 @@
     <lightning-card title="Application Item" icon-name="standard:service_appointment">
         <lightning-button label="New" slot="actions" onclick={handleNew}></lightning-button>
         
+        <!-- 
+            HTML Snippet: Tabset for separating Leave, LWOP, and OT requests.
+            Removed active-tab-value to prevent unwanted re-renders when data changes.
+        -->
         <lightning-tabset variant="scoped">
-            <lightning-tab label="My Leave Request">
-                <div style="height: 300px;">
-                    <lightning-datatable key-field="Id" data={leaveData} columns={columns} hide-checkbox-column="false" onrowaction={handleRowAction}></lightning-datatable>
+            
+            <lightning-tab label="My Leave Request" value="Leave" onactive={handleTabActive}>
+                <div style="max-height: 400px; overflow-y: auto;">
+                    <lightning-datatable key-field="Id" data={displayedLeaveData} columns={columns} hide-checkbox-column="false" onrowaction={handleRowAction}></lightning-datatable>
                 </div>
             </lightning-tab>
-            <lightning-tab label="My LWOP Request">
-                <div style="height: 300px;">
-                    <lightning-datatable key-field="Id" data={lwopData} columns={columns} hide-checkbox-column="false" onrowaction={handleRowAction}></lightning-datatable>
+            
+            <lightning-tab label="My LWOP Request" value="LWOP" onactive={handleTabActive}>
+                <div style="max-height: 400px; overflow-y: auto;">
+                    <lightning-datatable key-field="Id" data={displayedLwopData} columns={columns} hide-checkbox-column="false" onrowaction={handleRowAction}></lightning-datatable>
                 </div>
             </lightning-tab>
-            <lightning-tab label="My OT Request">
-                <div style="height: 300px;">
-                    <lightning-datatable key-field="Id" data={otData} columns={columns} hide-checkbox-column="false" onrowaction={handleRowAction}></lightning-datatable>
+            
+            <lightning-tab label="My OT Request" value="OT" onactive={handleTabActive}>
+                <div style="max-height: 400px; overflow-y: auto;">
+                    <lightning-datatable key-field="Id" data={displayedOtData} columns={columns} hide-checkbox-column="false" onrowaction={handleRowAction}></lightning-datatable>
                 </div>
             </lightning-tab>
         </lightning-tabset>
 
-        <div class="slds-align_absolute-center slds-m-top_small slds-p-bottom_small">
-            <a onclick={handleViewAll}>View All</a>
-        </div>
+        <!-- Dynamically show or hide the View All button based on the active tab's data length -->
+        <template if:true={showViewAllButton}>
+            <div class="slds-align_absolute-center slds-m-top_small slds-p-bottom_small">
+                <!-- Use lightning-button variant="base" for better event handling and security over an <a> tag -->
+                <lightning-button variant="base" label={viewAllLabel} onclick={handleViewAll}></lightning-button>
+            </div>
+        </template>
     </lightning-card>
 
     <!-- ===================================== -->
@@ -206,7 +217,7 @@
 
                 <footer class="slds-modal__footer">
                     <lightning-button label="Cancel" onclick={closeEditModal} class="slds-m-right_x-small"></lightning-button>
-                    <!-- 🌟 ใช้วิธีเรียก Getter เพื่อหลีกเลี่ยง Error LWC1208 -->
+                    <!-- Check picklist readiness to disable save button -->
                     <lightning-button label="Save" variant="brand" onclick={saveEditRecord} disabled={isSaveButtonDisabled}></lightning-button>
                 </footer>
             </div>

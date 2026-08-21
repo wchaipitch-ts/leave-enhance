@@ -1,92 +1,186 @@
 <template>
-    <!-- ======================================================= -->
-    <!-- 📍 ท่อนบน: ข้อมูลพนักงาน และ กล่องสรุปวันลา (Highlight Cards) -->
-    <!-- ======================================================= -->
-    <div class="slds-box slds-theme_default slds-m-bottom_medium" style="border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-        <div class="slds-grid slds-grid_stretch slds-gutters_large">
-            
-            <!-- 1.1 ฝั่งซ้าย: ข้อมูลพนักงาน (Employee Info) กินพื้นที่ 3 ส่วน -->
-            <div class="slds-col slds-size_3-of-12 slds-border_right slds-p-right_large">
-                <div class="slds-media slds-m-bottom_small">
-                    <div class="slds-media__figure">
-                        <!-- รูป Avatar พนักงาน -->
-                        <span class="slds-avatar slds-avatar_circle" style="width: 80px; height: 80px;">
-                            <img alt={employee.name} src={employee.photoUrl} title={employee.name} />
-                        </span>
+    <!-- 🌟 Main Container (Wraps everything inside the card) -->
+    <div class="slds-grid slds-grid_stretch slds-box slds-p-around_none slds-theme_default slds-m-bottom_medium" style="border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); overflow: hidden;">
+        
+        <!-- ========================================== -->
+        <!-- Column 1: User Info & Monthly Hours (1/3 Width) -->
+        <!-- ========================================== -->
+        <div class="slds-col slds-size_1-of-3 slds-border_right slds-p-around_large">
+            <div class="slds-grid slds-m-bottom_medium">
+                <div class="slds-col slds-grow-none slds-m-right_medium">
+                    <span class="slds-avatar slds-avatar_circle" style="width: 90px; height: 90px;">
+                        <img alt={userName} src={employee.photoUrl} title={employee.name} />
+                    </span>
+                </div>
+                <div class="slds-col" style="font-size: 0.8rem; color: #000;">
+                    <div class="slds-text-title_bold" style="font-size: 0.75rem;">Name</div>
+                    <div class="slds-m-bottom_x-small slds-truncate">
+                        <a href={employee.userUrl} target="_blank">{employee.name}</a>
                     </div>
-                    <div class="slds-media__body slds-p-left_small">
-                        <!-- ข้อมูลส่วนตัวพนักงาน -->
-                        <div class="slds-text-title_bold" style="font-size: 0.75rem; color: #000;">Name</div>
-                        <div class="slds-m-bottom_x-small text-blue" style="font-size: 0.8rem;">{employee.name}</div>
-                        
-                        <div class="slds-text-title_bold" style="font-size: 0.75rem; color: #000;">Employee Number</div>
-                        <div class="slds-m-bottom_x-small text-blue" style="font-size: 0.8rem;">{employee.employeeNumber}</div>
-                        
-                        <div class="slds-text-title_bold" style="font-size: 0.75rem; color: #000;">Department</div>
-                        <div class="slds-m-bottom_x-small text-blue" style="font-size: 0.8rem;">{employee.department}</div>
-                        
-                        <div class="slds-text-title_bold" style="font-size: 0.75rem; color: #000;">Start Date</div>
-                        <div class="text-blue" style="font-size: 0.8rem;">{employee.startDate}</div>
-                    </div>
+                    
+                    <div class="slds-text-title_bold" style="font-size: 0.75rem;">Employee Number</div>
+                    <div class="slds-m-bottom_x-small slds-truncate text-blue">{employee.employeeNumber}</div>
+                    
+                    <div class="slds-text-title_bold" style="font-size: 0.75rem;">Department</div>
+                    <div class="slds-m-bottom_x-small slds-truncate text-blue">{employee.department}</div>
+                    
+                    <div class="slds-text-title_bold" style="font-size: 0.75rem;">Start Date</div>
+                    <div class="slds-truncate text-blue">{employee.startDate}</div>
                 </div>
             </div>
 
-            <!-- 1.2 ฝั่งขวา: กล่องสรุปวันลา (Leave Balance Cards) กินพื้นที่ 9 ส่วน -->
-            <div class="slds-col slds-size_9-of-12 slds-p-left_large">
-                
-                <!-- ส่วนหัว: Title และ Year Dropdown -->
-                <div class="slds-grid slds-grid_align-spread slds-m-bottom_medium">
-                    <div>
-                        <h2 class="slds-text-heading_medium slds-text-title_bold" style="color: #000;">Leave Balance</h2>
-                        <p class="slds-text-body_small" style="color: #747474;">Overview of your leave entitlements and balances</p>
-                    </div>
-                    <div>
-                        <!-- ปุ่มเลือกปี (Mock ไว้ก่อน) -->
-                        <lightning-button-menu alternative-text="Show menu" label={selectedYear} variant="border-filled">
-                            <template for:each={availableYears} for:item="yr">
-                                <lightning-menu-item key={yr} value={yr} label={yr}></lightning-menu-item>
-                            </template>
-                        </lightning-button-menu>
-                    </div>
-                </div>
+            <div class="slds-border_top slds-m-vertical_medium"></div>
 
-                <!-- ส่วนกล่อง 4 ใบ: ใช้ template for:each เพื่อวนลูปสร้างกล่องจาก JS -->
-                <div class="slds-grid slds-gutters_small">
-                    <template for:each={highlightCards} for:item="card">
-                        <div key={card.leaveType} class="slds-col slds-size_1-of-4">
-                            <!-- คลาส card.cssClass จะถูกส่งมาจาก JS เพื่อเปลี่ยนสีขอบกล่องซ้ายมือ -->
-                            <div class={card.cssClass}>
-                                <div class="slds-grid slds-grid_align-spread slds-grid_vertical-align-center">
-                                    <div class="slds-col slds-text-title_bold" style="font-size: 0.75rem; color: #000; white-space: pre-wrap;">
-                                        {card.leaveType}
-                                    </div>
-                                    <div class="slds-col slds-text-align_center">
-                                        <div style="font-size: 0.65rem; color: #747474;">Available</div>
-                                        <div class={card.numberCssClass} style="font-size: 2.5rem; line-height: 1; font-weight: 700;">{card.available}</div>
-                                        <div class={card.numberCssClass} style="font-size: 0.75rem; font-weight: 700;">Days</div>
-                                        <div style="font-size: 0.65rem; color: #747474;">Of {card.entitlement} Days</div>
-                                    </div>
-                                </div>
+            <div class="slds-grid slds-wrap" style="font-size: 0.8rem; color: #000;">
+                <div class="slds-col slds-size_1-of-2 slds-m-bottom_medium">
+                    <div class="slds-text-title_bold" style="font-size: 0.75rem; color: #747474;">Standard Work</div>
+                    <div class="text-blue slds-text-heading_small" style="font-weight: 500;">{standardWorkStr}</div>
+                </div>
+                <div class="slds-col slds-size_1-of-2 slds-m-bottom_medium">
+                    <div class="slds-text-title_bold" style="font-size: 0.75rem; color: #747474;">Worked Hours</div>
+                    <div class="text-blue slds-text-heading_small" style="font-weight: 500;">{workedHoursStr}</div>
+                </div>
+                <div class="slds-col slds-size_1-of-2">
+                    <div class="slds-text-title_bold" style="font-size: 0.75rem; color: #747474;">Total Hours</div>
+                    <div class="text-blue slds-text-heading_small" style="font-weight: 500;">{totalHoursStr}</div>
+                </div>
+                <div class="slds-col slds-size_1-of-2">
+                    <div class="slds-text-title_bold" style="font-size: 0.75rem; color: #747474;">Overtime Hours</div>
+                    <div class="text-blue slds-text-heading_small" style="font-weight: 500;">{overtimeHoursStr}</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========================================== -->
+        <!-- Column 2: Leave Balances (2/3 Width) -->
+        <!-- ========================================== -->
+        <div class="slds-col slds-size_2-of-3 slds-p-vertical_medium">
+            
+            <div class="slds-grid slds-p-horizontal_medium">
+                
+                <!-- 🌟 RESTORED: ฝั่งซ้าย Annual Leave -->
+                <div class="slds-col slds-size_1-of-2 slds-border_right slds-p-right_large">
+                    <div class="slds-grid slds-grid_align-spread slds-m-bottom_large">
+                        <div class="slds-col slds-text-heading_small">
+                            <lightning-icon icon-name="standard:event" size="small" class="slds-m-right_x-small"></lightning-icon>
+                            <b style="color: #000;">Annual Leave</b>
+                        </div>
+                        <div class="slds-col">
+                            <!-- Dropdown เลือกปี อยู่ด้านขวาบนของ Annual Leave -->
+                            <lightning-combobox
+                                name="yearSelector"
+                                value={selectedYearString}
+                                options={yearOptions}
+                                onchange={handleYearChange}
+                                variant="label-hidden"
+                                class="year-dropdown">
+                            </lightning-combobox>
+                        </div>
+                    </div>
+
+                    <div class="slds-grid">
+                        <div class="slds-col slds-size_1-of-3 slds-text-align_center slds-border_right slds-p-right_medium">
+                            <div class="slds-m-bottom_xx-small" style="color: #747474; font-size: 0.8rem;">Available</div>
+                            <template if:true={isOnProbation}>
+                                <div class="text-green" style="font-size: 3.5rem; line-height: 0.9; font-weight: 700;">0</div>
+                                <div class="text-green slds-text-title_bold slds-m-bottom_small">Days</div>
+                                <div class="text-red" style="font-size: 0.7rem;">Locked during<br/>probation period</div>
+                            </template>
+                            <template if:false={isOnProbation}>
+                                <div class="text-green" style="font-size: 3.5rem; line-height: 0.9; font-weight: 700;">{annualLeave.availableDays}</div>
+                                <div class="text-green slds-text-title_bold slds-m-bottom_small">Days</div>
+                                <div style="color: #747474; font-size: 0.8rem;">of {annualLeave.allocation} Days</div>
+                            </template>
+                        </div>
+                        
+                        <div class="slds-col slds-size_2-of-3 slds-p-left_medium">
+                            <div class="slds-grid slds-wrap" style="color: #000; font-size: 0.8rem;">
+                                <div class="slds-col slds-size_1-of-2 slds-p-bottom_small">Annual Allocation</div>
+                                <div class="slds-col slds-size_1-of-2 slds-text-align_right slds-p-bottom_small"><b>{annualLeave.allocation} Days</b></div>
+                                <div class="slds-col slds-size_1-of-2 slds-p-bottom_small">Accrued to Date</div>
+                                <div class="slds-col slds-size_1-of-2 slds-text-align_right slds-p-bottom_small"><b><template if:true={isOnProbation}>0</template><template if:false={isOnProbation}>{annualLeave.accrued}</template> Days</b></div>
+                                <div class="slds-col slds-size_1-of-2 slds-p-bottom_small">Used</div>
+                                <div class="slds-col slds-size_1-of-2 slds-text-align_right slds-p-bottom_small"><b><template if:true={isOnProbation}>0</template><template if:false={isOnProbation}>{annualLeave.used}</template> Days</b></div>
+                                <div class="slds-col slds-size_1-of-2">Carry-Over <span style="font-size:0.65rem; color: #747474;">(From 2025)</span></div>
+                                <div class="slds-col slds-size_1-of-2 slds-text-align_right"><b><template if:true={isOnProbation}>0</template><template if:false={isOnProbation}>{annualLeave.carryOver}</template> Days</b></div>
                             </div>
                         </div>
-                    </template>
+                    </div>
+                    <div class="slds-m-top_large slds-text-align_center" style="color: #747474; font-size: 0.8rem;">
+                        <template if:true={isOnProbation}>
+                            <div class="warning-box">
+                                <lightning-icon icon-name="utility:lock" size="x-small" class="slds-m-right_small"></lightning-icon>
+                                <span>Annual Leave is not available during the probation period.</span>
+                            </div>
+                        </template>
+                        <template if:false={isOnProbation}>
+                            Year Period <span style="color: #0070d2; font-weight: 600;">{annualLeave.period}</span>
+                        </template>
+                    </div>
                 </div>
 
+                <!-- 🌟 RESTORED: ฝั่งขวา Refreshment Leave -->
+                <div class="slds-col slds-size_1-of-2 slds-p-left_large">
+                    <div class="slds-grid slds-grid_align-spread slds-m-bottom_large">
+                        <div class="slds-col slds-text-heading_small">
+                            <lightning-icon icon-name="standard:sync" size="small" class="slds-m-right_x-small"></lightning-icon>
+                            <b style="color: #000;">Refreshment Leave</b>
+                        </div>
+                        <div class="slds-col">
+                            <button class="pill-btn pill-blue" onclick={handleViewRefreshmentDetails}>View Details</button>
+                        </div>
+                    </div>
+
+                    <div class="slds-grid">
+                        <div class="slds-col slds-size_1-of-3 slds-text-align_center slds-border_right slds-p-right_medium">
+                            <div class="slds-m-bottom_xx-small" style="color: #747474; font-size: 0.8rem;">Available</div>
+                            <template if:true={isOnProbation}>
+                                <div class="text-blue" style="font-size: 3.5rem; line-height: 0.9; font-weight: 700;">0</div>
+                                <div class="text-blue slds-text-title_bold slds-m-bottom_small">Days</div>
+                                <div class="text-red" style="font-size: 0.7rem;">Not yet eligible</div>
+                            </template>
+                            <template if:false={isOnProbation}>
+                                <div class="text-blue" style="font-size: 3.5rem; line-height: 0.9; font-weight: 700;">{refreshmentLeave.availableDays}</div>
+                                <div class="text-blue slds-text-title_bold slds-m-bottom_small">Days</div>
+                                <div style="color: #747474; font-size: 0.8rem;">of {refreshmentLeave.allocation} Days</div>
+                            </template>
+                        </div>
+                        
+                        <div class="slds-col slds-size_2-of-3 slds-p-left_medium">
+                            <div class="slds-grid slds-wrap slds-m-top_small" style="color: #000; font-size: 0.8rem;">
+                                <div class="slds-col slds-size_1-of-2 slds-p-bottom_small">Refreshment Allocation</div>
+                                <div class="slds-col slds-size_1-of-2 slds-text-align_right slds-p-bottom_small"><b><template if:true={isOnProbation}>0</template><template if:false={isOnProbation}>{refreshmentLeave.allocation}</template> Days</b></div>
+                                <div class="slds-col slds-size_1-of-2">Used</div>
+                                <div class="slds-col slds-size_1-of-2 slds-text-align_right"><b><template if:true={isOnProbation}>0</template><template if:false={isOnProbation}>{refreshmentLeave.used}</template> Days</b></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="slds-text-align_center" style="margin-top: 3.2rem; color: #747474; font-size: 0.8rem;">
+                        <template if:true={isOnProbation}>
+                            <div class="info-box">
+                                <lightning-icon icon-name="utility:lock" size="x-small" class="slds-m-right_small"></lightning-icon>
+                                <span>Refreshment Leave will be available on your next anniversary date.</span>
+                            </div>
+                        </template>
+                        <template if:false={isOnProbation}>
+                            Next Refresh on <span style="color: #0070d2; font-weight: 600;">{refreshmentLeave.nextRefresh}</span> (In {refreshmentLeave.daysUntilRefresh} Days)
+                        </template>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
-<!-- ======================================================= -->
-    <!-- 📍 ท่อนกลาง: ตารางประวัติคำขอ (เรียกใช้ Component เดิม) -->
     <!-- ======================================================= -->
-<!-- ======================================================= -->
     <!-- 📍 ท่อนกลาง: ตารางประวัติคำขอ -->
     <!-- ======================================================= -->
     <div class="slds-m-bottom_medium">
         <template if:true={receivedUserId}>
-            <!-- 🌟 เพิ่ม leave-balances ลงไป เพื่อส่งให้ลูกเอาไป Validate -->
+            <!-- 🌟 PASS TARGET YEAR TO CHILD COMPONENT -->
             <c-application-item-list-view 
                 target-user-id={receivedUserId}
+                target-year={receivedYear}
                 leave-balances={tableData}>
             </c-application-item-list-view>
         </template>
@@ -97,8 +191,6 @@
     <!-- ======================================================= -->
     <div class="slds-box slds-theme_default" style="border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
         <h2 class="slds-text-heading_small slds-text-title_bold slds-m-bottom_medium" style="color: #000;">Leave Balance Summary by Leave Type</h2>
-        
-        <!-- ตารางข้อมูลวันลาทั้งหมด -->
         <lightning-datatable
             key-field="leaveType"
             data={tableData}

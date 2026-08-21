@@ -15,6 +15,12 @@ public without sharing class LeaveBalanceService {
 
     /** One row of the Leave Balance page, or one figure on the timesheet card. */
     public class LeaveBalanceView {
+        /*
+         * The Leave_Balance__c row behind this line, so a screen can link to it or
+         * refetch it without matching on leave type and year again. Null when
+         * hasRecord is false — there is no row to point at yet.
+         */
+        @AuraEnabled public Id id;
         @AuraEnabled public String leaveType;
         @AuraEnabled public Decimal entitlement;
         @AuraEnabled public Decimal accrued;
@@ -54,7 +60,7 @@ public without sharing class LeaveBalanceService {
 
         Map<String, Leave_Balance__c> rowByType = new Map<String, Leave_Balance__c>();
         for (Leave_Balance__c bal : [
-            SELECT Leave_Type__c, Entitlement_Days__c, Accrued_Days__c, Carry_Over_Days__c,
+            SELECT Id, Leave_Type__c, Entitlement_Days__c, Accrued_Days__c, Carry_Over_Days__c,
                    Used_Days__c, Available_Days__c, Is_Locked__c, Lock_Reason__c,
                    Expiry_Date__c, Carry_Over_Expiry__c, Granted_On__c
             FROM Leave_Balance__c
@@ -137,6 +143,7 @@ public without sharing class LeaveBalanceService {
             return view;
         }
 
+        view.id  = bal.Id;
         view.entitlement     = zeroIfNull(bal.Entitlement_Days__c);
         view.accrued         = zeroIfNull(bal.Accrued_Days__c);
         view.carriedIn       = zeroIfNull(bal.Carry_Over_Days__c);

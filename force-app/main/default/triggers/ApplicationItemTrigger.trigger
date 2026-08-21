@@ -4,6 +4,7 @@ trigger ApplicationItemTrigger on ApplicationItem__c (before insert, before upda
     // balance deduction runs before save, so the bucket split is written to
     // the in-flight record rather than requiring a second DML on the same object.
     if (Trigger.isBefore && Trigger.isInsert) {
+        ApplicationItemNumberServiceHandler.processAutoNumber(Trigger.new);
         handler.onBeforeInsert(Trigger.new);
     }
     if (Trigger.isBefore && Trigger.isUpdate) {

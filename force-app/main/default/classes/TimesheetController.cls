@@ -616,7 +616,14 @@ public without sharing class TimesheetController {
      *
      * getLeaveRequestes above answers a different question — what overlaps one month of
      * the timesheet grid — so it is left alone. This is the record list: newest first,
-     * every status including Rejected, capped rather than bounded by date.
+     * every status including Rejected, one leave year at a time and capped.
+     *
+     * The year is optional and null means every year, which is what the list did before
+     * it took one. It exists because the tabs sit under the year-scoped balance cards on
+     * leaveBalanceScreen: unfiltered, picking 2024 moved the cards and left the rows
+     * alone, and nobody could reconcile a Used figure with the requests beneath it. The
+     * cap made that worse rather than merely untidy — it truncates by recency, so an
+     * older year's requests could fall off the list entirely.
      *
      * The three categories are kept disjoint so no request appears under two tabs.
      * Under the split model an over-balance request becomes two records - the shortened
@@ -653,11 +660,13 @@ public without sharing class TimesheetController {
     /**
      * @param category    Leave, LWOP or OT — see the CATEGORY_ constants
      * @param employeeId  whose requests; null means the running user
+     * @param year        leave year, by Term_From__c; null means every year
      * @param recordLimit how many rows; null means 50, and 200 is the ceiling
      */
     @AuraEnabled(cacheable=true)
     public static List<ApplicationItem__c> getApplicationItems(String category,
                                                               Id employeeId,
+                                                              Integer year,
                                                               Integer recordLimit) {
         /*
          * Not swallowed into an empty list, for the same reason getLeaveOverview is not:
@@ -677,10 +686,27 @@ public without sharing class TimesheetController {
         // Bound to a local so it is a bind variable below, not concatenated text.
         String filter = filterFor(category);
 
+        /*
+         * The same window LeaveBalanceService.pendingDaysByType counts in, so a tab and
+         * the balance card above it cannot attribute one request to different years. A
+         * request spanning New Year therefore belongs wholly to the year it starts in —
+         * matched on Term_From__c alone rather than by overlap, for that reason.
+         *
+         * Term_From__c carries the date on every record type, overtime included:
+         * OT_Start__c and OT_End__c are clock times within that day, which is why
+         * OvertimeSummaryService dates overtime the same way. One clause covers all
+         * three tabs.
+         */
+        Date yearStart = year == null ? null : Date.newInstance(year, 1, 1);
+        Date yearEnd   = year == null ? null : Date.newInstance(year, 12, 31);
+        String yearClause = year == null
+                            ? ''
+                            : ' AND Term_From__c >= :yearStart AND Term_From__c <= :yearEnd';
+
         return Database.query(
             'SELECT ' + ITEM_FIELDS
           + ' FROM ApplicationItem__c'
-          + ' WHERE OwnerId = :target AND ' + filter
+          + ' WHERE OwnerId = :target AND ' + filter + yearClause
           + ' ORDER BY Term_From__c DESC NULLS LAST, Name DESC'
           + ' LIMIT :rowLimit'
         );
@@ -797,6 +823,101 @@ public without sharing class TimesheetController {
         List<ApplicationItem__c> saved = Database.query(
             'SELECT ' + ITEM_FIELDS + ' FROM ApplicationItem__c WHERE Id = :recordId LIMIT 1');
         return saved.isEmpty() ? null : saved[0];
+    }
+
+    /**
+     * Removes a Draft request on behalf of its owner.
+     *
+     * This exists because no profile in this org holds delete access on
+     * ApplicationItem__c, and none should: a request that has been through approval has
+     * spent balance and booked days, and the reversal only holds together when the
+     * delete goes through the triggers with the whole record in hand. Running the DML
+     * here — in a class that is without sharing, behind the same permission rule as
+     * every other leave screen — is what keeps that the only route. Granting delete on
+     * the object instead would also open the record page, list views and Data Loader,
+     * none of which would apply the Draft check below.
+     *
+     * Nothing is reversed here by hand. ApplicationItemTriggerHandler.onBeforeDelete
+     * notes the Man_hour__c bookings while their lookup still points somewhere and tells
+     * LeaveDocumentPolicy that the ContentDocumentLink cascade is the platform's doing
+     * rather than someone stripping a certificate; onAfterDelete restores balances and
+     * clears the bookings. A Draft has spent nothing, so in practice it is only the
+     * cascade note that matters — but the delete is issued the same way regardless, so
+     * that the two paths cannot drift.
+     *
+     * The unpaid continuation goes with it. When a request runs past the balance
+     * LeaveSplitService raises the remainder as its own Unpaid record pointing back
+     * through Split_From__c, and those days were never asked for deliberately. The
+     * lookup is deleteConstraint=SetNull, so leaving the child behind would strand an
+     * unpaid Draft with nothing left to explain where it came from. A continuation that
+     * has moved past Draft is a different matter — it is somebody's live request now —
+     * and that refuses the whole operation rather than deleting half of it.
+     *
+     * @param requestId the request to delete. Must be Draft, and must belong to someone
+     *                  the running user is allowed to act for.
+     */
+    @AuraEnabled
+    public static void deleteApplicationItem(Id requestId) {
+        if (requestId == null) {
+            throw new AuraHandledException('A request Id is required.');
+        }
+
+        List<ApplicationItem__c> found = [
+            SELECT Id, Name, OwnerId, Status__c
+            FROM ApplicationItem__c
+            WHERE Id = :requestId
+            LIMIT 1
+        ];
+        if (found.isEmpty()) {
+            throw new AuraHandledException('That request no longer exists.');
+        }
+        ApplicationItem__c existing = found[0];
+
+        /*
+         * Gated on the rule LeaveBalanceService owns, exactly as getApplicationItems and
+         * updateApplicationItem are: your own requests always, somebody else's only with
+         * the permission that unlocks the timesheet's user picker.
+         */
+        LeaveBalanceService.assertCanView(existing.OwnerId);
+
+        /*
+         * Read back from the database rather than trusted from the client, for the same
+         * reason the edit path re-reads it: the approval process's own record lock does
+         * not apply to Apex running in system mode, so this check is the lock.
+         */
+        if (!STATUS_DRAFT.equals(existing.Status__c)) {
+            throw new AuraHandledException('Only a Draft request can be deleted. This one is '
+                + existing.Status__c + '.');
+        }
+
+        List<SObject> toDelete = new List<SObject>{ existing };
+
+        for (ApplicationItem__c child : [
+            SELECT Id, Name, Status__c
+            FROM ApplicationItem__c
+            WHERE Split_From__c = :requestId
+        ]) {
+            if (!STATUS_DRAFT.equals(child.Status__c)) {
+                throw new AuraHandledException('This request has an unpaid continuation ('
+                    + child.Name + ') that is already ' + child.Status__c
+                    + '. That request has to be handled before this one can be deleted.');
+            }
+            toDelete.add(child);
+        }
+
+        try {
+            // One DML so the triggers see the request and its continuation together,
+            // rather than as two unrelated deletions.
+            delete toDelete;
+        } catch (DmlException e) {
+            /*
+             * Lifted out for the same reason the edit path lifts it: left raw, the
+             * message a validation rule or a removal lock is actually trying to give the
+             * user reaches the browser buried in a stack trace.
+             */
+            throw new AuraHandledException(
+                e.getNumDml() > 0 ? e.getDmlMessage(0) : e.getMessage());
+        }
     }
 
     // ======================================================== unpaid leave conversion
