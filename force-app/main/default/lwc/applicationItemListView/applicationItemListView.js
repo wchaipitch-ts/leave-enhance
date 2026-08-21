@@ -12,10 +12,11 @@ import PERIOD_LEAVE_FIELD from '@salesforce/schema/ApplicationItem__c.Period_Lea
 // Import Apex methods for data retrieval and manipulation
 import getApplicationItems from '@salesforce/apex/TimesheetController.getApplicationItems';
 import updateApplicationItem from '@salesforce/apex/TimesheetController.updateApplicationItem';
+import deleteApplicationItem from '@salesforce/apex/TimesheetController.deleteApplicationItem';
 import getLeaveOverview from '@salesforce/apex/TimesheetController.getLeaveOverview';
 
 /**
- * HELPER: Dynamically generates row actions (Edit button) for the datatable.
+ * HELPER: Dynamically generates row actions (Edit, Delete) for the datatable.
  * INPUT: row (current datatable row), doneCallback (function to pass actions back)
  * OUTPUT: None (invokes callback with available actions)
  */
@@ -24,8 +25,8 @@ const getDynamicRowActions = (row, doneCallback) => {
     const currentStatus = row.status ? row.status.trim().toLowerCase() : '';
     const isDraftStatus = currentStatus === 'draft';
 
-    // Only allow editing if the status is 'Draft'
     actions.push({ label: 'Edit', name: 'edit', iconName: 'utility:edit', disabled: !isDraftStatus });
+    actions.push({ label: 'Delete', name: 'delete', iconName: 'utility:delete', disabled: !isDraftStatus });
     doneCallback(actions);
 };
 
@@ -45,8 +46,21 @@ const COLUMNS = [
 export default class ApplicationItemListView extends NavigationMixin(LightningElement) {
     
     // INPUT: Received from parent components (Timesheet or Leave Balance Screen)
-    @api targetUserId; 
-    @api leaveBalances = []; 
+    @api targetUserId;
+    @api leaveBalances = [];
+
+    @api
+    get targetYear() {
+        return this.filterYear;
+    }
+    set targetYear(value) {
+        const parsed = parseInt(value, 10);
+        this.filterYear = Number.isNaN(parsed) ? null : parsed;
+
+        this.currentYear = this.filterYear === null ? new Date().getFullYear() : this.filterYear;
+    }
+
+    @track filterYear = null;
 
     columns = COLUMNS;
 
@@ -80,7 +94,6 @@ export default class ApplicationItemListView extends NavigationMixin(LightningEl
     @track showLeaveWarning = false;
     @track leaveWarningMessage = '';
 
-    // Self-sufficient balance tracking (In case parent does not provide leaveBalances)
     @track currentYear = new Date().getFullYear();
     @track selfFetchedBalances = [];
 
@@ -92,6 +105,12 @@ export default class ApplicationItemListView extends NavigationMixin(LightningEl
     @track leaveRecordTypeId;
     @track requestTypeOptions = [];
     @track periodLeaveOptions = [];
+
+    @track isDeleteModalOpen = false;
+    @track isDeleting = false;
+    @track deleteRecordId;
+    @track deleteRecordNumber;
+    @track deleteContinuationNumber;
 
     // ==========================================================
     // State variables for List Expansion
@@ -247,19 +266,19 @@ export default class ApplicationItemListView extends NavigationMixin(LightningEl
     /**
      * WIRE: Fetch Datatable lists for the 3 tabs from Apex.
      */
-    @wire(getApplicationItems, { category: 'Leave', employeeId: '$targetUserId', recordLimit: 50 })
+    @wire(getApplicationItems, { category: 'Leave', employeeId: '$targetUserId', year: '$filterYear', recordLimit: 50 })
     wiredLeave(result) {
-        this.wiredLeaveResult = result; 
+        this.wiredLeaveResult = result;
         if (result.data) this.leaveData = this.flattenData(result.data, 'Leave');
     }
 
-    @wire(getApplicationItems, { category: 'LWOP', employeeId: '$targetUserId', recordLimit: 50 })
+    @wire(getApplicationItems, { category: 'LWOP', employeeId: '$targetUserId', year: '$filterYear', recordLimit: 50 })
     wiredLwop(result) {
         this.wiredLwopResult = result;
         if (result.data) this.lwopData = this.flattenData(result.data, 'LWOP');
     }
 
-    @wire(getApplicationItems, { category: 'OT', employeeId: '$targetUserId', recordLimit: 50 })
+    @wire(getApplicationItems, { category: 'OT', employeeId: '$targetUserId', year: '$filterYear', recordLimit: 50 })
     wiredOt(result) {
         this.wiredOtResult = result;
         if (result.data) this.otData = this.flattenData(result.data, 'OT');
@@ -447,6 +466,21 @@ export default class ApplicationItemListView extends NavigationMixin(LightningEl
             };
             this.isEditModalOpen = true;
         }
+
+        if (actionName === 'delete') {
+            this.deleteRecordId = row.Id;
+            this.deleteRecordNumber = row.appNumber;
+
+            const continuation = this.findContinuationOf(row.Id);
+            this.deleteContinuationNumber = continuation ? continuation.appNumber : null;
+
+            this.isDeleteModalOpen = true;
+        }
+    }
+
+    findContinuationOf(recordId) {
+        return [...this.leaveData, ...this.lwopData, ...this.otData]
+            .find(item => item.Split_From__c === recordId);
     }
 
     /**
@@ -477,6 +511,42 @@ export default class ApplicationItemListView extends NavigationMixin(LightningEl
             refreshApex(this.wiredOtResult);
         } catch (error) {
             this.showToast('Error', error.body ? error.body.message : error.message, 'error');
+        }
+    }
+
+    get hasContinuation() {
+        return !!this.deleteContinuationNumber;
+    }
+
+    get deleteContinuationMessage() {
+        return `${this.deleteContinuationNumber}, the unpaid leave raised automatically `
+             + `because this request ran past your balance, will remain. Delete it `
+             + `separately if those days are not being taken.`;
+    }
+
+    closeDeleteModal() {
+        this.isDeleteModalOpen = false;
+        this.deleteRecordId = null;
+        this.deleteRecordNumber = null;
+        this.deleteContinuationNumber = null;
+    }
+
+    async handleDeleteConfirm() {
+        this.isDeleting = true;
+        try {
+            await deleteApplicationItem({ requestId: this.deleteRecordId });
+            this.showToast('Success', `${this.deleteRecordNumber} was deleted.`, 'success');
+            this.closeDeleteModal();
+
+            refreshApex(this.wiredLeaveResult);
+            refreshApex(this.wiredLwopResult);
+            refreshApex(this.wiredOtResult);
+
+            refreshApex(this.wiredLeaveOverviewResult);
+        } catch (error) {
+            this.showToast('Error', error.body ? error.body.message : error.message, 'error');
+        } finally {
+            this.isDeleting = false;
         }
     }
 }

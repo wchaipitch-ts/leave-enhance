@@ -732,34 +732,6 @@ public without sharing class TimesheetController {
             'Unknown request category "' + category + '". Expected Leave, LWOP or OT.');
     }
 
-    // ==================================================================== editing
-    /**
-     * An employee correcting a request from the list view.
-     *
-     * Only a Draft can be changed. A Pending request is already in front of an approver,
-     * and an Approved one has spent its balance and booked its days. The database
-     * refuses that second case through Approved_Request_Is_Locked, but nothing refuses
-     * the first, and the approval process's own record lock does not apply to Apex
-     * running in system mode — so the status is re-read here and checked against the
-     * database rather than trusted from the payload.
-     *
-     * The editable fields are taken exactly as posted, blanks included: clearing
-     * Term_To__c is how a range becomes a single-day request. Remark__c is required at
-     * the schema level, so posting it blank is refused by the database rather than
-     * silently ignored here — the message reaches the user through the DmlException
-     * catch below. Everything else on the record — Status__c, OwnerId, the split lookup,
-     * the balance lookup, the calculated day counts — belongs to the approval path and the
-     * triggers and is not writable from a client. That is a whitelist rather than a
-     * blacklist because this class runs without sharing and no profile in this org holds
-     * edit access on ApplicationItem__c at all: an update assembled from whatever was
-     * posted would write every field it named, field-level security included.
-     *
-     * @param editedApplicationItem Id plus the editable fields. The rest is ignored.
-     * @return the saved record, in the same shape getApplicationItems returns. Worth
-     *         reading back rather than assuming the edit landed verbatim: the triggers
-     *         recount the days, and LeaveSplitService can shorten a request that no
-     *         longer fits the balance and raise the remainder as its own Unpaid record.
-     */
     @AuraEnabled
     public static ApplicationItem__c updateApplicationItem(ApplicationItem__c editedApplicationItem) {
         if (editedApplicationItem == null || editedApplicationItem.Id == null) {
@@ -825,37 +797,6 @@ public without sharing class TimesheetController {
         return saved.isEmpty() ? null : saved[0];
     }
 
-    /**
-     * Removes a Draft request on behalf of its owner.
-     *
-     * This exists because no profile in this org holds delete access on
-     * ApplicationItem__c, and none should: a request that has been through approval has
-     * spent balance and booked days, and the reversal only holds together when the
-     * delete goes through the triggers with the whole record in hand. Running the DML
-     * here — in a class that is without sharing, behind the same permission rule as
-     * every other leave screen — is what keeps that the only route. Granting delete on
-     * the object instead would also open the record page, list views and Data Loader,
-     * none of which would apply the Draft check below.
-     *
-     * Nothing is reversed here by hand. ApplicationItemTriggerHandler.onBeforeDelete
-     * notes the Man_hour__c bookings while their lookup still points somewhere and tells
-     * LeaveDocumentPolicy that the ContentDocumentLink cascade is the platform's doing
-     * rather than someone stripping a certificate; onAfterDelete restores balances and
-     * clears the bookings. A Draft has spent nothing, so in practice it is only the
-     * cascade note that matters — but the delete is issued the same way regardless, so
-     * that the two paths cannot drift.
-     *
-     * The unpaid continuation goes with it. When a request runs past the balance
-     * LeaveSplitService raises the remainder as its own Unpaid record pointing back
-     * through Split_From__c, and those days were never asked for deliberately. The
-     * lookup is deleteConstraint=SetNull, so leaving the child behind would strand an
-     * unpaid Draft with nothing left to explain where it came from. A continuation that
-     * has moved past Draft is a different matter — it is somebody's live request now —
-     * and that refuses the whole operation rather than deleting half of it.
-     *
-     * @param requestId the request to delete. Must be Draft, and must belong to someone
-     *                  the running user is allowed to act for.
-     */
     @AuraEnabled
     public static void deleteApplicationItem(Id requestId) {
         if (requestId == null) {
@@ -890,25 +831,10 @@ public without sharing class TimesheetController {
                 + existing.Status__c + '.');
         }
 
-        List<SObject> toDelete = new List<SObject>{ existing };
-
-        for (ApplicationItem__c child : [
-            SELECT Id, Name, Status__c
-            FROM ApplicationItem__c
-            WHERE Split_From__c = :requestId
-        ]) {
-            if (!STATUS_DRAFT.equals(child.Status__c)) {
-                throw new AuraHandledException('This request has an unpaid continuation ('
-                    + child.Name + ') that is already ' + child.Status__c
-                    + '. That request has to be handled before this one can be deleted.');
-            }
-            toDelete.add(child);
-        }
-
         try {
-            // One DML so the triggers see the request and its continuation together,
-            // rather than as two unrelated deletions.
-            delete toDelete;
+            // Just this record. Any unpaid continuation is left to the platform, which
+            // nulls its Split_From__c and leaves the request itself standing.
+            delete existing;
         } catch (DmlException e) {
             /*
              * Lifted out for the same reason the edit path lifts it: left raw, the
@@ -920,52 +846,17 @@ public without sharing class TimesheetController {
         }
     }
 
-    // ======================================================== unpaid leave conversion
-    /*
-     * The three entry points behind the Unpaid Leave Conversion card. The mechanics are
-     * LeaveConversionService's — these exist so the card talks to the same controller as
-     * the rest of the leave screens, and so every one of them is gated on the same
-     * permission rule LeaveBalanceService owns.
-     */
-
-    /**
-     * The card's figures for one Unpaid leave request: what can be converted, what
-     * already has been, and what is still unpaid.
-     *
-     * Every number is derived on read from the record, its converted children and the
-     * Annual balance. None of them is stored on the request — a stored "convertible
-     * days" goes stale the moment anyone else's request is approved against the same
-     * balance.
-     */
     @AuraEnabled(cacheable=true)
     public static LeaveConversionService.ConversionView getUnpaidConversion(Id requestId) {
         return LeaveConversionService.view(requestId);
     }
 
-    /**
-     * Turns unpaid days into an Annual leave request in Draft, which the owner then
-     * submits for approval. Nothing here spends Annual balance: the approval does, as
-     * it does for every other request.
-     *
-     * @param days whole days to convert; null converts everything currently convertible.
-     * @return the card's figures read back afterwards. Worth reading rather than
-     *         assuming: converting an approved request rejects and replaces it, so the
-     *         record the client was holding is not the one that survives.
-     */
     @AuraEnabled
     public static LeaveConversionService.ConversionView convertUnpaidLeave(Id requestId,
                                                                           Decimal days) {
         return LeaveConversionService.convert(requestId, days);
     }
 
-    /**
-     * Revokes the paid requests a conversion produced and puts the days back as unpaid,
-     * as they were before it — approved days come back approved.
-     *
-     * Revoking is a rejection, so the Annual balance, calendar entries and man hours the
-     * converted request had spent come back through LeaveReversalService, the same path
-     * every other reversal takes.
-     */
     @AuraEnabled
     public static LeaveConversionService.ConversionView revertConversion(Id requestId,
                                                                         String reason) {

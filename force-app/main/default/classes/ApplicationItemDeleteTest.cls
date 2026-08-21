@@ -114,7 +114,7 @@ private class ApplicationItemDeleteTest {
     /** The one request carrying the given remark. */
     private static ApplicationItem__c requestFor(String remark) {
         return [
-            SELECT Id, Name, Status__c, OwnerId, Remark__c, Split_From__c
+            SELECT Id, Name, Status__c, OwnerId, Remark__c, Split_From__c, Request_Type__c
             FROM ApplicationItem__c
             WHERE Remark__c = :remark
             LIMIT 1
@@ -166,15 +166,16 @@ private class ApplicationItemDeleteTest {
         System.assert(stillExists(REJECTED), 'and it is still there');
     }
 
-    // ------------------------------------------------------------------ the cascade
+    // ------------------------------------------------------------------ the continuation
 
     /*
-     * The unpaid days were never asked for deliberately, so they go with the request
-     * that caused them. Split_From__c is deleteConstraint=SetNull, which would otherwise
-     * leave the continuation behind with nothing left to explain where it came from.
+     * Deleting the original takes only the original. The unpaid days are leave the
+     * employee is still taking, so the continuation survives as an ordinary unpaid
+     * request - orphaned, because Split_From__c is deleteConstraint=SetNull and there is
+     * no longer anything for it to point at.
      */
     @isTest
-    static void aDraftContinuationGoesWithItsParent() {
+    static void aDraftContinuationSurvivesItsParent() {
         Id parentId = requestFor(HAS_DRAFT).Id;
 
         Test.startTest();
@@ -182,26 +183,32 @@ private class ApplicationItemDeleteTest {
         Test.stopTest();
 
         System.assert(!stillExists(HAS_DRAFT), 'the request is gone');
-        System.assert(!stillExists(CHILD_DRAFT), 'and so is its unpaid continuation');
+        System.assert(stillExists(CHILD_DRAFT), 'but its unpaid continuation stayed');
+
+        ApplicationItem__c child = requestFor(CHILD_DRAFT);
+        System.assertEquals(null, child.Split_From__c, 'and the platform emptied the lookup');
+        System.assertEquals('Unpaid leave', child.Request_Type__c, 'still unpaid leave');
     }
 
     /*
-     * A continuation that has moved past Draft is somebody's live request. Refusing the
-     * whole operation is the point - deleting the parent alone would strand it, and
-     * deleting both would take a submitted request out from under the approval path.
+     * The same, for a continuation already through to the approval path. This is the
+     * case the behaviour exists for: cascading would have cancelled a live request as a
+     * side effect of tidying up a different one.
      */
     @isTest
-    static void aLiveContinuationBlocksTheDelete() {
+    static void aLiveContinuationSurvivesItsParent() {
         Id parentId = requestFor(HAS_LIVE).Id;
-        try {
-            TimesheetController.deleteApplicationItem(parentId);
-            System.assert(false, 'a live continuation must block the delete');
-        } catch (AuraHandledException e) {
-            System.assert(true);
-        }
 
-        System.assert(stillExists(HAS_LIVE), 'the parent stayed');
-        System.assert(stillExists(CHILD_LIVE), 'and so did the continuation');
+        Test.startTest();
+        TimesheetController.deleteApplicationItem(parentId);
+        Test.stopTest();
+
+        System.assert(!stillExists(HAS_LIVE), 'the request is gone');
+        System.assert(stillExists(CHILD_LIVE), 'and the live continuation is untouched');
+
+        ApplicationItem__c child = requestFor(CHILD_LIVE);
+        System.assertEquals(null, child.Split_From__c, 'beyond the emptied lookup');
+        System.assertEquals('Pending', child.Status__c, 'its status is its own business');
     }
 
     // ------------------------------------------------------------------ permission

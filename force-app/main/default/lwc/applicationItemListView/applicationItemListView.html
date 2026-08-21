@@ -224,4 +224,41 @@
         </section>
         <div class="slds-backdrop slds-backdrop_open"></div>
     </template>
+
+    <template if:true={isDeleteModalOpen}>
+        <section role="alertdialog" tabindex="-1" aria-modal="true" aria-labelledby="deleteHeading"
+                 class="slds-modal slds-fade-in-open slds-modal_small">
+            <div class="slds-modal__container">
+
+                <header class="slds-modal__header">
+                    <button class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse" title="Close" onclick={closeDeleteModal}>
+                        <lightning-icon icon-name="utility:close" alternative-text="close" variant="inverse" size="small"></lightning-icon>
+                        <span class="slds-assistive-text">Close</span>
+                    </button>
+                    <h2 id="deleteHeading" class="slds-text-heading_medium slds-hyphenate">Delete Request</h2>
+                </header>
+
+                <div class="slds-modal__content slds-p-around_medium">
+                    <p>Delete <strong>{deleteRecordNumber}</strong>? This cannot be undone.</p>
+
+                    <template if:true={hasContinuation}>
+                        <div class="slds-scoped-notification slds-media slds-media_center slds-theme_warning slds-m-top_medium" role="status">
+                            <div class="slds-media__figure">
+                                <lightning-icon icon-name="utility:warning" size="small"></lightning-icon>
+                            </div>
+                            <div class="slds-media__body slds-p-left_small">
+                                <p style="color: #000;">{deleteContinuationMessage}</p>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+
+                <footer class="slds-modal__footer">
+                    <lightning-button label="Cancel" onclick={closeDeleteModal} disabled={isDeleting} class="slds-m-right_x-small"></lightning-button>
+                    <lightning-button label="Delete" variant="destructive" onclick={handleDeleteConfirm} disabled={isDeleting}></lightning-button>
+                </footer>
+            </div>
+        </section>
+        <div class="slds-backdrop slds-backdrop_open"></div>
+    </template>
 </template>
