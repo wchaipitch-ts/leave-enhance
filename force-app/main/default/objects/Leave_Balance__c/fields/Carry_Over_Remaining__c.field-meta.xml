@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Carry_Over_Remaining__c</fullName>
+    <description>Carried days still available to spend, which is what a column labelled Carry Over is read as meaning. Carried In Days is an input to the availability formula and is not decremented as days are taken, so on its own it overstates what is left: 6 carried with 4 taken still reads 6, while this reads 2. Floored at zero, because once the carried days are gone further requests spend the current year and must not drive this negative. From 1 July it reads zero for everybody, the carried bucket having been emptied by the June sweep.</description>
+    <externalId>false</externalId>
+    <formula>MAX(0, BLANKVALUE(Carry_Over_Days__c, 0) - BLANKVALUE(Used_Days__c, 0))</formula>
+    <formulaTreatBlanksAs>BlankAsZero</formulaTreatBlanksAs>
+    <label>Carry Over Remaining</label>
+    <precision>18</precision>
+    <required>false</required>
+    <scale>1</scale>
+    <trackTrending>false</trackTrending>
+    <type>Number</type>
+    <unique>false</unique>
+</CustomField>

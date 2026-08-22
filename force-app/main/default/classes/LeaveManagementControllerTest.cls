@@ -404,12 +404,15 @@ public with sharing class LeaveManagementControllerTest {
     // ------------------------------------------------------------------ expiry
 
     /*
-     * Carry over is consumed before current-year entitlement, so only the unconsumed
-     * part lapses. Reducing Carry_Over_Days__c to the consumed amount removes exactly
-     * the unused days while leaving the already-taken ones accounted for.
+     * The bucket is emptied, and the days it paid for come out of Used with it.
+     *
+     * Carry over is consumed before current-year entitlement, so of the 6 carried in
+     * and 4 taken, all 4 came out of the bucket and none out of this year's twelve.
+     * Zeroing the carried figure alone would leave those 4 in Used with nothing to
+     * offset them and charge them to the current year, so both sides move together.
      */
     @isTest
-    static void lapsedCarryOverKeepsOnlyTheConsumedPortion() {
+    static void lapsedCarryOverEmptiesTheBucketAndTheDaysItPaidFor() {
         useFixtures();
         Test.startTest();
         LeaveManagementController.runDaily(GRANT_DAY);            // carry 6, expiry Jun 30
@@ -420,10 +423,87 @@ public with sharing class LeaveManagementControllerTest {
         Test.stopTest();
 
         Leave_Balance__c r = row('CapCarry', ANNUAL, GRANT_YEAR);
-        System.assertEquals(4, r.Carry_Over_Days__c,
-            '4 of the 6 carried-in days were taken, so only those 4 survive');
-        System.assertEquals(null, r.Carry_Over_Expiry__c, 'the expiry date is cleared');
-        System.assertEquals(4, r.Used_Days__c, 'consumption is not rewritten');
+        System.assertEquals(0, r.Carry_Over_Days__c,
+            'the carried bucket reads zero once it has expired');
+        System.assertEquals(0, r.Used_Days__c,
+            'and the 4 days it paid for are no longer charged to the current year');
+        System.assertEquals(Date.newInstance(2026, 6, 30), r.Carry_Over_Expiry__c,
+            'the date is kept: it is the record of when the days lapsed');
+    }
+
+    /*
+     * The same sweep must not reach past the bucket into the current year. This
+     * employee took 9 days: 6 paid for by carry over and 3 by their own entitlement,
+     * and only the first 6 disappear.
+     */
+    @isTest
+    static void lapsingCarryOverLeavesCurrentYearConsumptionAlone() {
+        useFixtures();
+        Test.startTest();
+        LeaveManagementController.runDaily(GRANT_DAY);
+        update new Leave_Balance__c(Id = [SELECT Id FROM Leave_Balance__c
+            WHERE Employee__r.LastName = 'CapCarry' AND Leave_Type__c = :ANNUAL
+              AND Leave_Year__c = :GRANT_YEAR].Id, Used_Days__c = 9);
+        LeaveManagementController.runDaily(Date.newInstance(2026, 7, 1));
+        Test.stopTest();
+
+        Leave_Balance__c r = row('CapCarry', ANNUAL, GRANT_YEAR);
+        System.assertEquals(0, r.Carry_Over_Days__c);
+        System.assertEquals(3, r.Used_Days__c,
+            'the 3 days taken out of this year survive the carry over expiring');
+    }
+
+    /*
+     * The date is kept rather than cleared, so the row keeps matching the sweep's
+     * query on every later run. What stops it being swept twice is the bucket being
+     * empty - nothing is written, and no second EXPIRE line is logged.
+     */
+    @isTest
+    static void anEmptiedBucketIsNotSweptAgain() {
+        useFixtures();
+        Test.startTest();
+        LeaveManagementController.runDaily(GRANT_DAY);
+        update new Leave_Balance__c(Id = [SELECT Id FROM Leave_Balance__c
+            WHERE Employee__r.LastName = 'CapCarry' AND Leave_Type__c = :ANNUAL
+              AND Leave_Year__c = :GRANT_YEAR].Id, Used_Days__c = 4);
+        LeaveManagementController.runDaily(Date.newInstance(2026, 7, 1));
+        LeaveManagementController.runDaily(Date.newInstance(2026, 7, 2));
+        LeaveManagementController.runDaily(Date.newInstance(2026, 12, 31));
+        Test.stopTest();
+
+        Leave_Balance__c r = row('CapCarry', ANNUAL, GRANT_YEAR);
+        System.assertEquals(0, r.Carry_Over_Days__c, 'still zero, not driven below it');
+        System.assertEquals(0, r.Used_Days__c, 'and Used is not reduced a second time');
+        System.assertEquals(Date.newInstance(2026, 6, 30), r.Carry_Over_Expiry__c);
+    }
+
+    /*
+     * The figure a screen should show. It tracks what is left of the bucket during the
+     * year, where the raw carried-in figure does not move at all, and reads zero from
+     * 1 July for everybody.
+     */
+    @isTest
+    static void carryOverRemainingTracksWhatIsLeft() {
+        useFixtures();
+        Test.startTest();
+        LeaveManagementController.runDaily(GRANT_DAY);
+        Id balId = [SELECT Id FROM Leave_Balance__c
+                    WHERE Employee__r.LastName = 'CapCarry' AND Leave_Type__c = :ANNUAL
+                      AND Leave_Year__c = :GRANT_YEAR].Id;
+        update new Leave_Balance__c(Id = balId, Used_Days__c = 4);
+
+        Leave_Balance__c during = [SELECT Carry_Over_Days__c, Carry_Over_Remaining__c
+                                   FROM Leave_Balance__c WHERE Id = :balId];
+        System.assertEquals(6, during.Carry_Over_Days__c, 'the raw figure does not move');
+        System.assertEquals(2, during.Carry_Over_Remaining__c, 'but two are genuinely left');
+
+        LeaveManagementController.runDaily(Date.newInstance(2026, 7, 1));
+        Test.stopTest();
+
+        Leave_Balance__c after = [SELECT Carry_Over_Days__c, Carry_Over_Remaining__c
+                                  FROM Leave_Balance__c WHERE Id = :balId];
+        System.assertEquals(0, after.Carry_Over_Days__c);
+        System.assertEquals(0, after.Carry_Over_Remaining__c, 'and none after the sweep');
     }
 
     @isTest

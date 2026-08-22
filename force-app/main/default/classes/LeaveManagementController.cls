@@ -240,11 +240,27 @@ public with sharing class LeaveManagementController implements Schedulable {
     /*
      * LEAVE-9 / LEAVE-27 — expiry sweep, daily.
      *
-     * Only the UNUSED portion lapses. Carry over is consumed before current-year
-     * entitlement, so the consumed part is MIN(CarriedIn, Used) and that is what
-     * survives; the rest is dropped. Availability is Accrued + CarriedIn - Used, so
-     * reducing CarriedIn to the consumed amount removes exactly the unused days and
-     * leaves the already-taken ones accounted for.
+     * Only the UNUSED portion lapses, and after the sweep the carried bucket reads
+     * ZERO - which is what everybody expects of an expired allowance, and what the
+     * record has to say if it is not to be misread.
+     *
+     * Getting there takes two writes, not one. Availability is
+     * Accrued + CarriedIn - Used, and carry over is consumed before current-year
+     * entitlement, so the days already taken out of the bucket are sitting in Used
+     * with CarriedIn as their counterweight. Zeroing CarriedIn on its own would leave
+     * them charged against the current year instead: six carried, four taken, and an
+     * employee who should still have their whole year would drop from 7 available
+     * to 3.
+     *
+     * So the consumed part is removed from BOTH sides at once. CarriedIn goes to
+     * zero and Used loses exactly what the bucket paid for, which cancels the pair
+     * and leaves the current year untouched. Used then means what it says on a page:
+     * days taken out of THIS year's entitlement.
+     *
+     * Carry_Over_Expiry__c is kept rather than cleared - it is the date the days
+     * lapsed, and a zeroed bucket with no date on it tells nobody anything. What
+     * stops the row being swept again is the bucket being empty: the guard below
+     * needs carried days to work on, and after the first sweep there are none.
      *
      * Refreshment works the same way against Entitlement_Days__c: granted on the
      * anniversary, and whatever is not used within the window is wiped.
@@ -288,17 +304,21 @@ public with sharing class LeaveManagementController implements Schedulable {
 
             Boolean lapsed = false;
 
-            if (carryExpired) {
-                Decimal carriedIn = zeroIfNull(row.Carry_Over_Days__c);
-                Decimal used      = zeroIfNull(row.Used_Days__c);
-                Decimal consumed  = carriedIn < used ? carriedIn : used;
-                if (carriedIn > consumed) {
-                    logDetails.add('EXPIRE  ' + row.Employee__r.Name
-                        + ' | carryOver lapsed=' + (carriedIn - consumed)
-                        + ' of ' + carriedIn + ' on ' + row.Carry_Over_Expiry__c);
-                }
-                row.Carry_Over_Days__c   = consumed;
-                row.Carry_Over_Expiry__c = null;
+            Decimal carriedIn = zeroIfNull(row.Carry_Over_Days__c);
+            // An empty bucket has already been swept, or never had anything in it.
+            // Either way there is nothing to do, and skipping keeps the row from
+            // being re-staged every night for the rest of the year.
+            if (carryExpired && carriedIn > 0) {
+                Decimal used     = zeroIfNull(row.Used_Days__c);
+                Decimal consumed = carriedIn < used ? carriedIn : used;
+
+                logDetails.add('EXPIRE  ' + row.Employee__r.Name
+                    + ' | carryOver lapsed=' + (carriedIn - consumed)
+                    + ' of ' + carriedIn + ', spent=' + consumed
+                    + ' on ' + row.Carry_Over_Expiry__c);
+
+                row.Carry_Over_Days__c = 0;
+                row.Used_Days__c       = used - consumed;
                 lapsed = true;
             }
 

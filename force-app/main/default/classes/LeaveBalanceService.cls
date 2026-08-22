@@ -25,6 +25,21 @@ public without sharing class LeaveBalanceService {
         @AuraEnabled public Decimal entitlement;
         @AuraEnabled public Decimal accrued;
         @AuraEnabled public Decimal carriedIn;
+        /*
+         * Carried days still available to spend — what a column labelled "Carry Over"
+         * is read as meaning, and NOT the same as carriedIn.
+         *
+         * carriedIn is the figure carried in at the January grant and an input to
+         * Available = Accrued + CarriedIn - Used. It is never decremented as days are
+         * taken, so on its own it overstates what is left: 6 carried with 4 taken still
+         * reads 6. From 1 July both read zero, the sweep having emptied the bucket.
+         *
+         * Read from the Carry_Over_Remaining__c formula rather than recomputed here, so
+         * the page and the record can never disagree about the same number. carriedIn is
+         * kept beside it because HR needs "6 were carried in, 2 lapsed" for the June
+         * audit, and that story cannot be told from the remaining figure alone.
+         */
+        @AuraEnabled public Decimal carryRemaining;
         @AuraEnabled public Decimal used;
         @AuraEnabled public Decimal pending;
         @AuraEnabled public Decimal available;
@@ -61,8 +76,8 @@ public without sharing class LeaveBalanceService {
         Map<String, Leave_Balance__c> rowByType = new Map<String, Leave_Balance__c>();
         for (Leave_Balance__c bal : [
             SELECT Id, Leave_Type__c, Entitlement_Days__c, Accrued_Days__c, Carry_Over_Days__c,
-                   Used_Days__c, Available_Days__c, Is_Locked__c, Lock_Reason__c,
-                   Expiry_Date__c, Carry_Over_Expiry__c, Granted_On__c
+                   Carry_Over_Remaining__c, Used_Days__c, Available_Days__c, Is_Locked__c,
+                   Lock_Reason__c, Expiry_Date__c, Carry_Over_Expiry__c, Granted_On__c
             FROM Leave_Balance__c
             WHERE Employee__c = :target AND Leave_Year__c = :year
         ]) {
@@ -139,6 +154,7 @@ public without sharing class LeaveBalanceService {
             view.carriedIn = 0;
             view.used = 0;
             view.available = 0;
+            view.carryRemaining = 0;
             view.isLocked = false;
             return view;
         }
@@ -147,6 +163,7 @@ public without sharing class LeaveBalanceService {
         view.entitlement     = zeroIfNull(bal.Entitlement_Days__c);
         view.accrued         = zeroIfNull(bal.Accrued_Days__c);
         view.carriedIn       = zeroIfNull(bal.Carry_Over_Days__c);
+        view.carryRemaining  = zeroIfNull(bal.Carry_Over_Remaining__c);
         view.used            = zeroIfNull(bal.Used_Days__c);
         view.available       = zeroIfNull(bal.Available_Days__c);
         view.isLocked        = bal.Is_Locked__c == true;
