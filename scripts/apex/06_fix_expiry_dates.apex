@@ -13,6 +13,21 @@
  * open for a year instead of a month, and the balance page shows them as available
  * the whole time.
  *
+ * A THIRD CASE, worse than either: a MISSING carry-over expiry.
+ *
+ * Script 03 copies the date off the User field rather than deriving it, so an
+ * employee whose User record carries days but holds no expiry date gets a balance
+ * row with carry over and no expiry at all. The June sweep matches on
+ * Carry_Over_Expiry__c != NULL, so such a row is invisible to it and those days
+ * never expire — not late, never. In dev5 every backfilled row came out null,
+ * which is harmless only because they all carry zero days; in production that is
+ * not a safe assumption.
+ *
+ * Every Annual row carrying days is therefore given 30 June of its own year,
+ * whether or not it already had a date. Arming a row costs one sweep, which sets
+ * the carried figure to the amount consumed and nulls the date again, so a row
+ * that has already been swept is not re-swept on any later run.
+ *
  * Rows created by LeaveManagementController are already right, so this only
  * rewrites where the stored value disagrees with the derived one. Idempotent —
  * a second run finds nothing.
@@ -42,17 +57,32 @@ for (Leave_Balance__c b : [
     SELECT Id, Employee__r.Name, Leave_Type__c, Leave_Year__c, Granted_On__c,
            Carry_Over_Days__c, Carry_Over_Expiry__c, Expiry_Date__c
     FROM Leave_Balance__c
-    WHERE Carry_Over_Expiry__c != NULL OR Expiry_Date__c != NULL
+    WHERE Carry_Over_Expiry__c != NULL
+       OR Expiry_Date__c != NULL
+       OR (Leave_Type__c = 'Annual leave' AND Carry_Over_Days__c > 0)
 ]) {
     checked++;
     Boolean changed = false;
     Leave_Balance__c fix = new Leave_Balance__c(Id = b.Id);
 
-    if (b.Carry_Over_Expiry__c != null && b.Leave_Year__c != null) {
+    /*
+     * A row needs a carry-over expiry if it already has one to correct, or if it
+     * carries days with none — the un-sweepable case. A row carrying nothing needs
+     * no date: there is nothing for the sweep to take away, and January will set one
+     * when it next grants.
+     */
+    Boolean needsCarryExpiry = b.Leave_Year__c != null
+        && (b.Carry_Over_Expiry__c != null || (b.Carry_Over_Days__c != null && b.Carry_Over_Days__c > 0));
+
+    if (needsCarryExpiry) {
         Date correct = Date.newInstance(b.Leave_Year__c.intValue(), 6, 30);
         if (b.Carry_Over_Expiry__c != correct) {
-            System.debug('CARRY  ' + b.Employee__r.Name + ' ' + b.Leave_Type__c
-                + ' ' + b.Leave_Year__c + ': ' + b.Carry_Over_Expiry__c + ' -> ' + correct);
+            System.debug((b.Carry_Over_Expiry__c == null ? 'ARM    ' : 'CARRY  ')
+                + b.Employee__r.Name + ' ' + b.Leave_Type__c
+                + ' ' + b.Leave_Year__c + ': ' + b.Carry_Over_Expiry__c + ' -> ' + correct
+                + (b.Carry_Over_Expiry__c == null
+                    ? '  (' + b.Carry_Over_Days__c + ' day(s) that would never have expired)'
+                    : ''));
             fix.Carry_Over_Expiry__c = correct;
             changed = true;
         }
