@@ -1,12 +1,29 @@
-// P0-1: standardise sick and personal entitlements.
-// Fills nulls only - does not clobber any deliberately different value.
-List<User> toUpdate = new List<User>();
-for (User u : [SELECT Id, Name, Sick_Leave_Allocated__c, Personal_Leave_Allocated__c
-               FROM User WHERE IsActive = TRUE AND Start_Date__c != NULL]) {
-    Boolean changed = false;
-    if (u.Sick_Leave_Allocated__c == null)     { u.Sick_Leave_Allocated__c = 30; changed = true; }
-    if (u.Personal_Leave_Allocated__c == null) { u.Personal_Leave_Allocated__c = 3; changed = true; }
-    if (changed) { toUpdate.add(u); System.debug('BACKFILL ' + u.Name); }
+/*
+ * Step 02 of the leave migration. See the Leave Migration tab for the same steps with a
+ * preview in front of each one.
+ *
+ * The logic lives in LeaveMigrationService, not here. It used to live in this file, and a
+ * screen was later built over the same migration - two copies of a cutover that must not
+ * be able to behave two different ways. The class is the single implementation and this
+ * is a caller.
+ *
+ * DRY RUN by default. Set APPLY to true to write.
+ */
+Boolean APPLY = false;
+Integer YEAR = 2026;
+
+LeaveMigrationService.StepOutcome out = LeaveMigrationService.run('02', YEAR, APPLY);
+
+for (String line : out.lines) {
+    System.debug(line);
 }
-update toUpdate;
-System.debug('BACKFILL updated ' + toUpdate.size() + ' of 19');
+System.debug('--------------------------------------');
+System.debug('STEP 02  ' + out.title);
+if (out.blockedReason != null) {
+    System.debug(out.blockedReason);
+} else {
+    System.debug(out.summary);
+    if (!APPLY) {
+        System.debug('DRY RUN — nothing written. Set APPLY = true to apply.');
+    }
+}

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomPermission xmlns="http://soap.sforce.com/2006/04/metadata">
+    <description>LEAVE-50. Allows the Leave Migration screen to run the six cutover steps. Narrow by design: they rewrite leave data for every employee, and step 03 can revert consumption if run after go-live. Assign for the cutover, remove afterwards.</description>
+    <isLicensed>false</isLicensed>
+    <label>Run Leave Migration</label>
+</CustomPermission>

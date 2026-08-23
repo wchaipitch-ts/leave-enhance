@@ -1,0 +1,33 @@
+.stepno {
+    display: inline-block;
+    min-width: 2rem;
+    font-family: monospace;
+    font-weight: 700;
+    color: #0b5cab;
+}
+
+.orgname {
+    font-family: monospace;
+    font-weight: 700;
+    background: #fff;
+    padding: 0.1em 0.4em;
+    border-radius: 2px;
+}
+
+/* A step that cannot run should look unavailable before anybody reads why. */
+.blocked {
+    opacity: 0.75;
+    border-left: 4px solid #8a5a12;
+}
+
+.detail {
+    max-height: 16rem;
+    overflow: auto;
+    font-family: monospace;
+    font-size: 0.75rem;
+    line-height: 1.5;
+    background: #f4f6f9;
+    padding: 0.5rem;
+    margin: 0.5rem 0 0;
+    white-space: pre;
+}

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">
+    <customPermissions>
+        <enabled>true</enabled>
+        <name>Run_Leave_Migration</name>
+    </customPermissions>
+    <description>LEAVE-50. Carries Run_Leave_Migration and nothing else. Assign for the cutover and unassign once it is done - the steps rewrite leave data for every employee and step 03 is one-way.</description>
+    <hasActivationRequired>false</hasActivationRequired>
+    <label>Leave Migration Runner</label>
+    <tabSettings>
+        <tab>Leave_Migration</tab>
+        <visibility>Visible</visibility>
+    </tabSettings>
+</PermissionSet>

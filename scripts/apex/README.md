@@ -2,8 +2,25 @@
 
 Run in numeric order, against a sandbox first, and **snapshot before every step**.
 
+> ### These are now callers, not implementations
+>
+> The logic lives in `LeaveMigrationService`. Each file here selects a step and prints the
+> result; the **Leave Migration** tab runs the same class through
+> `LeaveMigrationController`. A cutover that can be run two ways must not be able to
+> behave two ways, so there is one implementation and two front doors.
+>
+> **Every script now dry-runs by default.** Set `APPLY = true` inside the file to write.
+> Scripts 01 to 05 used to apply the moment you ran them; they no longer do.
+>
+> The screen is the easier route for a cutover: it previews each step, keeps the steps in
+> order, downloads the User-field snapshot for you, and refuses to apply anything in a
+> production org until the org's name has been typed back.
+
 Scripts 01, 02 and 04 are safely re-runnable. **03 is not, once the system is live** —
-see the warning under its row.
+and it no longer relies on you having read that. `LeaveMigrationService.blockReasonFor`
+refuses it outright as soon as a single request carries `Balance_Applied_Days__c`, which
+is the stamp written at approval and therefore proof that consumption has moved to
+`Leave_Balance__c`. The refusal appears whether you run the script or press the button.
 
 ```bash
 sf data query --target-org <alias> \
