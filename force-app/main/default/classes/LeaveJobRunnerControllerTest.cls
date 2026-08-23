@@ -255,4 +255,40 @@ private class LeaveJobRunnerControllerTest {
         LeaveJobRunnerController.sandboxOverride = false;
         System.assertEquals(false, LeaveJobRunnerController.isAvailable());
     }
+
+    /*
+     * Skipping a year is the easiest way to make carry over look broken: the engine reads
+     * the year immediately before, so jumping 2026 straight to 2028 finds no 2027 row and
+     * carries nothing. Measured against dev5 that is the difference between carrying 1 day
+     * and carrying none, and the screen has to say so rather than leaving a BA to guess.
+     */
+    @isTest
+    static void skippingAYearIsCalledOut() {
+        LeaveJobRunnerController.sandboxOverride = true;
+        Integer twoYearsOn = priorYear() + 2;
+
+        Test.startTest();
+        LeaveJobRunnerController.RunResult r = LeaveJobRunnerController.run(
+            Date.newInstance(twoYearsOn, 1, 1), employeeId(), twoYearsOn, false);
+        Test.stopTest();
+
+        System.assertEquals(true, r.priorYearMissing);
+        System.assert(r.summary.contains('no ' + (twoYearsOn - 1) + ' Annual leave row'),
+            r.summary);
+    }
+
+    /* And stays quiet when the preceding year is actually there. */
+    @isTest
+    static void theNextYearRunIsNotFlagged() {
+        LeaveJobRunnerController.sandboxOverride = true;
+
+        Test.startTest();
+        LeaveJobRunnerController.RunResult r = LeaveJobRunnerController.run(
+            Date.newInstance(priorYear() + 1, 1, 1), employeeId(), priorYear() + 1, false);
+        Test.stopTest();
+
+        System.assertEquals(false, r.priorYearMissing,
+            'the current year row exists, so carry over has something to read');
+        System.assert(!r.summary.contains('Annual leave row'), r.summary);
+    }
 }

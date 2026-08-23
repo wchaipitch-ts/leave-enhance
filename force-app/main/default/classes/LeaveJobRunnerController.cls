@@ -59,6 +59,7 @@ public with sharing class LeaveJobRunnerController {
         @AuraEnabled public Integer changedRows;
         @AuraEnabled public Integer orgWideChangedRows;
         @AuraEnabled public String summary;
+        @AuraEnabled public Boolean priorYearMissing;
         @AuraEnabled public List<BalanceRow> rows;
     }
 
@@ -148,6 +149,7 @@ public with sharing class LeaveJobRunnerController {
         }
 
         result.rows = compare(before, after);
+        result.priorYearMissing = !hasAnnualRow(employeeId, yr - 1);
         Integer changed = 0;
         for (BalanceRow r : result.rows) {
             if (r.changed) changed++;
@@ -218,6 +220,21 @@ public with sharing class LeaveJobRunnerController {
         return rows;
     }
 
+    /*
+     * Carry over is read from the immediately preceding year's row, so a run that skips a
+     * year carries nothing and looks broken. Jumping 2026 straight to 2028 leaves the
+     * engine looking for a 2027 row that was never created - measured in dev5, that is the
+     * difference between carrying 1 day and carrying none.
+     */
+    private static Boolean hasAnnualRow(Id employeeId, Integer yr) {
+        return 0 < [
+            SELECT COUNT()
+            FROM Leave_Balance__c
+            WHERE Employee__c = :employeeId AND Leave_Year__c = :yr
+              AND Leave_Type__c = 'Annual leave'
+        ];
+    }
+
     private static String summarise(RunResult r, Integer changed) {
         String head = r.applied
             ? 'Applied. These changes are saved.'
@@ -233,6 +250,13 @@ public with sharing class LeaveJobRunnerController {
             detail += ' The run also created ' + r.orgWideChangedRows
                 + ' new balance row(s) across other employees — the job is org-wide, '
                 + 'not scoped to the person you are watching.';
+        }
+        if (r.priorYearMissing) {
+            detail += ' Note: there is no ' + (r.year - 1) + ' Annual leave row for this '
+                + 'employee, and carry over is read from the year immediately before. Any '
+                + 'carried figure below will be zero for that reason alone. Run the missing '
+                + 'year first and keep it, or set the current year\'s row by hand and run '
+                + 'only the next 1 January.';
         }
         return head + detail;
     }
