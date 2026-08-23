@@ -41,8 +41,16 @@
                                         placeholder="Pick an employee"></lightning-combobox>
                 </div>
                 <div class="slds-col slds-size_1-of-3">
-                    <lightning-input type="number" label="Leave year" value={year}
-                                     onchange={handleYear} step="1"></lightning-input>
+                    <lightning-combobox label="Show balances for leave year" value={year}
+                                        options={yearOptions} onchange={handleYear}
+                                        field-level-help="Which year's balance rows to show. It does not change what the job does - that comes entirely from the date. It follows the date automatically; override it only if you want to watch a different year's rows."></lightning-combobox>
+                    <template if:true={yearMismatch}>
+                        <p class="slds-text-color_error slds-text-body_small slds-m-top_xx-small">
+                            You are watching {year} but running as if it were {runYear}. A run
+                            usually changes the rows for its own year, so this may report no
+                            change even when it worked.
+                        </p>
+                    </template>
                 </div>
             </div>
 

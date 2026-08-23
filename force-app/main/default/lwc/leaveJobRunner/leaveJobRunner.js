@@ -18,7 +18,7 @@ export default class LeaveJobRunner extends LightningElement {
     @track result = null;
     employeeId = null;
     runDate = new Date().toISOString().slice(0, 10);
-    year = new Date().getFullYear();
+    year = String(new Date().getFullYear());
     busy = false;
     error = null;
 
@@ -54,10 +54,40 @@ export default class LeaveJobRunner extends LightningElement {
             ? 'slds-theme_warning' : 'slds-theme_success');
     }
 
-    handleDate(e) { this.runDate = e.target.value; }
+    /*
+     * The year follows the date. It is only a filter on which balance rows are shown, and
+     * mismatching the two is the easiest way to make a working run look like it did
+     * nothing - run as if January 2027 while watching 2026 and the table reports no change
+     * because the rows that moved are the ones you are not looking at.
+     */
+    handleDate(e) {
+        this.runDate = e.target.value;
+        if (this.runDate) {
+            this.year = this.runDate.slice(0, 4);
+        }
+    }
+
     handleEmployee(e) { this.employeeId = e.detail.value; }
-    handleYear(e) { this.year = parseInt(e.target.value, 10); }
+    handleYear(e) { this.year = e.detail.value; }
     handleClear() { this.result = null; this.error = null; }
+
+    get runYear() {
+        return this.runDate ? this.runDate.slice(0, 4) : '';
+    }
+
+    /* Allowed rather than blocked: watching a neighbouring year is occasionally the point. */
+    get yearMismatch() {
+        return Boolean(this.runDate) && this.year !== this.runYear;
+    }
+
+    get yearOptions() {
+        const base = parseInt(this.runYear || String(new Date().getFullYear()), 10);
+        const years = [];
+        for (let y = base - 2; y <= base + 2; y++) {
+            years.push({ label: String(y), value: String(y) });
+        }
+        return years;
+    }
 
     handlePreview() { this.execute(false); }
 
@@ -82,7 +112,7 @@ export default class LeaveJobRunner extends LightningElement {
         runJob({
             runDate: this.runDate,
             employeeId: this.employeeId,
-            year: this.year,
+            year: parseInt(this.year, 10),
             commitRun
         })
             .then((res) => {
