@@ -281,4 +281,74 @@ private class LeaveBalanceServiceTest {
             System.assert(true);
         }
     }
+
+    // ------------------------------------------------------- carry over remaining
+
+    /*
+     * carriedIn is what came IN at the January grant and never moves as days are
+     * taken; carryRemaining is what is left to spend. A column labelled "Carry Over"
+     * means the second, and showing the first overstates it all year.
+     *
+     * The fixture's Annual row is 12 entitlement, 2 carried in, 1 used, so one of the
+     * two carried days has been spent.
+     */
+    @isTest
+    static void carryRemainingIsWhatIsLeftNotWhatCameIn() {
+        LeaveBalanceService.LeaveBalanceView annual =
+            viewFor(LeaveBalanceService.getBalances(employeeId(), testYear()), 'Annual leave');
+
+        System.assertEquals(2, annual.carriedIn, 'two days came in');
+        System.assertEquals(1, annual.used, 'one of them has been taken');
+        System.assertEquals(1, annual.carryRemaining, 'so one is left to spend');
+    }
+
+    /*
+     * The state the 30 June sweep leaves behind: the carried figure is reduced to the
+     * amount consumed, so the two are equal and nothing is spendable. Reading carriedIn
+     * here is what puts "Carry Over: 4" on the screen of somebody with none left.
+     */
+    @isTest
+    static void aSweptRowHasNoCarryOverLeft() {
+        Leave_Balance__c bal = [SELECT Id FROM Leave_Balance__c
+                                WHERE Employee__c = :employeeId() AND Leave_Type__c = 'Annual leave'
+                                  AND Leave_Year__c = :testYear()];
+        // 6 carried in, 4 taken, then swept: carried is cut to the 4 consumed.
+        update new Leave_Balance__c(Id = bal.Id, Carry_Over_Days__c = 4, Used_Days__c = 4,
+                                    Carry_Over_Expiry__c = null);
+
+        LeaveBalanceService.LeaveBalanceView annual =
+            viewFor(LeaveBalanceService.getBalances(employeeId(), testYear()), 'Annual leave');
+
+        System.assertEquals(4, annual.carriedIn, 'the raw figure the June audit needs');
+        System.assertEquals(0, annual.carryRemaining, 'and nothing left to spend');
+    }
+
+    /*
+     * Once the carried days are gone, further requests spend the current year. The
+     * remaining figure floors at zero rather than going negative and reading as a debt
+     * against a bucket that is already empty.
+     */
+    @isTest
+    static void carryRemainingNeverGoesNegative() {
+        Leave_Balance__c bal = [SELECT Id FROM Leave_Balance__c
+                                WHERE Employee__c = :employeeId() AND Leave_Type__c = 'Annual leave'
+                                  AND Leave_Year__c = :testYear()];
+        update new Leave_Balance__c(Id = bal.Id, Carry_Over_Days__c = 2, Used_Days__c = 9);
+
+        LeaveBalanceService.LeaveBalanceView annual =
+            viewFor(LeaveBalanceService.getBalances(employeeId(), testYear()), 'Annual leave');
+
+        System.assertEquals(0, annual.carryRemaining,
+            'nine days taken against two carried is not minus seven of carry over');
+    }
+
+    /* A type with no carry-over bucket at all reports zero, not null. */
+    @isTest
+    static void aTypeWithoutCarryOverReportsZero() {
+        LeaveBalanceService.LeaveBalanceView sick =
+            viewFor(LeaveBalanceService.getBalances(employeeId(), testYear()), 'Sick leave');
+
+        System.assertEquals(0, sick.carriedIn);
+        System.assertEquals(0, sick.carryRemaining);
+    }
 }

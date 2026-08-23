@@ -1,89 +1,107 @@
+/* Date Formatting */
 .date-text {
-    font-size: 1.2em;
+    font-size: 1.1rem;
     font-weight: bold;
+    color: #000;
+}
+
+/* ========================================= */
+/* UI FIX: Responsive Flexbox Container      */
+/* ========================================= */
+.timestamp-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    /* Reduced gap to prevent overflow in narrow columns */
+    gap: 12px; 
+    margin: 10px 0;
+    width: 100%;
+}
+
+/* Time Display Formatting */
+.time-display {
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .time-text {
-    font-size: 3rem;
+    /* 
+     * THE RESPONSIVE TRICK: clamp(MIN, VAL, MAX)
+     * The font size will never be smaller than 2.5rem, 
+     * never larger than 3.5rem, and will scale automatically in between.
+     */
+    font-size: clamp(2.5rem, 4vw, 3.5rem); 
     font-weight: bold;
+    line-height: 1;
+    color: #1a1a1a;
 }
 
 .blink_me {
     animation: blinker 1s linear infinite;
-  }
-  
-@keyframes blinker {
-    50% {
-        opacity: 0;
-    }
+    margin: 0 4px;
 }
 
-.time-grid {
+@keyframes blinker {
+    50% { opacity: 0; }
+}
+
+/* ========================================= */
+/* UI FIX: Compact Rectangular Buttons       */
+/* ========================================= */
+.btn-rect {
+    /* Changed from fixed width to min-width for flexibility */
+    min-width: 55px; 
+    height: 40px; 
+    padding: 0 10px;
+    border-radius: 6px; /* Gentle rounded rectangle */
+    font-size: 1rem; /* Scaled down text */
+    font-weight: bold;
     display: flex;
     justify-content: center;
-}
-
-.button {
-    border: none;
-    color: white;
-    text-align: center;
-    font-size: 16px;
-    transition-duration: 0.4s;
+    align-items: center;
     cursor: pointer;
+    transition: all 0.3s ease;
+    border: none;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1); 
 }
 
-.button-in {
-    font-size: 1.5em;
-    font-weight: bold;
-    background-color: white; 
+/* IN Button (Active) */
+.btn-in {
+    background-color: #ffffff; 
     color: #4CAF50; 
     border: 2px solid #4CAF50;
-    border-radius: 12px;
-    width: 100%;
-    height: 38px;
 }
 
-.button-in:hover {
+.btn-in:hover {
     background-color: #4CAF50;
-    color: white;
+    color: #ffffff;
 }
 
-.button-in-gray {
-    cursor: default;
-    font-size: 1.5em;
-    font-weight: bold;
-    background-color: rgb(219, 219, 219); 
+/* IN Button (Disabled/Gray) */
+.btn-in-gray {
+    background-color: #d8d8d8; 
     color: #ffffff; 
-    border: 2px solid rgb(219, 219, 219); 
-    border-radius: 12px;
-    width: 100%;
-    height: 38px;
+    cursor: not-allowed;
+    box-shadow: none;
 }
 
-.button-out {
-    font-size: 1.5em;
-    font-weight: bold;
-    background-color: white; 
-    color: #008CBA; 
-    border: 2px solid #008CBA;
-    border-radius: 12px;
-    width: 100%;
-    height: 38px;
+/* OUT Button (Active) */
+.btn-out {
+    background-color: #ffffff; 
+    color: #0070d2; 
+    border: 2px solid #0070d2;
 }
 
-.button-out:hover {
-    background-color: #008CBA;
-    color: white;
+.btn-out:hover {
+    background-color: #0070d2;
+    color: #ffffff;
 }
 
-.button-out-gray {
-    cursor: default;
-    font-size: 1.5em;
-    font-weight: bold;
-    background-color: rgb(219, 219, 219); 
+/* OUT Button (Disabled/Gray) */
+.btn-out-gray {
+    background-color: #d8d8d8; 
     color: #ffffff; 
-    border: 2px solid rgb(219, 219, 219); 
-    border-radius: 12px;
-    width: 100%;
-    height: 38px;
+    cursor: not-allowed;
+    box-shadow: none;
 }

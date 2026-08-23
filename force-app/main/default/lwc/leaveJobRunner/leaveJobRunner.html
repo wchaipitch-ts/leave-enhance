@@ -1,0 +1,96 @@
+<template>
+  <template if:true={available}>
+    <lightning-card title="Leave Job Runner" icon-name="utility:play">
+        <span slot="actions" class="slds-badge slds-badge_lightest">temporary &middot; sandbox only</span>
+
+        <div class="slds-p-horizontal_medium">
+            <div class="slds-box slds-theme_shade slds-m-bottom_medium slds-text-body_small">
+                Runs the nightly grant job <em>as if</em> it were the date you pick, then shows what
+                moved on one employee&rsquo;s balances. Use it for the dates nothing else reaches:
+                <strong>1 January</strong> for the new year&rsquo;s rows and carry over,
+                <strong>1 July</strong> for the carry-over sweep, and the <strong>1st of an
+                anniversary month</strong> for a refreshment grant.
+                <br /><br />
+                The job always runs for <strong>every employee</strong>, not just the one you are
+                watching. Preview first &mdash; it rolls everything back so you can see the effect
+                without keeping it.
+            </div>
+
+            <div class="slds-grid slds-gutters slds-wrap">
+                <div class="slds-col slds-size_1-of-3">
+                    <lightning-input type="date" label="Run the job as if it were"
+                                     value={runDate} onchange={handleDate}
+                                     date-style="short"></lightning-input>
+                </div>
+                <div class="slds-col slds-size_1-of-3">
+                    <lightning-combobox label="Watch this employee" value={employeeId}
+                                        options={employees} onchange={handleEmployee}
+                                        placeholder="Pick an employee"></lightning-combobox>
+                </div>
+                <div class="slds-col slds-size_1-of-3">
+                    <lightning-input type="number" label="Leave year" value={year}
+                                     onchange={handleYear} step="1"></lightning-input>
+                </div>
+            </div>
+
+            <div class="slds-m-top_medium">
+                <lightning-button variant="brand" label="Preview (nothing is saved)"
+                                  onclick={handlePreview} disabled={busy}
+                                  class="slds-m-right_x-small"></lightning-button>
+                <lightning-button variant="destructive" label="Run for real"
+                                  onclick={handleCommit} disabled={busy}></lightning-button>
+                <lightning-button variant="base" label="Clear" onclick={handleClear}
+                                  disabled={busy} class="slds-m-left_x-small"></lightning-button>
+            </div>
+
+            <template if:true={busy}>
+                <div class="slds-m-top_medium"><lightning-spinner alternative-text="Running"
+                     size="small" variant="brand"></lightning-spinner></div>
+            </template>
+
+            <template if:true={error}>
+                <div class="slds-box slds-theme_error slds-m-top_medium">{error}</div>
+            </template>
+
+            <template if:true={result}>
+                <div class={summaryClass}>{result.summary}</div>
+
+                <table class="slds-table slds-table_bordered slds-table_cell-buffer slds-m-top_medium">
+                    <thead>
+                        <tr class="slds-line-height_reset">
+                            <th scope="col"><div class="slds-truncate">Leave Type</div></th>
+                            <template for:each={columns} for:item="col">
+                                <th key={col} scope="col"><div class="slds-truncate">{col}</div></th>
+                            </template>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template for:each={result.rows} for:item="row">
+                            <tr key={row.leaveType} class={row.rowClass}>
+                                <th scope="row">
+                                    <div class="slds-truncate">
+                                        {row.leaveType}
+                                        <template if:true={row.isNew}>
+                                            <span class="slds-badge slds-badge_inverse slds-m-left_x-small">new</span>
+                                        </template>
+                                    </div>
+                                </th>
+                                <template for:each={row.cells} for:item="cell">
+                                    <td key={cell.label} class={cell.cellClass}>
+                                        <div class="slds-truncate">{cell.value}</div>
+                                    </td>
+                                </template>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+
+                <p class="slds-text-body_small slds-m-top_x-small slds-text-color_weak">
+                    A cell reading <span class="moved">6 &rarr; 0</span> is one the run changed.
+                    Rows with nothing highlighted were left alone.
+                </p>
+            </template>
+        </div>
+    </lightning-card>
+  </template>
+</template>

@@ -1,107 +1,101 @@
 <template>
+    <!-- Main Timestamp Card -->
     <lightning-card title="Timestamp" icon-name="standard:shift">
-        <!-- TSJP Raman Modification Start - Timesheet Screen Transition Button -->
+        
+        <!-- Action Button: Open Timesheet -->
         <template if:true={currentPageUrl}>
-            <a class="slds-button slds-button-neutral" href="/lightning/n/Timesheet" slot="actions">
+            <a class="slds-button slds-button_neutral" href="/lightning/n/Timesheet" slot="actions">
                 <lightning-icon icon-name="utility:new_window" size="xx-small"></lightning-icon>
                 <span class="slds-m-left_x-small">Open TimeSheet</span>
             </a>
         </template>
-        <!-- TSJP Raman Modification End - Timesheet Screen Transition Button -->
 
+        <!-- Loading Indicator -->
         <template if:false={loaded}>
             <lightning-spinner alternative-text="Loading"></lightning-spinner>
         </template>
+        
         <div class="slds-card__body slds-card__body_inner">
-            <div class="date-text slds-p-around_small slds-align_absolute-center">
+            
+            <!-- Dynamic Date Display -->
+            <div class="date-text slds-p-bottom_medium slds-text-align_center">
                 {todayString} ({weekString})
             </div>
-            <!--<lightning-layout class="x-large slds-align_absolute-center">-->
-            <lightning-layout class="slds-show_large slds-align_absolute-center">
-                <lightning-layout-item size="1"></lightning-layout-item>
-                <lightning-layout-item size="3" padding="around-medium">
+
+            <!-- Responsive Flexbox Container for Clock and Buttons -->
+            <div class="timestamp-container">
+                
+                <!-- Check-IN Button Area -->
+                <div class="button-wrapper">
                     <template lwc:if={stampedIn}>
-                        <button class="button button-in-gray">IN</button>
+                        <button class="btn-rect btn-in-gray">IN</button>
                     </template>
                     <template lwc:else>
-                        <button class="button button-in" onclick={setTimeStampIn} data-id="in">IN</button>
+                        <button class="btn-rect btn-in" onclick={setTimeStampIn} data-id="in">IN</button>
                     </template>
-                </lightning-layout-item>
+                </div>
 
-                <lightning-layout-item size="4" >
-                    <div class="time-grid">
-                        <div>
-                            <span class="time-text">{hours}</span>
-                        </div>
-                        <div>
-                            <span class="time-text blink_me">{dotString}</span>
-                        </div>
-                        <div>
-                            <span class="time-text">{minutes}</span>
-                        </div>
-                    </div>
-                </lightning-layout-item>
+                <!-- Clock Display Area -->
+                <div class="time-display">
+                    <span class="time-text">{hours}</span>
+                    <span class="time-text blink_me">{dotString}</span>
+                    <span class="time-text">{minutes}</span>
+                </div>
 
-                <lightning-layout-item size="3" padding="around-medium">
+                <!-- Check-OUT Button Area -->
+                <div class="button-wrapper">
                     <template lwc:if={stampedOut}>
-                        <button class="button button-out-gray">OUT</button>
+                        <button class="btn-rect btn-out-gray">OUT</button>
                     </template>
                     <template lwc:else>
-                        <button class="button button-out" onclick={setTimeStampOut} data-id="out">OUT</button>
+                        <button class="btn-rect btn-out" onclick={setTimeStampOut} data-id="out">OUT</button>
                     </template>
-                </lightning-layout-item>
-                <lightning-layout-item size="1"></lightning-layout-item>
-            </lightning-layout>
+                </div>
+
+            </div>
         </div>
 
-        <!-- TSJP Raman Modification Start - To Display TimeIn・TimeOut in Home Screen　-->
+        <!-- Home Screen Summary Details -->
         <template if:true={currentPageUrl}>
-            <div style="display: flex; justify-content: center; align-items: center;"> 
+            <div class="slds-m-top_medium" style="display: flex; justify-content: center; align-items: center; color: #747474; font-size: 0.85rem;"> 
                 <template if:true={stampedIn}>
-                    IN : <span>{timeIn}</span> &nbsp; &nbsp; &nbsp;
+                    <strong>IN :</strong> <span class="slds-m-left_xx-small">{timeIn}</span> &nbsp; &nbsp; &nbsp;
                 </template>
                 <template if:true={stampedOut}>
-                    OUT : <span>{timeOut}</span> &nbsp; &nbsp; &nbsp;
+                    <strong>OUT :</strong> <span class="slds-m-left_xx-small">{timeOut}</span>
                 </template>
             </div>
         </template>
-        <!-- TSJP Raman Modification End - To Display TimeIn・TimeOut in Home Screen　-->
     </lightning-card>
 
+    <!-- Remarks Modal for Late/Overtime Scenarios -->
     <template if:true={isShowModal}>
-        <section role="dialog" tabindex="-1" aria-labelledby="modal-heading-01" aria-modal="true" aria-describedby="modal-content-id-1" class="slds-modal slds-fade-in-open">
-        <div class="slds-modal__container">
-            <!-- modal header start -->
-            <header class="slds-modal__header">
-                <button class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse" title="Close" onclick={hideModalBox}>
-                    <lightning-icon icon-name="utility:close"
-                    alternative-text="close"
-                    variant="inverse"
-                    size="small" ></lightning-icon>
-                    <span class="slds-assistive-text">Close</span>
-                </button>
-                <h2 id="modal-heading-01" class="slds-text-heading_medium slds-hyphenate">{modalHeader}</h2>
-            </header>
-        
-            <!-- modal body start -->
-            <div class="slds-modal__content slds-p-around_medium" id="modal-content-id-1">
+        <section role="dialog" tabindex="-1" class="slds-modal slds-fade-in-open">
+            <div class="slds-modal__container">
+                <header class="slds-modal__header">
+                    <button class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse" title="Close" onclick={hideModalBox}>
+                        <lightning-icon icon-name="utility:close" alternative-text="close" variant="inverse" size="small"></lightning-icon>
+                        <span class="slds-assistive-text">Close</span>
+                    </button>
+                    <h2 class="slds-text-heading_medium slds-hyphenate">{modalHeader}</h2>
+                </header>
+            
+                <div class="slds-modal__content slds-p-around_medium">
                     <p>
                         <lightning-textarea 
                             label={remarkType} 
                             value={descriptionValue} 
-                            required='true'
+                            required="true"
                             onchange={handleDescriptionChange}>
                         </lightning-textarea>
                     </p>
-            </div>
+                </div>
 
-            <!-- modal footer start-->
-            <footer class="slds-modal__footer">
-                <button class="slds-button slds-button_neutral" onclick={hideModalBox}>Cancel</button>
-                <lightning-button onclick={onSave} variant="brand" label="Save" title="Save Timestamp" class="slds-m-left_x-small"></lightning-button>
-            </footer>
-        
-        </div>
+                <footer class="slds-modal__footer">
+                    <button class="slds-button slds-button_neutral" onclick={hideModalBox}>Cancel</button>
+                    <lightning-button onclick={onSave} variant="brand" label="Save" class="slds-m-left_x-small"></lightning-button>
+                </footer>
+            </div>
         </section>
         <div class="slds-backdrop slds-backdrop_open"></div>
     </template>

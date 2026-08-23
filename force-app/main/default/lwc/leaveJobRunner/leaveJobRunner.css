@@ -1,0 +1,10 @@
+/* A changed figure has to be findable at a glance in a nine-column table. */
+.moved {
+    font-weight: 700;
+    color: #0b5cab;
+    background: #eef4ff;
+}
+
+.moved-row th[scope='row'] {
+    font-weight: 700;
+}

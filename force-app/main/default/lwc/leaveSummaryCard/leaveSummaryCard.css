@@ -1,22 +1,62 @@
-/* สีตัวอักษรเฉพาะจุด */
-.text-green {
-    color: #128a39; /* สีเขียวแบบ Salesforce */
+/* ========================================== */
+/* COLOR PALETTE                              */
+/* Standard Salesforce colors for consistency */
+/* ========================================== */
+.text-green { 
+    color: #128a39; 
 }
-.text-blue {
-    color: #0070d2; /* สีน้ำเงินแบบ Salesforce */
+.text-blue { 
+    color: #0070d2; 
 }
-.text-gray {
-    color: #747474;
+.text-gray { 
+    color: #747474; 
+}
+.text-red { 
+    color: #ea001e; 
 }
 
-/* ตัวเลขขนาดใหญ่ */
+/* ========================================== */
+/* TYPOGRAPHY                                 */
+/* ========================================== */
+/* Used for the main available days number (e.g., the big '8' or '1') */
 .big-number {
     font-size: 3.5rem;
     line-height: 1;
-    font-weight: 600;
+    font-weight: 700;
 }
 
-/* ปุ่ม View Details ทรงแคปซูล */
+/* Standardized Font Sizes for Monthly Hours */
+.hour-label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #333;
+    margin-bottom: 4px;
+}
+
+.hour-value {
+    font-size: 0.95rem; 
+    font-weight: 500;
+}
+
+/* 🌟 NEW: Custom padding for the Employee Column to push it exactly like your design */
+.employee-info-box {
+    /* Top, Right, Bottom, Left (3rem on the left creates that wide gap) */
+    padding: 1.5rem 1.5rem 1.5rem 3rem; 
+}
+
+/* Flexbox Footer Alignment: Pushes element to the absolute bottom of its flex container */
+.footer-align {
+    margin-top: auto; 
+    text-align: center; 
+    font-size: 0.75rem; 
+    color: #747474;
+    padding-top: 1rem;
+}
+
+/* ========================================== */
+/* BUTTONS                                    */
+/* ========================================== */
+/* Pill-shaped buttons for 'View Details' */
 .pill-btn {
     border-radius: 15px;
     padding: 2px 12px;
@@ -32,8 +72,9 @@
     color: #128a39;
     border-color: #c0e8c8;
 }
-.pill-green:hover {
-    background-color: #c0e8c8;
+
+.pill-green:hover { 
+    background-color: #c0e8c8; 
 }
 
 .pill-blue {
@@ -41,18 +82,15 @@
     color: #0070d2;
     border-color: #b7d6f5;
 }
-.pill-blue:hover {
-    background-color: #b7d6f5;
+
+.pill-blue:hover { 
+    background-color: #b7d6f5; 
 }
 
-
-/* เพิ่มเติมจากของเดิม */
-
-.text-red {
-    color: #ea001e;
-}
-
-/* กล่องแจ้งเตือนสีเหลือง */
+/* ========================================== */
+/* NOTIFICATION BOXES                         */
+/* ========================================== */
+/* Yellow warning box for probation messages */
 .warning-box {
     background-color: #fff9d6;
     border: 1px solid #eadd86;
@@ -64,7 +102,7 @@
     color: #333;
 }
 
-/* กล่องแจ้งเตือนสีฟ้า */
+/* Blue info box for general messages */
 .info-box {
     background-color: #e8f3fd;
     border: 1px solid #b7d6f5;

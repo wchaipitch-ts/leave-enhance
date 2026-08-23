@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomPermission xmlns="http://soap.sforce.com/2006/04/metadata">
+    <description>LEAVE-49, TEMPORARY. Allows the Leave Job Runner screen to run the nightly grant job for a chosen date. The screen refuses to work in a production org regardless of this permission. Delete both when the year-end cycle has been signed off.</description>
+    <isLicensed>false</isLicensed>
+    <label>Run Leave Job</label>
+</CustomPermission>

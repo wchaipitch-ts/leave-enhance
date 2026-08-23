@@ -1,41 +1,50 @@
-/* สีตัวอักษรเฉพาะจุด (Text Colors) */
+/* Text Colors */
 .text-blue { color: #0070d2; }
 .text-green { color: #128a39; }
 .text-pink { color: #d0184d; }
 .text-teal { color: #008272; }
 
 /* 
- * โครงสร้างพื้นฐานของกล่อง Highlight (Highlight Card Base)
- * ใช้ border-radius เพื่อทำขอบมน และตั้งค่า padding ให้อ่านง่าย
+ * Highlight Card Base Structure
  */
 .highlight-card {
+    position: relative; /* Anchor for the absolute ::before element */
     background-color: #ffffff;
-    border: 1px solid #dddbda;
+    border: 1px solid #dddbda; /* Keeps the 1px gray border on ALL sides */
     border-radius: 8px;
-    padding: 12px 16px;
+    padding: 12px 12px 12px 20px; /* Increased left padding for the 8px color bar */
     height: 100%;
+    overflow: hidden; /* Clips the inner color bar to the border radius perfectly */
     box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    /* เตรียมความหนาของเส้นขอบซ้ายไว้ */
-    border-left-width: 6px; 
-    border-left-style: solid;
 }
 
 /* 
- * คลาสสำหรับใส่สีขอบซ้ายตามประเภทของการลา (Dynamic Border Colors)
- * คลาสเหล่านี้จะถูก JavaScript เรียกใช้ตามเงื่อนไข (if-else) 
+ * Dynamic Left Colored Bar (CSS Pseudo-element)
  */
-.card-annual {
-    border-left-color: #128a39; /* สีเขียว */
+.highlight-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 8px; /* Thickness of the colored bar */
 }
 
-.card-refreshment {
-    border-left-color: #0070d2; /* สีฟ้า */
-}
+/* Assign background color based on leave type */
+.card-annual::before { background-color: #128a39; }
+.card-refreshment::before { background-color: #0070d2; }
+.card-sick::before { background-color: #d0184d; }
+.card-personal::before { background-color: #008272; }
 
-.card-sick {
-    border-left-color: #d0184d; /* สีชมพูแดง */
-}
+/* Light Background Bubbles */
+.bg-light-green { background-color: #e5f6eb; }
+.bg-light-blue { background-color: #e4f0fa; }
+.bg-light-pink { background-color: #fbe5eb; }
+.bg-light-teal { background-color: #e5f2f0; }
 
-.card-personal {
-    border-left-color: #008272; /* สีเขียวอมฟ้า (Teal) */
+/* Main Card Containers */
+.custom-card-style {
+    border-radius: 8px; 
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    /* Removed height: 100% so bottom summary box auto-fits content */
 }

@@ -3,22 +3,24 @@ import { NavigationMixin } from 'lightning/navigation';
 import { ShowToastEvent } from 'lightning/platformShowToastEvent';
 import { refreshApex } from '@salesforce/apex';
 
-// Import UI API to securely fetch Object Info and Picklist Values
+// Import UI API to securely fetch Object Info and Picklist Values without hardcoding
 import { getObjectInfo, getPicklistValues } from 'lightning/uiObjectInfoApi';
 import APPLICATION_ITEM_OBJECT from '@salesforce/schema/ApplicationItem__c';
 import REQUEST_TYPE_FIELD from '@salesforce/schema/ApplicationItem__c.Request_Type__c';
 import PERIOD_LEAVE_FIELD from '@salesforce/schema/ApplicationItem__c.Period_Leave__c';
 
-// Import Apex methods for data retrieval and manipulation
+// Import Apex methods for data retrieval and DML manipulations
 import getApplicationItems from '@salesforce/apex/TimesheetController.getApplicationItems';
 import updateApplicationItem from '@salesforce/apex/TimesheetController.updateApplicationItem';
 import deleteApplicationItem from '@salesforce/apex/TimesheetController.deleteApplicationItem';
 import getLeaveOverview from '@salesforce/apex/TimesheetController.getLeaveOverview';
 
 /**
- * HELPER: Dynamically generates row actions (Edit, Delete) for the datatable.
- * INPUT: row (current datatable row), doneCallback (function to pass actions back)
- * OUTPUT: None (invokes callback with available actions)
+ * HELPER FUNCTION: Dynamically generates row actions (Edit, Delete) for the datatable.
+ * Disables the Edit and Delete buttons if the record status is not 'Draft'.
+ * 
+ * @param {Object} row - The current datatable row data
+ * @param {Function} doneCallback - A callback function provided by lightning-datatable
  */
 const getDynamicRowActions = (row, doneCallback) => {
     const actions = [];
@@ -30,7 +32,10 @@ const getDynamicRowActions = (row, doneCallback) => {
     doneCallback(actions);
 };
 
-// Define datatable columns configuration
+const PREVIEW_SIZE = 10;
+const FULL_SIZE = 200;
+
+// Datatable Configuration for Leave & LWOP tabs
 const COLUMNS = [
     { label: 'ApplicationItem No.', fieldName: 'appNoUrl', type: 'url', typeAttributes: { label: { fieldName: 'appNumber' }, target: '_blank' } },
     { label: 'Request Type', fieldName: 'requestType', type: 'text' },
@@ -43,12 +48,38 @@ const COLUMNS = [
     { type: 'action', typeAttributes: { rowActions: getDynamicRowActions } }
 ];
 
+// Re-map standard columns for Overtime tab, renaming 'Start Date' to 'OT Start'
+const OT_COLUMNS = COLUMNS.map(col => {
+    if (col.fieldName === 'startDate') return { ...col, label: 'OT Start' };
+    if (col.fieldName === 'endDate') return { ...col, label: 'OT End' };
+    return col;
+});
+
+/**
+ * HELPER FUNCTION: Formats a millisecond time value into an HH:MM string.
+ * This ensures Time fields sent from Apex display correctly in the datatable.
+ * 
+ * @param {Number} value - Milliseconds since midnight
+ * @returns {String} Time in HH:MM format
+ */
+const formatTime = (value) => {
+    if (value === null || value === undefined || value === '') return '';
+    const totalMinutes = Math.floor(Number(value) / 60000);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+};
+
 export default class ApplicationItemListView extends NavigationMixin(LightningElement) {
     
-    // INPUT: Received from parent components (Timesheet or Leave Balance Screen)
+    // External properties provided by parent components
     @api targetUserId;
     @api leaveBalances = [];
 
+    /**
+     * GETTER/SETTER: Safely parses the 'targetYear' parameter passed from the parent.
+     * Prevents invalid SOQL queries by ensuring it's always an integer or null.
+     */
     @api
     get targetYear() {
         return this.filterYear;
@@ -56,37 +87,35 @@ export default class ApplicationItemListView extends NavigationMixin(LightningEl
     set targetYear(value) {
         const parsed = parseInt(value, 10);
         this.filterYear = Number.isNaN(parsed) ? null : parsed;
-
         this.currentYear = this.filterYear === null ? new Date().getFullYear() : this.filterYear;
     }
 
     @track filterYear = null;
-
     columns = COLUMNS;
+    otColumns = OT_COLUMNS;
 
-    // OUTPUT: Arrays to hold data for the 3 datatables
+    // Arrays holding data for the three UI tabs
     @track leaveData = [];
     @track lwopData = [];
     @track otData = [];
 
-    // Variables to store wire results for refreshApex functionality
+    // Store raw wire results to allow manual refresh via refreshApex()
     wiredLeaveResult;
     wiredLwopResult;
     wiredOtResult;
     wiredLeaveOverviewResult;
 
-    // ==========================================================
-    // State variables for Custom "New Record" Modal Flow
-    // ==========================================================
+    // State Variables for "New Record" Creation Modal
     @track isNewModalOpen = false;
     @track isSelectingRecordType = true;
     @track isFormStep = false; 
     @track isLeaveForm = false;
     @track isOvertimeForm = false;
+    
     @track recordTypeOptions = [];
     @track selectedRecordTypeId = '';
 
-    // Real-time tracking variables for validation
+    // Field Tracking for Real-time Leave Balance Warnings
     @track currentLeaveType = '';
     @track currentTermFrom = null;
     @track currentTermTo = null;
@@ -97,141 +126,99 @@ export default class ApplicationItemListView extends NavigationMixin(LightningEl
     @track currentYear = new Date().getFullYear();
     @track selfFetchedBalances = [];
 
-    // ==========================================================
-    // State variables for Edit Modal & Picklists
-    // ==========================================================
+    // State Variables for "Edit" Modal
     @track isEditModalOpen = false;
     @track editRecord = {};
     @track leaveRecordTypeId;
     @track requestTypeOptions = [];
     @track periodLeaveOptions = [];
 
+    // State Variables for "Delete" Modal
     @track isDeleteModalOpen = false;
     @track isDeleting = false;
     @track deleteRecordId;
     @track deleteRecordNumber;
     @track deleteContinuationNumber;
 
-    // ==========================================================
-    // State variables for List Expansion
-    // ==========================================================
+    // State Flags for Datatable List Expansion
     @track isListExpanded = false;
     @track activeTab = 'Leave';
+    @track recordLimit = PREVIEW_SIZE + 1;
+
+    // ==========================================================
+    // GETTERS AND UI LOGIC HANDLERS
+    // ==========================================================
 
     /**
-     * HANDLER: Triggered when a user switches between the Leave, LWOP, or OT tabs.
-     * INPUT: event - The UI event object containing the newly selected tab's value.
-     * OUTPUT: None (Updates component state properties).
+     * Resets list view back to a collapsed preview state when the user switches tabs.
+     * @param {Event} event - UI Tab active event
      */
     handleTabActive(event) {
         const selectedTab = event.target.value;
-        
-        // IMPORTANT: Check if the tab actually changed before resetting the state.
-        // This prevents LWC from forcefully collapsing the list during UI re-renders.
         if (this.activeTab !== selectedTab) {
             this.activeTab = selectedTab;
-            this.isListExpanded = false; 
+            this.isListExpanded = false;
+            this.recordLimit = PREVIEW_SIZE + 1;
         }
     }
 
-    /**
-     * GETTER: Checks if picklist data has successfully loaded from Salesforce.
-     * OUTPUT: Boolean (true if both picklists have data)
-     */
+    /** Checks if UI API successfully returned picklist metadata. */
     get isPicklistReady() {
         return this.requestTypeOptions.length > 0 && this.periodLeaveOptions.length > 0;
     }
 
-    /**
-     * GETTER: Determines if the Save button should be disabled based on picklist readiness.
-     * OUTPUT: Boolean
-     */
     get isSaveButtonDisabled() {
         return !this.isPicklistReady;
     }
 
-    /**
-     * GETTER: Returns the dynamic label for the link based on expansion state.
-     * OUTPUT: String ('Show Less' or 'View All')
-     */
     get viewAllLabel() {
         return this.isListExpanded ? 'Show Less' : 'View All';
     }
 
-    /**
-     * GETTER: Provides Leave Data to the datatable.
-     * INPUT: Component state (this.leaveData, this.isListExpanded)
-     * OUTPUT: A new Array reference containing either 3 records or all records.
-     */
+    // Dynamic Getters to slice data for preview mode or show all records
     get displayedLeaveData() {
         if (!this.leaveData) return [];
-        // Use spread syntax [...] to create a new array reference in memory.
-        // This forces lightning-datatable to recognize the data change and re-render.
-        return this.isListExpanded ? [...this.leaveData] : this.leaveData.slice(0, 3);
+        return this.isListExpanded ? [...this.leaveData] : this.leaveData.slice(0, PREVIEW_SIZE);
     }
 
-    /**
-     * GETTER: Provides LWOP Data to the datatable.
-     * OUTPUT: A new Array reference containing either 3 records or all records.
-     */
     get displayedLwopData() {
         if (!this.lwopData) return [];
-        return this.isListExpanded ? [...this.lwopData] : this.lwopData.slice(0, 3);
+        return this.isListExpanded ? [...this.lwopData] : this.lwopData.slice(0, PREVIEW_SIZE);
     }
 
-    /**
-     * GETTER: Provides OT Data to the datatable.
-     * OUTPUT: A new Array reference containing either 3 records or all records.
-     */
     get displayedOtData() {
         if (!this.otData) return [];
-        return this.isListExpanded ? [...this.otData] : this.otData.slice(0, 3);
+        return this.isListExpanded ? [...this.otData] : this.otData.slice(0, PREVIEW_SIZE);
     }
 
-    /**
-     * GETTER: Determines if the "View All" button should be visible.
-     * INPUT: Component state (this.activeTab, data arrays)
-     * OUTPUT: Boolean (true if the active tab has more than 3 records).
-     */
+    get activeData() {
+        if (this.activeTab === 'LWOP') return this.lwopData || [];
+        if (this.activeTab === 'OT') return this.otData || [];
+        return this.leaveData || [];
+    }
+
     get showViewAllButton() {
-        if (this.activeTab === 'Leave') {
-            return this.leaveData && this.leaveData.length > 3;
-        } else if (this.activeTab === 'LWOP') {
-            return this.lwopData && this.lwopData.length > 3;
-        } else if (this.activeTab === 'OT') {
-            return this.otData && this.otData.length > 3;
-        }
-        return false;
+        return this.isListExpanded || this.activeData.length > PREVIEW_SIZE;
     }
-
-    /**
-     * HANDLER: Toggles the list view between expanded (all records) and collapsed (3 records).
-     */
+    
+    /** Expands or collapses the currently visible datatable. */
     handleViewAll() {
         this.isListExpanded = !this.isListExpanded;
+        this.recordLimit = this.isListExpanded ? FULL_SIZE : PREVIEW_SIZE + 1;
     }
 
     // ==========================================================
-    // Fetch Data Methods (@wire)
+    // SERVER DATA FETCHING (@wire)
     // ==========================================================
 
-    /**
-     * WIRE: Fetch Leave Balances independently to ensure validation works.
-     * INPUT: Target User ID and Year
-     */
     @wire(getLeaveOverview, { employeeId: '$targetUserId', year: '$currentYear', month: null })
     wiredLeaveOverview(result) {
         this.wiredLeaveOverviewResult = result;
         if (result.data && result.data.balances) {
             this.selfFetchedBalances = result.data.balances;
-        } else if (result.error) {
-            console.error('Error fetching balances in child component', result.error);
         }
     }
 
-    /**
-     * WIRE: Fetch Record Types for ApplicationItem__c.
-     */
     @wire(getObjectInfo, { objectApiName: APPLICATION_ITEM_OBJECT })
     wiredObjectInfo({ error, data }) {
         if (data) {
@@ -244,50 +231,44 @@ export default class ApplicationItemListView extends NavigationMixin(LightningEl
                 this.selectedRecordTypeId = this.recordTypeOptions[0].value;
             }
 
-            // Find and store the specific RecordTypeId for Leave requests to fetch its picklists later
             const leaveRt = rtInfos.find(rt => rt.developerName === 'Leave_Request' || rt.name.includes('Leave'));
             this.leaveRecordTypeId = leaveRt ? leaveRt.recordTypeId : data.defaultRecordTypeId;
         }
     }
 
-    /**
-     * WIRE: Fetch Picklist options dynamically based on RecordTypeId.
-     */
     @wire(getPicklistValues, { recordTypeId: '$leaveRecordTypeId', fieldApiName: REQUEST_TYPE_FIELD })
-    wiredRequestType({ data, error }) {
+    wiredRequestType({ data }) {
         if (data) this.requestTypeOptions = data.values.map(item => ({ label: item.label, value: item.value }));
     }
 
     @wire(getPicklistValues, { recordTypeId: '$leaveRecordTypeId', fieldApiName: PERIOD_LEAVE_FIELD })
-    wiredPeriodLeave({ data, error }) {
+    wiredPeriodLeave({ data }) {
         if (data) this.periodLeaveOptions = data.values.map(item => ({ label: item.label, value: item.value }));
     }
 
-    /**
-     * WIRE: Fetch Datatable lists for the 3 tabs from Apex.
-     */
-    @wire(getApplicationItems, { category: 'Leave', employeeId: '$targetUserId', year: '$filterYear', recordLimit: 50 })
+    @wire(getApplicationItems, { category: 'Leave', employeeId: '$targetUserId', year: '$filterYear', recordLimit: '$recordLimit' })
     wiredLeave(result) {
         this.wiredLeaveResult = result;
         if (result.data) this.leaveData = this.flattenData(result.data, 'Leave');
     }
 
-    @wire(getApplicationItems, { category: 'LWOP', employeeId: '$targetUserId', year: '$filterYear', recordLimit: 50 })
+    @wire(getApplicationItems, { category: 'LWOP', employeeId: '$targetUserId', year: '$filterYear', recordLimit: '$recordLimit' })
     wiredLwop(result) {
         this.wiredLwopResult = result;
         if (result.data) this.lwopData = this.flattenData(result.data, 'LWOP');
     }
 
-    @wire(getApplicationItems, { category: 'OT', employeeId: '$targetUserId', year: '$filterYear', recordLimit: 50 })
+    @wire(getApplicationItems, { category: 'OT', employeeId: '$targetUserId', year: '$filterYear', recordLimit: '$recordLimit' })
     wiredOt(result) {
         this.wiredOtResult = result;
         if (result.data) this.otData = this.flattenData(result.data, 'OT');
     }
 
     /**
-     * HELPER: Transforms complex nested Apex objects into a flat structure suitable for datatable.
-     * INPUT: rawData (Array from Apex), category (String)
-     * OUTPUT: Array of flattened objects
+     * Flattens nested Apex responses so lightning-datatable can render columns properly.
+     * @param {Array} rawData - Apex List of objects
+     * @param {String} category - Indicates which tab is rendering the data
+     * @returns {Array} List of flattened JS objects
      */
     flattenData(rawData, category) {
         return rawData.map(item => {
@@ -298,8 +279,8 @@ export default class ApplicationItemListView extends NavigationMixin(LightningEl
                 appNumber: item.Name,
                 requestType: item.Request_Type__c || (isOvertime ? 'Overtime' : ''),
                 periodLeave: item.Period_Leave__c,
-                startDate: isOvertime ? item.OT_Start__c : item.Term_From__c,
-                endDate: isOvertime ? item.OT_End__c : (item.Term_To__c ? item.Term_To__c : item.Term_From__c), 
+                startDate: isOvertime ? formatTime(item.OT_Start__c) : item.Term_From__c,
+                endDate: isOvertime ? formatTime(item.OT_End__c) : (item.Term_To__c ? item.Term_To__c : item.Term_From__c), 
                 ownerUrl: `/${item.OwnerId}`,
                 ownerName: item.Owner?.FirstName || '', 
                 reason: item.Remark__c,
@@ -309,12 +290,12 @@ export default class ApplicationItemListView extends NavigationMixin(LightningEl
     }
 
     // ==========================================================
-    // Handlers for "New Record" Flow
+    // RECORD CREATION HANDLERS
     // ==========================================================
 
     /**
-     * HANDLER: Opens the 'New' modal and resets tracking variables.
-     * LOGIC: Skips Record Type selection if only 1 option is available.
+     * Opens the New Modal. If the user only has permission for 1 Record Type, 
+     * it auto-skips the selection screen and loads the appropriate form immediately.
      */
     handleNew() {
         this.isNewModalOpen = true;
@@ -323,20 +304,13 @@ export default class ApplicationItemListView extends NavigationMixin(LightningEl
             this.selectedRecordTypeId = this.recordTypeOptions[0].value;
             this.isSelectingRecordType = false;
             this.isFormStep = true;
-
-            if (this.recordTypeOptions[0].developerName === 'Overtime_Request') {
-                this.isOvertimeForm = true;
-                this.isLeaveForm = false;
-            } else {
-                this.isLeaveForm = true;
-                this.isOvertimeForm = false;
-            }
+            this.evaluateFormType(this.recordTypeOptions[0]);
         } else {
             this.isSelectingRecordType = true;
             this.isFormStep = false;
         }
         
-        // Reset tracking variables
+        // Reset properties to prevent stale data
         this.currentLeaveType = '';
         this.currentTermFrom = null;
         this.currentTermTo = null;
@@ -357,20 +331,28 @@ export default class ApplicationItemListView extends NavigationMixin(LightningEl
         if (selectedRT) {
             this.isSelectingRecordType = false;
             this.isFormStep = true;
-
-            if (selectedRT.developerName === 'Overtime_Request') {
-                this.isOvertimeForm = true;
-                this.isLeaveForm = false;
-            } else {
-                this.isLeaveForm = true;
-                this.isOvertimeForm = false;
-            }
+            this.evaluateFormType(selectedRT);
         }
     }
 
     /**
-     * HANDLER: Triggered when user modifies a field in the creation form.
-     * LOGIC: Captures data to perform real-time balance validation.
+     * Checks the DeveloperName securely to dynamically route to the correct layout (Leave vs OT).
+     * @param {Object} selectedRT - The Record Type option chosen by the user
+     */
+    evaluateFormType(selectedRT) {
+        const nameStr = (selectedRT.developerName + ' ' + selectedRT.label).toLowerCase();
+        
+        if (nameStr.includes('overtime') || nameStr.includes('ot')) {
+            this.isOvertimeForm = true;
+            this.isLeaveForm = false;
+        } else {
+            this.isLeaveForm = true;
+            this.isOvertimeForm = false;
+        }
+    }
+    
+    /**
+     * Triggered every time a user types in a field. Captures values to check for available balance.
      */
     handleFieldChange(event) {
         const fieldName = event.target.fieldName;
@@ -385,8 +367,7 @@ export default class ApplicationItemListView extends NavigationMixin(LightningEl
     }
 
     /**
-     * HELPER: Calculates requested days and compares them against the available balance.
-     * OUTPUT: Updates UI warning properties if balance is exceeded.
+     * Business Logic: Warns users if they attempt to request more days than their balance permits.
      */
     checkLeaveBalanceRealTime() {
         this.showLeaveWarning = false; 
@@ -422,17 +403,16 @@ export default class ApplicationItemListView extends NavigationMixin(LightningEl
     }
 
     handleNewSubmit(event) {
-        // Handled securely by native lightning-record-edit-form.
+        // Native lightning-record-edit-form handles DML insert securely via LDS.
     }
 
     /**
-     * HANDLER: Triggers after successful record creation.
-     * LOGIC: Refreshes all wired data grids.
+     * Executes when the record is successfully saved to the database.
+     * Fires a toast notification and refreshes datatables so the new record appears immediately.
      */
     handleNewSuccess(event) {
         this.showToast('Success', 'Application Item created successfully.', 'success');
         this.closeNewModal();
-        
         refreshApex(this.wiredLeaveResult);
         refreshApex(this.wiredLwopResult);
         refreshApex(this.wiredOtResult);
@@ -444,12 +424,14 @@ export default class ApplicationItemListView extends NavigationMixin(LightningEl
     }
 
     // ==========================================================
-    // Handlers for Existing Edit Flow
+    // UI HANDLERS: EDIT AND DELETE FLOWS
     // ==========================================================
 
     /**
-     * HANDLER: Processes row actions from the datatable (e.g., clicking 'Edit').
-     * INPUT: event containing action details and row data.
+     * Catches the row action (Edit/Delete) triggered from the lightning-datatable.
+     * Opens the appropriate modal and stores the selected record's data.
+     * 
+     * @param {Event} event - Details containing action name and row data
      */
     handleRowAction(event) {
         const actionName = event.detail.action.name; 
@@ -470,7 +452,7 @@ export default class ApplicationItemListView extends NavigationMixin(LightningEl
         if (actionName === 'delete') {
             this.deleteRecordId = row.Id;
             this.deleteRecordNumber = row.appNumber;
-
+            
             const continuation = this.findContinuationOf(row.Id);
             this.deleteContinuationNumber = continuation ? continuation.appNumber : null;
 
@@ -478,14 +460,12 @@ export default class ApplicationItemListView extends NavigationMixin(LightningEl
         }
     }
 
+    /** Searches for an associated unpaid continuation request if one exists. */
     findContinuationOf(recordId) {
         return [...this.leaveData, ...this.lwopData, ...this.otData]
             .find(item => item.Split_From__c === recordId);
     }
 
-    /**
-     * HANDLER: Updates the temporary editRecord object as the user types.
-     */
     handleInputChange(event) {
         const field = event.target.dataset.field;
         const value = event.detail.value;
@@ -498,8 +478,7 @@ export default class ApplicationItemListView extends NavigationMixin(LightningEl
     }
 
     /**
-     * HANDLER: Submits the updated record to Apex.
-     * LOGIC: Uses asynchronous (async/await) call to Apex and refreshes datatables upon success.
+     * ASYNC HANDLER: Sends modified editRecord object to Apex for DML Update.
      */
     async saveEditRecord() {
         try {
@@ -531,6 +510,10 @@ export default class ApplicationItemListView extends NavigationMixin(LightningEl
         this.deleteContinuationNumber = null;
     }
 
+    /**
+     * ASYNC HANDLER: Sends record ID to Apex for DML Deletion.
+     * Blocks user interaction during deletion using the isDeleting track variable.
+     */
     async handleDeleteConfirm() {
         this.isDeleting = true;
         try {
@@ -541,7 +524,6 @@ export default class ApplicationItemListView extends NavigationMixin(LightningEl
             refreshApex(this.wiredLeaveResult);
             refreshApex(this.wiredLwopResult);
             refreshApex(this.wiredOtResult);
-
             refreshApex(this.wiredLeaveOverviewResult);
         } catch (error) {
             this.showToast('Error', error.body ? error.body.message : error.message, 'error');
