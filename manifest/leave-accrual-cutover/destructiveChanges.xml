@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  LEAVE-51 — drops the two formula fields so they can be recreated as stored Numbers.
+
+  Salesforce cannot change a field from Formula to Number in place, in the UI or through
+  the Metadata API, so the cutover is delete-then-create. Available_Days__c is listed
+  first because its formula references Accrued_Days__c; a delete that left the reference
+  dangling would be rejected.
+
+  This is Deploy B of a three-deploy cutover and it will be REJECTED on its own. A custom
+  field cannot be deleted while anything references it, and six Apex classes read these
+  two. Deploy A has to land first: it switches those classes to LeaveAccrualService and
+  takes both fields off the page layout, the All list view and the Leave_Management_Admin
+  permission set. See scripts/apex/README.md for the ordered runbook.
+-->
+<Package xmlns="http://soap.sforce.com/2006/04/metadata">
+    <types>
+        <members>Leave_Balance__c.Available_Days__c</members>
+        <members>Leave_Balance__c.Accrued_Days__c</members>
+        <name>CustomField</name>
+    </types>
+    <version>62.0</version>
+</Package>

@@ -57,6 +57,26 @@ public with sharing class LeaveManagementController implements Schedulable {
         };
 
         try {
+            /*
+             * LEAVE-51 — before the grants, not after.
+             *
+             * Accrued_Days__c and Available_Days__c are stored figures now, so the
+             * calendar moving on its own no longer updates them; this is what does.
+             * It has to run FIRST because grantAnnualLeave reads the PRIOR year's
+             * Available as the carry-over figure. On 1 January that row's stored
+             * accrual is whatever the last save left behind — and if the job missed
+             * 31 December it is a month short. Sweeping first closes the prior year
+             * to its full entitlement, which is the figure the policy caps.
+             *
+             * On any other day of the year this writes nothing at all: only rows whose
+             * figures actually moved are saved, and outside a month or year boundary
+             * none of them do.
+             */
+            Integer resettled = LeaveAccrualService.sweep(LeaveAccrualService.asOfDate());
+            if (resettled > 0) {
+                logDetails.add('ACCRUAL ' + resettled + ' balance row(s) recalculated');
+            }
+
             if (today.month() == 1 && today.day() == 1) {
                 grantAnnualLeave(today, staged, logDetails);
             }
@@ -67,7 +87,12 @@ public with sharing class LeaveManagementController implements Schedulable {
             expireLeave(today, staged, logDetails);
 
             if (!staged.isEmpty()) {
+                // The upsert re-enters LeaveBalanceTrigger, which recalculates the
+                // accrual on every staged row — so a grant, a carry-over or an expiry
+                // written above lands with its derived figures already correct.
                 upsert staged.values() External_Key__c;
+            }
+            if (!staged.isEmpty() || resettled > 0) {
                 createLogFile(String.join(logDetails, '\n'));
             }
         } catch (Exception e) {
