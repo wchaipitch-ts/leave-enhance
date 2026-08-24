@@ -60,7 +60,7 @@ public with sharing class LeaveManagementController implements Schedulable {
             /*
              * LEAVE-51 — before the grants, not after.
              *
-             * Accrued_Days__c and Available_Days__c are stored figures now, so the
+             * Accrued_To_Date__c and Available_Balance__c are stored figures now, so the
              * calendar moving on its own no longer updates them; this is what does.
              * It has to run FIRST because grantAnnualLeave reads the PRIOR year's
              * Available as the carry-over figure. On 1 January that row's stored
@@ -137,7 +137,7 @@ public with sharing class LeaveManagementController implements Schedulable {
 
                 if (TYPE_ANNUAL.equals(policy.Leave_Type__c)) {
                     Leave_Balance__c prior = existing.get(balanceKey(usr.Id, TYPE_ANNUAL, yr - 1));
-                    Decimal priorAvailable = prior == null ? 0 : zeroIfNull(prior.Available_Days__c);
+                    Decimal priorAvailable = prior == null ? 0 : zeroIfNull(prior.Available_Balance__c);
                     if (priorAvailable < 0) priorAvailable = 0;
                     Decimal carryOver = priorAvailable > CARRY_OVER_CAP ? CARRY_OVER_CAP : priorAvailable;
 
@@ -407,7 +407,7 @@ public with sharing class LeaveManagementController implements Schedulable {
 
         for (Leave_Balance__c bal : [
             SELECT Id, External_Key__c, Employee__c, Leave_Type__c, Leave_Year__c,
-                   Entitlement_Days__c, Accrued_Days__c, Available_Days__c,
+                   Entitlement_Days__c, Accrued_To_Date__c, Available_Balance__c,
                    Used_Days__c, Carry_Over_Days__c, Carry_Over_Expiry__c,
                    Expiry_Date__c, Granted_On__c, Accrual_Method__c,
                    Locked_During_Probation__c, Pending_Days__c, Status__c

@@ -45,7 +45,7 @@ sf apex run --file scripts/apex/01_fix_grant_year_and_allocations.apex --target-
 | 04 | `04_stamp_granted_on.apex` | Backfills `Granted_On__c` on any row created before that field existed. Only needed where script 03 was run from a version that predates the field. Stamps blanks only, and deliberately leaves ungranted Refreshment rows blank so the anniversary grant can still fire. |
 | 05 | `05_backfill_balance_lookup.apex` | Points `ApplicationItem__c.Leave_Balance__c` at the row each approved request drew from, so a later rejection knows what to give back. Sets the lookup only — it does **not** move `Used_Days__c`, because the balance already reflects those days. |
 | 06 | `06_fix_expiry_dates.apex` | Corrects the expiry dates script 03 copied verbatim from the User fields instead of deriving them: `Carry_Over_Expiry__c` (30 June of the balance year) and `Expiry_Date__c` (`Granted_On__c` + the grant window). A wrong date means days lapse late; a **missing** carry-over date means they never lapse at all, because the June sweep matches on the date being present — so every Annual row carrying days is given one, whether it held a wrong date or none. **Dry run by default** — set `APPLY = true` to write. Idempotent. Verify with runbook case K9. |
-| 07 | `07_backfill_accrued_available.apex` | Fills `Accrued_Days__c` and `Available_Days__c` after LEAVE-51 recreated them as stored Number fields. A recreated field is blank on every existing row, and the approval guard reads a blank accrual as zero — so until this has run, nobody can have leave approved. Selects blank rows only, so it is safe to re-run and can be run repeatedly for an org larger than one transaction. **Dry run by default** — set `APPLY = true` to write. Part of the cutover below, not of the User-field migration.
+| 07 | `07_backfill_accrued_available.apex` | Fills the stored `Accrued_To_Date__c` and `Available_Balance__c` after the LEAVE-51 deploy. A new field is blank on every existing row, and the approval guard reads a blank accrual as zero — so until this has run, nobody can have leave approved. Selects blank rows only, so it is safe to re-run and can be run repeatedly for an org larger than one transaction. **Dry run by default** — set `APPLY = true` to write. Part of the LEAVE-51 deploy below, not of the User-field migration.
 
 > ### ⚠️ Script 03 is a one-way migration, not a repair tool
 >
@@ -82,7 +82,7 @@ will fail to compile with "Field does not exist" otherwise.
 
 ## Verifying
 
-After 03, compare `Leave_Balance__c.Accrued_Days__c` against
+After 03, compare `Leave_Balance__c.Accrued_To_Date__c` against
 `User.Accrued_Leave_Days__c`:
 
 - **Employees who joined in an earlier year — the two now agree.** LEAVE-52 moved the
@@ -98,135 +98,134 @@ The User formula is retired at cutover.
 
 
 
+
 ---
 
-## LEAVE-51 cutover — Accrued and Available become stored fields
+## LEAVE-51 / LEAVE-52 — the accrual moves into Apex
 
-Separate from the six-step migration above, and only needed once per org.
+**Done in dev5-ts.** Recorded here because production still has to go through it.
 
 `Accrued_Days__c` and `Available_Days__c` were formula fields. The rule now lives in
 `LeaveAccrualService`, maintained by `LeaveBalanceTrigger` on every save and by
 `LeaveAccrualService.sweep`, which `LeaveManagementController.runDaily` calls before the
 grants.
 
-Moving the rule was a refactor and changed nothing. **LEAVE-52 then changed one thing on
-purpose**: an employee who joined in an earlier year is credited their monthly day on the
-**1st** of the month rather than the last, so they gain a day roughly three weeks earlier
-than before. Employees who joined during the leave year are unaffected. See *Verifying*
-below for exactly which rows should move.
+### Why the stored figures are in NEW fields
 
-The fields, however, cannot simply be redeployed. Three platform rules bite at once:
+The obvious move — convert the two formulas to Number fields — is impossible, and three
+platform rules have to be understood together before the shape of this makes sense:
 
-1. A formula field **cannot be converted** to a Number field, in Setup or through the
-   Metadata API. It has to be deleted and created again.
-2. A custom field **cannot be deleted** while any Apex class or trigger references it.
-3. A custom field **cannot be renamed** while any Apex class or trigger references it
-   either — so there is no way to shuffle the name out of the way instead.
+1. A formula field **cannot be converted** to a Number field. Confirmed by the org:
+   *"Cannot update a field from a Formula to something else."*
+2. A field **cannot be deleted** while any Apex references it.
+3. A field **cannot be renamed** while any Apex references it either, so the name cannot
+   be shuffled out of the way instead.
 
-Six classes read these two fields today: `ApplicationItemTriggerLogic`,
-`LeaveBalanceService`, `LeaveSplitService`, `LeaveConversionService`,
-`LeaveManagementController` and `LeaveJobRunnerController`. All of them have to stop
-doing so before the delete will go through, which is why this is three deploys and not
-one.
+Twelve Apex classes reference the two fields — six consumers and **six test classes**,
+which block a delete exactly as production classes do:
 
-### Deploy A — detach
+| `Accrued_Days__c` | `Available_Days__c` |
+|---|---|
+| ApplicationItemTriggerLogic | LeaveBalanceService |
+| LeaveBalanceService | LeaveJobRunnerController |
+| LeaveConversionService | LeaveManagementController |
+| LeaveJobRunnerController | LeaveCascadeTest |
+| LeaveManagementController | LeaveConversionTest |
+| LeaveSplitService | LeaveDeductionTest |
+| | LeaveManagementControllerTest |
+| | LeaveReversalTest |
+| | LeaveSplitTest |
 
-Nothing in this release changes behaviour and nothing is degraded by it. Each of the six
-classes stops **reading** the two fields and computes the same figures instead, from
-columns it is already selecting:
+Keeping the old names would have meant detaching all twelve, deleting, recreating, and
+reattaching all twelve — every edit thrown away, and a window in which no leave could be
+approved. New names cost twelve edits **once**, with no destructive step and no outage,
+so that is what was done:
 
-```apex
-// was:  zeroIfNull(bal.Accrued_Days__c)
-LeaveAccrualService.accruedFor(startDate, bal.Leave_Year__c.intValue(),
-                               bal.Accrual_Method__c, bal.Entitlement_Days__c,
-                               LeaveAccrualService.asOfDate())
+| Was (formula, kept) | Is now (stored, maintained) |
+|---|---|
+| `Accrued_Days__c` — relabelled *Accrued to Date (legacy formula)* | `Accrued_To_Date__c` |
+| `Available_Days__c` — relabelled *Available Days (legacy formula)* | `Available_Balance__c` |
 
-// was:  zeroIfNull(bal.Available_Days__c)
-LeaveAccrualService.availableFor(accrued, bal.Carry_Over_Days__c, bal.Used_Days__c)
-```
+The legacy formulas are still in place, still correct against the OLD rule, and still
+readable. Nothing in Apex reads them. They are the fallback until the new fields have
+been trusted for a cycle.
 
-Deploy only the **pure** half of `LeaveAccrualService` in this release — `accruedFor`,
-`availableFor` and `asOfDate`. `applyTo`, `recalculate` and `sweep` assign to the two
-fields, and assigning to a formula field does not compile, so they cannot go out until
-Deploy C. `LeaveBalanceTrigger` and `LeaveBalanceTriggerHandler` wait with them.
-
-Also in this release: take both fields off the **All** list view, the **Leave Balance
-Layout** and the `Leave_Management_Admin` permission set. Anything at all that names them
-blocks the delete.
-
-Verify nothing is left holding them — Setup ▸ Object Manager ▸ Leave Balance ▸ the
-field ▸ **Where is this used?** must come back empty for both.
-
-### Deploy B — delete
+### Running it
 
 ```bash
 ALIAS=<alias>
 
-# Snapshot first, so the figures can be compared after the cutover.
+# Snapshot, so the change can be checked afterwards.
 sf data query --target-org $ALIAS \
   -q "SELECT Id, External_Key__c, Leave_Year__c, Accrual_Method__c, Entitlement_Days__c, \
       Carry_Over_Days__c, Used_Days__c, Accrued_Days__c, Available_Days__c \
-      FROM Leave_Balance__c" \
-  --result-format csv > accrual_before.csv
+      FROM Leave_Balance__c" --result-format csv > accrual_before.csv
 
+# One deploy. No deletion, no outage, nothing to revert.
+sf project deploy start --target-org $ALIAS -m CustomObject:Leave_Balance__c \
+  -m ApexClass:LeaveAccrualService -m ApexClass:LeaveAccrualServiceTest \
+  -m ApexClass:LeaveBalanceTriggerHandler -m ApexTrigger:LeaveBalanceTrigger \
+  -m ApexClass:ApplicationItemTriggerLogic -m ApexClass:LeaveBalanceService \
+  -m ApexClass:LeaveConversionService -m ApexClass:LeaveJobRunnerController \
+  -m ApexClass:LeaveManagementController -m ApexClass:LeaveSplitService \
+  -m ApexClass:LeaveCascadeTest -m ApexClass:LeaveConversionTest \
+  -m ApexClass:LeaveDeductionTest -m ApexClass:LeaveManagementControllerTest \
+  -m ApexClass:LeaveReversalTest -m ApexClass:LeaveSplitTest \
+  -m ApexClass:LeaveReversalService -m ApexClass:EventTriggerTest \
+  -m ApexClass:ApplicationItemTriggerTest \
+  -m PermissionSet:Leave_Management_Admin -m Layout:"Leave_Balance__c-Leave Balance Layout"
+
+# A new field is blank on every existing row, and the approval guard reads a blank
+# accrual as zero. Dry run first, then set APPLY = true inside the file.
+sf apex run --file scripts/apex/07_backfill_accrued_available.apex --target-org $ALIAS
+
+# Expect zero.
+sf data query --target-org $ALIAS \
+  -q "SELECT COUNT() FROM Leave_Balance__c WHERE Accrued_To_Date__c = NULL"
+```
+
+Nobody can have leave approved between the deploy and the backfill, so keep them
+together. Everything else about the deploy is reversible.
+
+### Verifying
+
+Compare the legacy formula against the stored figure — they are side by side on the same
+row, which is the one real benefit of having kept the old fields:
+
+```bash
+sf data query --target-org $ALIAS \
+  -q "SELECT Leave_Type__c, Accrual_Method__c, Entitlement_Days__c, \
+      Accrued_Days__c, Accrued_To_Date__c, Available_Days__c, Available_Balance__c \
+      FROM Leave_Balance__c WHERE Accrual_Method__c = 'Monthly'"
+```
+
+Exactly one group should differ, by exactly one day:
+
+| Rows | Expected |
+|---|---|
+| `Monthly`, current year, joined in an **earlier** year | stored reads **+1** vs the legacy formula, every day except the last of the month |
+| The same rows on the **last** day of a month | identical — month start and month end agree there |
+| `Monthly`, joined **during** the leave year | identical |
+| `Upfront`, `Anniversary`, blank method, closed years, future years | identical |
+
+That +1 is LEAVE-52 and is the intended change. Anything else is a defect in
+`LeaveAccrualService.accruedFor`. In dev5-ts on 2026-08-24 the Annual rows read
+`Accrued_Days__c = 7` against `Accrued_To_Date__c = 8`, which is exactly this.
+
+### Afterwards
+
+Once reports and any saved list views have been moved onto the new fields, the two
+legacy formulas can be dropped — nothing in Apex references them any more, so the delete
+that was impossible before is now trivial:
+
+```bash
 sf project deploy start --target-org $ALIAS \
   --manifest manifest/leave-accrual-cutover/package.xml \
   --post-destructive-changes manifest/leave-accrual-cutover/destructiveChanges.xml
 ```
 
-Then **empty the recycle bin** in Setup ▸ Deleted Fields. An API name cannot be reused
-while a soft-deleted field still holds it, and Deploy C fails on a duplicate name until
-it has been erased.
-
-### Deploy C — recreate and reattach
-
-```bash
-# The Number fields, the trigger, the full service, and the six classes switched back
-# to reading the stored columns.
-sf project deploy start --target-org $ALIAS -d force-app
-
-# Backfill. A recreated field is blank on every existing row, and the approval guard
-# reads a blank accrual as zero — until this has run, nobody can have leave approved.
-# Dry run first, then set APPLY = true inside the file.
-sf apex run --file scripts/apex/07_backfill_accrued_available.apex --target-org $ALIAS
-
-# Expect zero.
-sf data query --target-org $ALIAS \
-  -q "SELECT COUNT() FROM Leave_Balance__c WHERE Accrued_Days__c = NULL"
-```
-
-> ### ⚠️ Approvals are blocked between Deploy B and the backfill
->
-> In that window the fields either do not exist or read blank on every row, and
-> `ApplicationItemTriggerLogic` treats a blank accrual as zero — so every leave request
-> is refused as overdrawn. **Run B, C and the backfill in one sitting, out of hours.**
-> Deploy A can go out days earlier; it is safe on its own.
-
-### Verifying
-
-Re-run the snapshot query into `accrual_after.csv` and diff it against
-`accrual_before.csv`. Exactly one group of rows should move, and it should move by
-exactly one day:
-
-| Rows | Expected change |
-|---|---|
-| `Accrual_Method__c = 'Monthly'`, current leave year, employee joined in an **earlier** year | `Accrued` and `Available` **+1**, on every day of the month except the last |
-| The same rows, on the **last** day of a month | unchanged — month end and month start agree there |
-| `Monthly`, employee joined **during** the leave year | unchanged |
-| Every other row — `Upfront`, `Anniversary`, blank method, closed years, future years | unchanged |
-
-Only Annual leave is configured `Monthly`, so in practice this is one row per continuing
-employee. **Anything outside that table is a defect** in `LeaveAccrualService.accruedFor`,
-not a new rule; the likeliest suspects are a row with a blank `Accrual_Method__c` and a
-row for a future leave year.
-
-Run the diff on a day that is **not** a month boundary. Both sides are measured against
-the real clock, so a backfill that straddles midnight on the 1st or the 31st legitimately
-credits a day on top of the change above and makes the comparison unreadable.
-
 ### What still reads the real date
 
-The accrual is measured against `System.today()`, never against the effective date handed
-to `runDaily`. That is what the `TODAY()` in the old formula did, and it is why replaying
-a missed run for a past date does not rewind everybody's accrual. The Leave Job Runner
-screen says as much on its warning banner, and it is still true.
+The accrual is measured against `System.today()`, never the effective date handed to
+`runDaily`. That is what the old `TODAY()` did, and it is why replaying a missed run does
+not rewind everybody's accrual. The Leave Job Runner banner says as much, and it holds.

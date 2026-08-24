@@ -14,7 +14,7 @@ private class EventTriggerTest {
                     EmailEncodingKey = 'UTF-8',
                     LanguageLocaleKey = 'th',
                     LocaleSidKey = 'th',
-                    // Accrued_Days__c is zero without a joining date, which
+                    // Accrued_To_Date__c is zero without a joining date, which
                     // would turn the approved request below into unpaid days and fail
                     // the setup before any event assertion runs.
                     Start_Date__c = Date.newInstance(2020, 1, 1)
@@ -25,7 +25,7 @@ private class EventTriggerTest {
          *  the approved request below deducts from Leave_Balance__c, and a
          * missing balance row is now a hard error rather than a silent approval.
          *
-         * Upfront rather than Monthly. Accrued_Days__c is a formula over
+         * Upfront rather than Monthly. Accrued_To_Date__c is derived from
          * TODAY(), so a Monthly row holds nothing at all in January — and a request
          * with no balance behind it is now held back for the Managing Director,
          * which would fail this test for one month of every twelve.

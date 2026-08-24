@@ -96,7 +96,7 @@ private class LeaveReversalTest {
     }
 
     private static Leave_Balance__c balance(String leaveType) {
-        return [SELECT Entitlement_Days__c, Used_Days__c, Available_Days__c
+        return [SELECT Entitlement_Days__c, Used_Days__c, Available_Balance__c
                 FROM Leave_Balance__c
                 WHERE Employee__c = :employeeId() AND Leave_Type__c = :leaveType LIMIT 1];
     }
@@ -157,12 +157,12 @@ private class LeaveReversalTest {
 
         Test.startTest();
         update new ApplicationItem__c(Id = a.Id, Status__c = 'Approved');
-        System.assertEquals(2, balance('Annual leave').Available_Days__c, 'three of five taken');
+        System.assertEquals(2, balance('Annual leave').Available_Balance__c, 'three of five taken');
 
         update new ApplicationItem__c(Id = a.Id, Status__c = 'Rejected');
         Test.stopTest();
 
-        System.assertEquals(5, balance('Annual leave').Available_Days__c,
+        System.assertEquals(5, balance('Annual leave').Available_Balance__c,
             'a refused absence consumes nothing');
         System.assertEquals(0, balance('Annual leave').Used_Days__c, 'and leaves no usage behind');
     }
@@ -258,7 +258,7 @@ private class LeaveReversalTest {
         update new ApplicationItem__c(Id = a.Id, Status__c = 'Rejected');
         update new ApplicationItem__c(Id = a.Id, Remark__c = 'edited after rejection');
 
-        System.assertEquals(5, balance('Annual leave').Available_Days__c,
+        System.assertEquals(5, balance('Annual leave').Available_Balance__c,
             'only a transition out of Approved reverses, so an edit cannot repeat it');
     }
 
@@ -269,7 +269,7 @@ private class LeaveReversalTest {
         insert a;
         update new ApplicationItem__c(Id = a.Id, Status__c = 'Rejected');
 
-        System.assertEquals(5, balance('Annual leave').Available_Days__c, 'untouched');
+        System.assertEquals(5, balance('Annual leave').Available_Balance__c, 'untouched');
     }
 
     // ------------------------------------------------------------------ deletion
@@ -283,11 +283,11 @@ private class LeaveReversalTest {
         Test.startTest();
         update new ApplicationItem__c(Id = a.Id, Status__c = 'Approved');
         Test.stopTest();
-        System.assertEquals(2, balance('Annual leave').Available_Days__c);
+        System.assertEquals(2, balance('Annual leave').Available_Balance__c);
 
         delete a;
 
-        System.assertEquals(5, balance('Annual leave').Available_Days__c,
+        System.assertEquals(5, balance('Annual leave').Available_Balance__c,
             'after delete was declared on the trigger but never routed until now');
         System.assertEquals(0, [SELECT COUNT() FROM Man_hour__c WHERE Remark__c = 'reversal test'],
             'and the bookings go with it');
@@ -314,13 +314,13 @@ private class LeaveReversalTest {
         System.assertEquals(0, unpaid.Used_Days__c, 'the days come back');
         System.assertEquals(0, unpaid.Entitlement_Days__c,
             'and so does the entitlement, or the row becomes free unpaid days to spend');
-        System.assertEquals(0, unpaid.Available_Days__c, 'leaving the row exactly where it started');
+        System.assertEquals(0, unpaid.Available_Balance__c, 'leaving the row exactly where it started');
     }
 
     /*
      * The delete path for a grant-on-use type. Both sides have to come back: leaving the
      * entitlement standing would leave the row reading one accrued, available day of
-     * Bereavement leave that nobody granted, because Accrued_Days__c is a formula over
+     * Bereavement leave that nobody granted, because Accrued_To_Date__c is a formula over
      * the entitlement this wrote.
      */
     @isTest
@@ -336,7 +336,7 @@ private class LeaveReversalTest {
         Leave_Balance__c taken = balance('Bereavement leave');
         System.assertEquals(2, taken.Used_Days__c, 'the days are counted');
         System.assertEquals(2, taken.Entitlement_Days__c, 'and granted as they are used');
-        System.assertEquals(0, taken.Available_Days__c, 'so the row never reads negative');
+        System.assertEquals(0, taken.Available_Balance__c, 'so the row never reads negative');
 
         delete a;
 
@@ -344,7 +344,7 @@ private class LeaveReversalTest {
         System.assertEquals(0, restored.Used_Days__c, 'the days come back');
         System.assertEquals(0, restored.Entitlement_Days__c,
             'and so does the entitlement, or the row becomes free days to spend');
-        System.assertEquals(0, restored.Available_Days__c, 'leaving the row where it started');
+        System.assertEquals(0, restored.Available_Balance__c, 'leaving the row where it started');
     }
 
     /** The same unwind on rejection, which reaches restoreBalances by a different route. */
@@ -387,7 +387,7 @@ private class LeaveReversalTest {
             'the refused paid half freed the balance the tail was denied');
         System.assertEquals(3, promoted.Leave_Days__c,
             'three days fit inside the five given back, so it is not split again');
-        System.assertEquals(5, balance('Annual leave').Available_Days__c,
+        System.assertEquals(5, balance('Annual leave').Available_Balance__c,
             'and nothing is consumed until the promoted request is approved');
     }
 

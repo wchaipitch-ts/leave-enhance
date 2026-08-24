@@ -9,7 +9,7 @@ private class LeaveSplitTest {
      * Custom Metadata edit. Overriding keeps these tests honest about the code they
      * exercise instead of failing on a checkbox nobody has ticked yet.
      *
-     * Balances use Upfront accrual so Accrued_Days__c does not move with the calendar.
+     * Balances use Upfront accrual so Accrued_To_Date__c does not move with the calendar.
      */
 
     private static final Date MONDAY_EPOCH = Date.newInstance(1900, 1, 1);
@@ -110,7 +110,7 @@ private class LeaveSplitTest {
     }
 
     private static Leave_Balance__c balance(String leaveType) {
-        return [SELECT Entitlement_Days__c, Used_Days__c, Available_Days__c
+        return [SELECT Entitlement_Days__c, Used_Days__c, Available_Balance__c
                 FROM Leave_Balance__c
                 WHERE Employee__c = :employeeId() AND Leave_Type__c = :leaveType LIMIT 1];
     }
@@ -240,7 +240,7 @@ private class LeaveSplitTest {
         Test.stopTest();
 
         System.assertEquals(5, balance('Annual leave').Used_Days__c, 'the annual balance is emptied');
-        System.assertEquals(0, balance('Annual leave').Available_Days__c, 'exactly, not past it');
+        System.assertEquals(0, balance('Annual leave').Available_Balance__c, 'exactly, not past it');
         System.assertEquals(3, balance('Unpaid leave').Used_Days__c,
             'and the unpaid days are counted on their own row');
     }
@@ -259,7 +259,7 @@ private class LeaveSplitTest {
         System.assertEquals(3, unpaid.Used_Days__c, 'three unpaid days taken');
         System.assertEquals(3, unpaid.Entitlement_Days__c,
             'entitlement is granted as it is used, so the row is a count and not a debt');
-        System.assertEquals(0, unpaid.Available_Days__c,
+        System.assertEquals(0, unpaid.Available_Balance__c,
             'which is what keeps the balance page from reading minus three');
     }
 

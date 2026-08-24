@@ -69,7 +69,7 @@ public without sharing class LeaveReversalService {
              * A Grants_On_Use__c type has its entitlement granted as it is used, so the
              * give-back has to unwind both sides. Leaving the entitlement up would turn
              * the row into a pile of free days the employee could then spend — and
-             * because Accrued_Days__c is derived from the entitlement, the balance page
+             * because Accrued_To_Date__c is derived from the entitlement, the balance page
              * would show them as accrued and available.
              *
              * Read from the policy rather than from a hardcoded Unpaid leave check, so

@@ -267,7 +267,7 @@ public class ApplicationItemTriggerLogic {
         // for the same person and type cannot read the same figure and both write it.
         Map<String, Leave_Balance__c> balanceByKey = new Map<String, Leave_Balance__c>();
         for (Leave_Balance__c bal : [
-            SELECT Id, External_Key__c, Entitlement_Days__c, Accrued_Days__c,
+            SELECT Id, External_Key__c, Entitlement_Days__c, Accrued_To_Date__c,
                    Carry_Over_Days__c, Used_Days__c
             FROM Leave_Balance__c
             WHERE External_Key__c IN :keys
@@ -317,7 +317,7 @@ public class ApplicationItemTriggerLogic {
              * raises its own entitlement as it is spent and can never be overdrawn,
              * every other type can.
              */
-            Decimal available = zeroIfNull(bal.Accrued_Days__c)
+            Decimal available = zeroIfNull(bal.Accrued_To_Date__c)
                               + zeroIfNull(bal.Carry_Over_Days__c)
                               - zeroIfNull(bal.Used_Days__c);
             if (policy.Grants_On_Use__c != true && payable > available) {
@@ -355,7 +355,7 @@ public class ApplicationItemTriggerLogic {
              * grant on use. Some types have no annual pool to draw down:
              * unpaid leave, and the statutory types that are an entitlement per occasion
              * rather than an allowance. Deducting one of those alone would drive
-             * Available_Days__c negative and the balance page would read "-12 available",
+             * Available_Balance__c negative and the balance page would read "-12 available",
              * which means nothing. Raising the entitlement by the same amount keeps
              * Available at zero and turns the row into what it actually is: a count of
              * the days taken.

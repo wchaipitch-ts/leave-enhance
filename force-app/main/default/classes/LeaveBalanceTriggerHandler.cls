@@ -3,7 +3,8 @@
  *
  * Thin on purpose. The rule lives in LeaveAccrualService so it can be unit tested
  * without saving a record, which was the whole reason for moving it out of the
- * Accrued_Days__c formula; this class only decides when it runs.
+ * Accrued_Days__c formula; this class only decides when it runs. The figures now
+ * live in Accrued_To_Date__c and Available_Balance__c.
  */
 public with sharing class LeaveBalanceTriggerHandler {
 

@@ -9,7 +9,7 @@ private class LeaveConversionTest {
      * Custom Metadata edits, and a test that reads the org's rows proves whatever
      * somebody last ticked rather than the code in front of it.
      *
-     * Balances use Upfront accrual so Accrued_Days__c does not drift with the calendar.
+     * Balances use Upfront accrual so Accrued_To_Date__c does not drift with the calendar.
      */
 
     private static final Date MONDAY_EPOCH = Date.newInstance(1900, 1, 1);
@@ -118,7 +118,7 @@ private class LeaveConversionTest {
     }
 
     private static Leave_Balance__c balance(String leaveType) {
-        return [SELECT Entitlement_Days__c, Used_Days__c, Available_Days__c
+        return [SELECT Entitlement_Days__c, Used_Days__c, Available_Balance__c
                 FROM Leave_Balance__c
                 WHERE Employee__c = :employeeId() AND Leave_Type__c = :leaveType LIMIT 1];
     }

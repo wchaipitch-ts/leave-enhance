@@ -4,7 +4,7 @@ private class LeaveAccrualServiceTest {
     /*
      * LEAVE-51 — the accrual rule, exercised directly.
      *
-     * This is the point of moving it out of the Accrued_Days__c formula. Every case
+     * This is the point of moving it out of the Accrued_To_Date__c formula. Every case
      * below used to require saving a record and then waiting for the real calendar to
      * reach the interesting date; most of them are now a function call with a date
      * argument, and the ones that still need DML are testing the plumbing rather than
@@ -185,8 +185,8 @@ private class LeaveAccrualServiceTest {
         System.assert(LeaveAccrualService.applyTo(bal, joinedNovember, midMarch),
             'A blank figure is always wrong, even when the answer happens to be zero — '
             + 'reading it as zero would leave the backfill nothing to write.');
-        System.assertEquals(0, bal.Accrued_Days__c, 'Nothing earned before joining.');
-        System.assertEquals(0, bal.Available_Days__c, 'And nothing available.');
+        System.assertEquals(0, bal.Accrued_To_Date__c, 'Nothing earned before joining.');
+        System.assertEquals(0, bal.Available_Balance__c, 'And nothing available.');
 
         System.assertEquals(false, LeaveAccrualService.applyTo(bal, joinedNovember, midMarch),
             'Second time round the figures are filled and unchanged, so nothing moved.');
@@ -240,7 +240,7 @@ private class LeaveAccrualServiceTest {
 
     private static Leave_Balance__c reload(Id balanceId) {
         return [
-            SELECT Accrued_Days__c, Available_Days__c
+            SELECT Accrued_To_Date__c, Available_Balance__c
             FROM Leave_Balance__c WHERE Id = :balanceId
         ];
     }
@@ -254,9 +254,9 @@ private class LeaveAccrualServiceTest {
         Test.stopTest();
 
         Leave_Balance__c saved = reload(bal.Id);
-        System.assertEquals(30, saved.Accrued_Days__c,
+        System.assertEquals(30, saved.Accrued_To_Date__c,
             'The trigger fills the accrual on insert; nothing else was going to.');
-        System.assertEquals(26, saved.Available_Days__c, '30 accrued less 4 used.');
+        System.assertEquals(26, saved.Available_Balance__c, '30 accrued less 4 used.');
     }
 
     @isTest
@@ -269,8 +269,8 @@ private class LeaveAccrualServiceTest {
         Test.stopTest();
 
         Leave_Balance__c saved = reload(bal.Id);
-        System.assertEquals(30, saved.Accrued_Days__c, 'Spending days does not change the accrual.');
-        System.assertEquals(23, saved.Available_Days__c,
+        System.assertEquals(30, saved.Accrued_To_Date__c, 'Spending days does not change the accrual.');
+        System.assertEquals(23, saved.Available_Balance__c,
             'Available follows Used on the same DML, with no second write from the caller.');
     }
 
@@ -281,13 +281,13 @@ private class LeaveAccrualServiceTest {
 
         Test.startTest();
         // What somebody typing into the record page would do, if the field were editable.
-        update new Leave_Balance__c(Id = bal.Id, Accrued_Days__c = 999, Available_Days__c = 999);
+        update new Leave_Balance__c(Id = bal.Id, Accrued_To_Date__c = 999, Available_Balance__c = 999);
         Test.stopTest();
 
         Leave_Balance__c saved = reload(bal.Id);
-        System.assertEquals(30, saved.Accrued_Days__c,
+        System.assertEquals(30, saved.Accrued_To_Date__c,
             'These are derived figures, so a hand edit cannot survive the save.');
-        System.assertEquals(30, saved.Available_Days__c, 'Same for Available.');
+        System.assertEquals(30, saved.Available_Balance__c, 'Same for Available.');
     }
 
     @isTest
@@ -298,7 +298,7 @@ private class LeaveAccrualServiceTest {
         LeaveAccrualService.todayOverride = Date.newInstance(yr, 1, 15);
         Leave_Balance__c bal = row('Annual leave', yr, 'Monthly', 12, 3, 1);
         insert bal;
-        System.assertEquals(1, reload(bal.Id).Accrued_Days__c,
+        System.assertEquals(1, reload(bal.Id).Accrued_To_Date__c,
             'Mid-January a continuing employee holds January\'s day — the starting '
             + 'point for the sweep.');
 
@@ -311,9 +311,9 @@ private class LeaveAccrualServiceTest {
 
         System.assertEquals(1, moved, 'The one row whose figures moved is the one that was saved.');
         Leave_Balance__c saved = reload(bal.Id);
-        System.assertEquals(12, saved.Accrued_Days__c,
+        System.assertEquals(12, saved.Accrued_To_Date__c,
             'Twelve completed months by 31 December, capped at the entitlement.');
-        System.assertEquals(14, saved.Available_Days__c, '12 accrued plus 3 carried in less 1 used.');
+        System.assertEquals(14, saved.Available_Balance__c, '12 accrued plus 3 carried in less 1 used.');
     }
 
     @isTest
@@ -348,8 +348,8 @@ private class LeaveAccrualServiceTest {
         Test.stopTest();
 
         System.assertEquals(1, moved, 'Only the active row is swept.');
-        System.assertEquals(12, reload(active.Id).Accrued_Days__c, 'The active row moved.');
-        System.assertEquals(1, reload(closed.Id).Accrued_Days__c,
+        System.assertEquals(12, reload(active.Id).Accrued_To_Date__c, 'The active row moved.');
+        System.assertEquals(1, reload(closed.Id).Accrued_To_Date__c,
             'Still the single day it was stamped with in January: a closed year is '
             + 'settled and the sweep must not reopen it.');
     }

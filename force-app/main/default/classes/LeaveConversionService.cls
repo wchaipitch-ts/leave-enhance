@@ -537,16 +537,16 @@ public without sharing class LeaveConversionService {
         String key = ApplicationItemTriggerLogic.balanceKey(
             src.OwnerId, TYPE_ANNUAL, src.Term_From__c.year());
         List<Leave_Balance__c> found = [
-            SELECT Id, Accrued_Days__c, Carry_Over_Days__c, Used_Days__c,
+            SELECT Id, Accrued_To_Date__c, Carry_Over_Days__c, Used_Days__c,
                    Is_Locked__c, Lock_Reason__c
             FROM Leave_Balance__c WHERE External_Key__c = :key LIMIT 1
         ];
         return found.isEmpty() ? null : found[0];
     }
 
-    /** Available_Days__c by hand, so this reads the same figures the deduction locks. */
+    /** Available_Balance__c by hand, so this reads the same figures the deduction locks. */
     private static Decimal availableOn(Leave_Balance__c bal) {
-        return zeroIfNull(bal.Accrued_Days__c) + zeroIfNull(bal.Carry_Over_Days__c)
+        return zeroIfNull(bal.Accrued_To_Date__c) + zeroIfNull(bal.Carry_Over_Days__c)
              - zeroIfNull(bal.Used_Days__c);
     }
 

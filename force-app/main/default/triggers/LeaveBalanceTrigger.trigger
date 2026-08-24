@@ -1,5 +1,5 @@
 /*
- * LEAVE-51 — keeps Accrued_Days__c and Available_Days__c right on every save.
+ * LEAVE-51 — keeps Accrued_To_Date__c and Available_Balance__c right on every save.
  *
  * Both used to be formulas, so nothing had to maintain them. Now that they are stored,
  * something must, and it has to be something no caller can forget: the approval

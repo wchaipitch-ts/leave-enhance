@@ -64,7 +64,7 @@ private class LeaveDeductionTest {
         Integer yr = System.today().year();
         insert new List<Leave_Balance__c>{
             /*
-             * Upfront rather than the production Monthly. Accrued_Days__c is
+             * Upfront rather than the production Monthly. Accrued_To_Date__c is
              * a formula over TODAY(), so under Monthly the annual balance would be 3
              * days in January and 15 in December — and now that a shortfall is stopped
              * at approval, the multi-day tests below would pass or fail depending on
@@ -109,7 +109,7 @@ private class LeaveDeductionTest {
 
     private static Leave_Balance__c balance(String leaveType) {
         return [
-            SELECT Used_Days__c, Carry_Over_Days__c, Entitlement_Days__c, Available_Days__c
+            SELECT Used_Days__c, Carry_Over_Days__c, Entitlement_Days__c, Available_Balance__c
             FROM Leave_Balance__c
             WHERE Employee__c = :testUserId() AND Leave_Type__c = :leaveType
             LIMIT 1
@@ -295,7 +295,7 @@ private class LeaveDeductionTest {
             System.assertEquals(1, row.Used_Days__c, leaveType + ': the day is counted');
             System.assertEquals(1, row.Entitlement_Days__c,
                 leaveType + ': entitlement is granted as it is used');
-            System.assertEquals(0, row.Available_Days__c,
+            System.assertEquals(0, row.Available_Balance__c,
                 leaveType + ': so the row never reads negative');
         }
 
@@ -317,7 +317,7 @@ private class LeaveDeductionTest {
         Leave_Balance__c row = balance('Bereavement leave');
         System.assertEquals(0.5, row.Used_Days__c, 'half a day taken');
         System.assertEquals(0.5, row.Entitlement_Days__c, 'and half a day granted');
-        System.assertEquals(0, row.Available_Days__c, 'leaving the row at zero');
+        System.assertEquals(0, row.Available_Balance__c, 'leaving the row at zero');
     }
 
     @isTest
@@ -332,13 +332,13 @@ private class LeaveDeductionTest {
         approve(appl);
 
         Leave_Balance__c unpaid = [
-            SELECT Used_Days__c, Entitlement_Days__c, Available_Days__c
+            SELECT Used_Days__c, Entitlement_Days__c, Available_Balance__c
             FROM Leave_Balance__c
             WHERE Employee__c = :testUserId() AND Leave_Type__c = 'Unpaid leave' LIMIT 1
         ];
         System.assertEquals(1, unpaid.Used_Days__c, 'the day is counted');
         System.assertEquals(1, unpaid.Entitlement_Days__c, 'entitlement is granted as it is used');
-        System.assertEquals(0, unpaid.Available_Days__c, 'so the row never reads negative');
+        System.assertEquals(0, unpaid.Available_Balance__c, 'so the row never reads negative');
         System.assertEquals(0, balance('Annual leave').Used_Days__c, 'and no paid balance is touched');
     }
 

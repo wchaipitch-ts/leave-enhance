@@ -8,7 +8,7 @@ public with sharing class LeaveManagementControllerTest {
      * writes those at all, so this is a replacement rather than an edit.
      *
      * Dates are driven by calling runDaily(Date) directly so the tests do not depend
-     * on the day they are run — with one caveat. Accrued_Days__c is a formula using
+     * on the day they are run — with one caveat. Accrued_To_Date__c is a formula using
      * TODAY(), and it returns the full entitlement only once Leave_Year__c is strictly
      * in the past. The grant year is therefore 2026 and the prior year 2025, both of
      * which stay in the past for good, which keeps the carry-over assertions stable.
@@ -90,7 +90,7 @@ public with sharing class LeaveManagementControllerTest {
         for (User u : users) byName.put(u.LastName, u.Id);
 
         // Prior-year annual rows. Available = Entitlement - Used because 2025 is a
-        // closed year, so Accrued_Days__c returns the full entitlement.
+        // closed year, so Accrued_To_Date__c returns the full entitlement.
         insert new List<Leave_Balance__c>{
             priorAnnual(byName.get('CapCarry'), 12, 4),    // available 8  -> capped to 6
             priorAnnual(byName.get('AtCap'),    12, 6),    // available 6  -> carries 6
@@ -130,7 +130,7 @@ public with sharing class LeaveManagementControllerTest {
     private static Leave_Balance__c row(String lastName, String leaveType, Integer yr) {
         List<Leave_Balance__c> found = [
             SELECT Entitlement_Days__c, Used_Days__c, Carry_Over_Days__c, Carry_Over_Expiry__c,
-                   Expiry_Date__c, Granted_On__c, Available_Days__c, Accrual_Method__c,
+                   Expiry_Date__c, Granted_On__c, Available_Balance__c, Accrual_Method__c,
                    Locked_During_Probation__c, Leave_Type__c, Leave_Year__c
             FROM Leave_Balance__c
             WHERE Employee__r.LastName = :lastName AND Leave_Type__c = :leaveType
@@ -534,7 +534,7 @@ public with sharing class LeaveManagementControllerTest {
         Leave_Balance__c r = row('Anniv3', REFRESH, GRANT_YEAR);
         System.assertEquals(1, r.Entitlement_Days__c,
             'the two unused days are wiped; the one taken remains accounted for');
-        System.assertEquals(0, r.Available_Days__c, 'nothing is left to use');
+        System.assertEquals(0, r.Available_Balance__c, 'nothing is left to use');
         System.assertEquals(Date.newInstance(2026, 4, 15), r.Expiry_Date__c,
             'the expiry date is retained as the date the grant lapsed');
     }

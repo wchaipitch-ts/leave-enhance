@@ -3,12 +3,12 @@
     <fullName>All</fullName>
     <columns>NAME</columns>
     <columns>Employee__c</columns>
-    <columns>Available_Days__c</columns>
+    <columns>Available_Balance__c</columns>
     <columns>Carry_Over_Days__c</columns>
     <columns>Used_Days__c</columns>
     <columns>Entitlement_Days__c</columns>
     <columns>Leave_Type__c</columns>
-    <columns>Accrued_Days__c</columns>
+    <columns>Accrued_To_Date__c</columns>
     <columns>Expiry_Date__c</columns>
     <columns>Carry_Over_Expiry__c</columns>
     <columns>Accrual_Method__c</columns>

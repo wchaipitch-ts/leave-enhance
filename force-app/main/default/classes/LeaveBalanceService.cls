@@ -75,8 +75,8 @@ public without sharing class LeaveBalanceService {
 
         Map<String, Leave_Balance__c> rowByType = new Map<String, Leave_Balance__c>();
         for (Leave_Balance__c bal : [
-            SELECT Id, Leave_Type__c, Entitlement_Days__c, Accrued_Days__c, Carry_Over_Days__c,
-                   Carry_Over_Remaining__c, Used_Days__c, Available_Days__c, Is_Locked__c,
+            SELECT Id, Leave_Type__c, Entitlement_Days__c, Accrued_To_Date__c, Carry_Over_Days__c,
+                   Carry_Over_Remaining__c, Used_Days__c, Available_Balance__c, Is_Locked__c,
                    Lock_Reason__c, Expiry_Date__c, Carry_Over_Expiry__c, Granted_On__c
             FROM Leave_Balance__c
             WHERE Employee__c = :target AND Leave_Year__c = :year
@@ -105,11 +105,11 @@ public without sharing class LeaveBalanceService {
             throw new AuraHandledException('A leave type and a leave year are required.');
         }
         for (Leave_Balance__c bal : [
-            SELECT Available_Days__c FROM Leave_Balance__c
+            SELECT Available_Balance__c FROM Leave_Balance__c
             WHERE Employee__c = :target AND Leave_Year__c = :year AND Leave_Type__c = :leaveType
             LIMIT 1
         ]) {
-            return zeroIfNull(bal.Available_Days__c);
+            return zeroIfNull(bal.Available_Balance__c);
         }
         return 0;
     }
@@ -161,11 +161,11 @@ public without sharing class LeaveBalanceService {
 
         view.id  = bal.Id;
         view.entitlement     = zeroIfNull(bal.Entitlement_Days__c);
-        view.accrued         = zeroIfNull(bal.Accrued_Days__c);
+        view.accrued         = zeroIfNull(bal.Accrued_To_Date__c);
         view.carriedIn       = zeroIfNull(bal.Carry_Over_Days__c);
         view.carryRemaining  = zeroIfNull(bal.Carry_Over_Remaining__c);
         view.used            = zeroIfNull(bal.Used_Days__c);
-        view.available       = zeroIfNull(bal.Available_Days__c);
+        view.available       = zeroIfNull(bal.Available_Balance__c);
         view.isLocked        = bal.Is_Locked__c == true;
         view.lockReason      = bal.Lock_Reason__c;
         view.expiryDate      = bal.Expiry_Date__c;
@@ -182,7 +182,7 @@ public without sharing class LeaveBalanceService {
      * submit, withdraw, reject and delete, and would be wrong the first time one of
      * those was missed; counting the requests cannot drift.
      *
-     * Available_Days__c deliberately does NOT subtract this — it is shown alongside so
+     * Available_Balance__c deliberately does NOT subtract this — it is shown alongside so
      * somebody can see they have asked for more than is left.
      */
     private static Map<String, Decimal> pendingDaysByType(Id employeeId, Integer year) {

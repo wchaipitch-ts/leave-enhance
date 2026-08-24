@@ -1,7 +1,7 @@
 /*
- * LEAVE-51 — accrual moves out of the Accrued_Days__c formula and into Apex.
+ * LEAVE-51 — accrual moves out of the Accrued_To_Date__c formula and into Apex.
  *
- * Accrued_Days__c and Available_Days__c were formula fields. They were correct, and
+ * Accrued_To_Date__c and Available_Balance__c were formula fields. They were correct, and
  * being formulas they could never go stale, but neither could be reached by a unit
  * test except through a saved record and the real calendar, and the accrual rule was
  * a single nested IF that nobody could safely change. Both are now stored Number
@@ -181,13 +181,13 @@ public with sharing class LeaveAccrualService {
          * a row whose correct accrual IS zero would read as unchanged and never be
          * written, leaving it null forever.
          */
-        Boolean moved = bal.Accrued_Days__c == null
-                     || bal.Available_Days__c == null
-                     || scaled(bal.Accrued_Days__c) != accrued
-                     || scaled(bal.Available_Days__c) != available;
+        Boolean moved = bal.Accrued_To_Date__c == null
+                     || bal.Available_Balance__c == null
+                     || scaled(bal.Accrued_To_Date__c) != accrued
+                     || scaled(bal.Available_Balance__c) != available;
 
-        bal.Accrued_Days__c   = accrued;
-        bal.Available_Days__c = available;
+        bal.Accrued_To_Date__c   = accrued;
+        bal.Available_Balance__c = available;
         return moved;
     }
 
@@ -236,7 +236,7 @@ public with sharing class LeaveAccrualService {
          */
         List<Leave_Balance__c> rows = [
             SELECT Id, Employee__c, Leave_Year__c, Accrual_Method__c, Entitlement_Days__c,
-                   Carry_Over_Days__c, Used_Days__c, Accrued_Days__c, Available_Days__c
+                   Carry_Over_Days__c, Used_Days__c, Accrued_To_Date__c, Available_Balance__c
             FROM Leave_Balance__c
             WHERE Status__c = 'Active'
             LIMIT 50000

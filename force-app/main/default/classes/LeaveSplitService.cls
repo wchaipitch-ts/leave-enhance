@@ -414,13 +414,13 @@ public without sharing class LeaveSplitService {
     private static Map<String, Pool> poolsFor(Set<String> keys) {
         Map<String, Pool> pools = new Map<String, Pool>();
         for (Leave_Balance__c bal : [
-            SELECT External_Key__c, Accrued_Days__c, Carry_Over_Days__c, Used_Days__c,
+            SELECT External_Key__c, Accrued_To_Date__c, Carry_Over_Days__c, Used_Days__c,
                    Granted_On__c, Expiry_Date__c
             FROM Leave_Balance__c
             WHERE External_Key__c IN :keys
         ]) {
             Pool pool = new Pool();
-            pool.available = zeroIfNull(bal.Accrued_Days__c) + zeroIfNull(bal.Carry_Over_Days__c)
+            pool.available = zeroIfNull(bal.Accrued_To_Date__c) + zeroIfNull(bal.Carry_Over_Days__c)
                            - zeroIfNull(bal.Used_Days__c);
             pool.closesOn = bal.Expiry_Date__c;
             pool.opensOn = bal.Granted_On__c;

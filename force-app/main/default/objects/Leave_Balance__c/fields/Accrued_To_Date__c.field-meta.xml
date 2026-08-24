@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Accrued_To_Date__c</fullName>
+    <description>Entitlement earned so far. Maintained by LeaveAccrualService - written by LeaveBalanceTrigger on every save, and by the nightly sweep in LeaveManagementController.runDaily, which is what credits a month when nobody has touched the record. Monthly accrual lands on the FIRST of the month for anyone who joined in an earlier year, and at month end for anyone who joined during the leave year (LEAVE-52). Replaces the Accrued_Days__c formula, which could not be unit tested; that field survives only until reports are moved over. Never edit by hand - the next save recomputes it.</description>
+    <externalId>false</externalId>
+    <label>Accrued to Date</label>
+    <precision>4</precision>
+    <required>false</required>
+    <scale>1</scale>
+    <trackHistory>false</trackHistory>
+    <trackTrending>false</trackTrending>
+    <type>Number</type>
+    <unique>false</unique>
+</CustomField>

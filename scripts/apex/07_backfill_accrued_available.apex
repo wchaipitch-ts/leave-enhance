@@ -1,14 +1,18 @@
 /*
- * Step 07 — fills the newly stored Accrued_Days__c and Available_Days__c.
+ * Step 07 — fills the newly stored Accrued_To_Date__c and Available_Balance__c.
  *
- * LEAVE-51 moved the accrual out of a formula and into LeaveAccrualService. Salesforce
- * cannot convert a formula field to a Number field in place, so both fields are dropped
- * and recreated — and a recreated field starts out blank on every existing row. Until
- * this has run, every balance in the org reads a null accrual and a null availability,
- * which the approval guard treats as zero and will refuse leave on.
+ * LEAVE-51 moved the accrual out of the Accrued_Days__c formula and into
+ * LeaveAccrualService. Salesforce cannot convert a formula field to a Number field, and
+ * cannot delete or rename one while Apex references it, so the stored figures went into
+ * NEW fields rather than replacing the old ones in place.
  *
- * RUN THIS IMMEDIATELY AFTER THE FIELDS ARE RECREATED, before anybody requests leave.
- * See scripts/apex/README.md for where it sits in the cutover.
+ * A new field starts out blank on every existing row. Until this has run, every balance
+ * reads a null accrual and a null availability, which the approval guard treats as zero
+ * and will refuse leave on.
+ *
+ * RUN THIS IMMEDIATELY AFTER THE DEPLOY, before anybody requests leave. The legacy
+ * Accrued_Days__c and Available_Days__c formulas are still in place and still readable
+ * throughout, so nothing is lost if this is delayed — but nothing can be approved either.
  *
  * The arithmetic is not repeated here. This selects rows and hands them to
  * LeaveAccrualService.recalculate — the same call the trigger and the nightly sweep make,
@@ -30,15 +34,15 @@ Integer BATCH = 9000;
 
 List<Leave_Balance__c> blank = [
     SELECT Id, Employee__c, Leave_Year__c, Accrual_Method__c, Entitlement_Days__c,
-           Carry_Over_Days__c, Used_Days__c, Accrued_Days__c, Available_Days__c
+           Carry_Over_Days__c, Used_Days__c, Accrued_To_Date__c, Available_Balance__c
     FROM Leave_Balance__c
-    WHERE Accrued_Days__c = NULL OR Available_Days__c = NULL
+    WHERE Accrued_To_Date__c = NULL OR Available_Balance__c = NULL
     LIMIT :BATCH
 ];
 
 Integer remaining = [
     SELECT COUNT() FROM Leave_Balance__c
-    WHERE Accrued_Days__c = NULL OR Available_Days__c = NULL
+    WHERE Accrued_To_Date__c = NULL OR Available_Balance__c = NULL
 ];
 
 // Fills the figures in memory so the dry run can show what would be written. The save
@@ -50,7 +54,7 @@ for (Integer i = 0; i < Math.min(blank.size(), 20); i++) {
     Leave_Balance__c b = blank[i];
     System.debug(b.Id + '  year=' + b.Leave_Year__c + '  method=' + b.Accrual_Method__c
         + '  entitlement=' + b.Entitlement_Days__c
-        + '  -> accrued=' + b.Accrued_Days__c + ', available=' + b.Available_Days__c);
+        + '  -> accrued=' + b.Accrued_To_Date__c + ', available=' + b.Available_Balance__c);
 }
 if (blank.size() > 20) {
     System.debug('… and ' + (blank.size() - 20) + ' more.');

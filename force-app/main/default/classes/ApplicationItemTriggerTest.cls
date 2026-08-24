@@ -14,7 +14,7 @@ private class ApplicationItemTriggerTest {
                     EmailEncodingKey = 'UTF-8',
                     LanguageLocaleKey = 'th',
                     LocaleSidKey = 'th',
-                    // Accrued_Days__c returns zero for an employee with no
+                    // Accrued_To_Date__c returns zero for an employee with no
                     // joining date, so without this the balance below holds nothing and
                     // every request here becomes unpaid days awaiting the Managing
                     // Director. Nothing in this class is about accrual - it just needs

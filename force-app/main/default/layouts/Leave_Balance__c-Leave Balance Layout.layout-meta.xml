@@ -45,7 +45,7 @@
             </layoutItems>
             <layoutItems>
                 <behavior>Readonly</behavior>
-                <field>Accrued_Days__c</field>
+                <field>Accrued_To_Date__c</field>
             </layoutItems>
             <layoutItems>
                 <behavior>Edit</behavior>
@@ -53,7 +53,7 @@
             </layoutItems>
             <layoutItems>
                 <behavior>Readonly</behavior>
-                <field>Available_Days__c</field>
+                <field>Available_Balance__c</field>
             </layoutItems>
         </layoutColumns>
         <layoutColumns>

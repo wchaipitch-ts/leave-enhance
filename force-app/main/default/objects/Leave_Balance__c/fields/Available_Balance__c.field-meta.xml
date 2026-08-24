@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Available_Balance__c</fullName>
+    <description>Accrued to Date + Carried In - Used. Availability is capped by accrual, not by full entitlement, which is what stops December's day being spent in January. Maintained by LeaveAccrualService alongside Accrued_To_Date__c - see that field for what writes it and when. Replaces the Available_Days__c formula. Never edit by hand - the next save recomputes it.</description>
+    <externalId>false</externalId>
+    <label>Available Days</label>
+    <precision>4</precision>
+    <required>false</required>
+    <scale>1</scale>
+    <trackHistory>false</trackHistory>
+    <trackTrending>false</trackTrending>
+    <type>Number</type>
+    <unique>false</unique>
+</CustomField>

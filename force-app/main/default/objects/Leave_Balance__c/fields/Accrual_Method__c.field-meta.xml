@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>Accrual_Method__c</fullName>
-    <description>Copied from the policy. Drives Accrued_Days__c through LeaveAccrualService. Blank is treated as no accrual.</description>
+    <description>Copied from the policy. Drives Accrued_To_Date__c through LeaveAccrualService. Blank is treated as no accrual.</description>
     <externalId>false</externalId>
     <label>Accrual Method</label>
     <length>20</length>

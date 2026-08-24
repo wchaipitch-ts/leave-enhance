@@ -135,7 +135,7 @@ private class LeaveCascadeTest {
     }
 
     private static Leave_Balance__c balance(String leaveType) {
-        return [SELECT Id, Entitlement_Days__c, Used_Days__c, Available_Days__c,
+        return [SELECT Id, Entitlement_Days__c, Used_Days__c, Available_Balance__c,
                        Granted_On__c, Expiry_Date__c
                 FROM Leave_Balance__c
                 WHERE Employee__c = :employeeId() AND Leave_Type__c = :leaveType LIMIT 1];
@@ -258,7 +258,7 @@ private class LeaveCascadeTest {
         Test.stopTest();
 
         System.assertEquals(2, balance(REFRESH).Used_Days__c);
-        System.assertEquals(0.5, balance(REFRESH).Available_Days__c,
+        System.assertEquals(0.5, balance(REFRESH).Available_Balance__c,
             'the half day stays in the balance rather than being rounded away');
     }
 
@@ -351,11 +351,11 @@ private class LeaveCascadeTest {
         Test.stopTest();
 
         System.assertEquals(3, balance(REFRESH).Used_Days__c);
-        System.assertEquals(0, balance(REFRESH).Available_Days__c);
+        System.assertEquals(0, balance(REFRESH).Available_Balance__c);
         System.assertEquals(4, balance(ANNUAL).Used_Days__c);
-        System.assertEquals(0, balance(ANNUAL).Available_Days__c);
+        System.assertEquals(0, balance(ANNUAL).Available_Balance__c);
         System.assertEquals(3, balance(UNPAID).Used_Days__c);
-        System.assertEquals(0, balance(UNPAID).Available_Days__c,
+        System.assertEquals(0, balance(UNPAID).Available_Balance__c,
             'unpaid grants as it is used, so it never reads negative');
     }
 
@@ -390,7 +390,7 @@ private class LeaveCascadeTest {
         System.assert(message.contains('Shorten it'),
             'and offers the remedy for a type with nowhere to overflow: ' + message);
         System.assertEquals(0, balance(REFRESH).Used_Days__c, 'nothing was taken');
-        System.assertEquals(3, balance(REFRESH).Available_Days__c, 'and nothing went negative');
+        System.assertEquals(3, balance(REFRESH).Available_Balance__c, 'and nothing went negative');
     }
 
     /* With a chain configured the refusal points at the split instead. */
