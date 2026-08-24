@@ -17,15 +17,17 @@
             </div>
 
             <div class="slds-box slds-theme_warning slds-m-bottom_medium slds-text-body_small">
-                <strong>Accrued and Available ignore the date you pick</strong> &mdash; but the
-                job does now write them. They are stored figures, recalculated against the
-                <em>real</em> date at the start of every run, so travelling to 1 January will not
-                show you next year&rsquo;s accrual.
+                <strong>Every figure follows the date you pick</strong>, Accrued and Available
+                included. They are stored figures now, and the run recalculates them as at the
+                date you chose &mdash; so 1 January really does show you January.
                 <br /><br />
-                If they <em>do</em> move, that is the recalculation catching up &mdash; a month
-                boundary crossed since the last run, or a row edited by hand &mdash; and not
-                something the date you picked caused. The figures that answer to the date are
-                Entitlement, Carried In, Granted On, Carry Expiry and Window Expiry.
+                That is what makes a future-dated run worth trusting. Carry over is capped from
+                the <em>prior</em> year&rsquo;s Available, and a year only reads its full
+                entitlement once the date is past it. Leave the clock on today and every
+                prior-year row still looks part-accrued, which quietly understates the carry over.
+                <br /><br />
+                <strong>Committing a future-dated run leaves those figures in the future</strong>
+                until the nightly job re-settles them at 01:00. Preview unless you mean it.
                 <br /><br />
                 Two things worth knowing. Annual leave accrues monthly, but not on the same day for
                 everybody: someone already in service gains their day on the <strong>1st</strong>,

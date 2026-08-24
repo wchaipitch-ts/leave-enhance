@@ -224,8 +224,15 @@ sf project deploy start --target-org $ALIAS \
   --post-destructive-changes manifest/leave-accrual-cutover/destructiveChanges.xml
 ```
 
-### What still reads the real date
+### What date the accrual is measured against
 
-The accrual is measured against `System.today()`, never the effective date handed to
-`runDaily`. That is what the old `TODAY()` did, and it is why replaying a missed run does
-not rewind everybody's accrual. The Leave Job Runner banner says as much, and it holds.
+`System.today()`, normally — never the effective date handed to `runDaily`. That is what
+the old `TODAY()` did, and it is why replaying a missed run for a past date does not
+rewind everybody's accrual.
+
+The one exception is the Leave Job Runner, which calls `LeaveAccrualService.simulateAsOf`
+so the clock travels with the run. Without it a future-dated run is not just incomplete
+but wrong: carry over is capped from the prior year's Available, and with the clock left
+on today that year still reads part-accrued. Measured in dev5-ts before the fix, a
+1 January 2027 preview carried the wrong number on **11 of 20** rows. `simulateAsOf`
+refuses outside a sandbox, and the runner clears it in a `finally`.

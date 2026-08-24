@@ -139,10 +139,25 @@ public with sharing class LeaveJobRunnerController {
         Map<String, Leave_Balance__c> after;
         Integer afterOrgWide;
         try {
+            /*
+             * The accrual clock travels with the run, or a future date tells you nothing.
+             * Accrued and Available are stored figures now; without this they stay pinned
+             * to the real date while the grants move, and the January carry-over — which
+             * is capped from the PRIOR year's Available — is computed from a year that
+             * still looks part-accrued. That understates it on most rows.
+             *
+             * Applied to a committed run as well as a preview, deliberately. The whole
+             * value of the preview is that it shows exactly what committing would do, and
+             * a clock that moved for one and not the other would break that.
+             */
+            LeaveAccrualService.simulateAsOf(runDate);
             LeaveManagementController.runDaily(runDate);
             after = snapshot(employeeId, yr);
             afterOrgWide = countRows();
         } finally {
+            // Before the rollback, and in a finally, so a failed run cannot leave the
+            // clock moved for whatever executes next in this transaction.
+            LeaveAccrualService.endSimulation();
             if (commitRun != true) {
                 Database.rollback(sp);
             }

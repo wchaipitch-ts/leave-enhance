@@ -43,13 +43,13 @@
  *
  * ------------------------------------------------------------------ "as of" is real
  *
- * The accrual is always measured against the REAL clock, never against the effective
- * date handed to runDaily. That is deliberate and it is what the formula did:
- * TODAY() does not care which date the job was replayed for. Replaying a missed run
- * for 30 June must not rewind everybody's accrual to what it was in June.
+ * The accrual is measured against the REAL clock, never against the effective date
+ * handed to runDaily. That is deliberate and it is what the formula did: TODAY() does
+ * not care which date the job was replayed for. Replaying a missed run for 30 June must
+ * not rewind everybody's accrual to what it was in June.
  *
- * todayOverride is the seam a test drives instead, and it is the only way to move
- * this clock.
+ * simulateAsOf is the single, sandbox-only exception, for the Leave Job Runner asking
+ * what a date WOULD look like. todayOverride is the same seam a test drives.
  */
 public with sharing class LeaveAccrualService {
 
@@ -69,6 +69,45 @@ public with sharing class LeaveAccrualService {
     /** The date the accrual is measured against. */
     public static Date asOfDate() {
         return todayOverride != null ? todayOverride : System.today();
+    }
+
+    /*
+     * Moves the accrual clock for the REST OF THE TRANSACTION, so a what-if run can ask
+     * what the figures would read on some other date.
+     *
+     * This exists for the Leave Job Runner, and it is the only thing that makes a
+     * future-dated run mean anything. Travelling the grant date alone is not enough:
+     * the January carry-over is capped from the PRIOR year's Available, and that year
+     * only reads its full entitlement once the clock is past it. Run 1 January 2027 with
+     * the clock still on today and every prior-year row still looks part-accrued, so the
+     * carry over comes out short — measured in dev5-ts, wrong on 11 of 20 rows.
+     *
+     * It also has to be a static rather than a parameter threaded through runDaily,
+     * because LeaveBalanceTrigger recalculates on every save the run performs and there
+     * is no argument to hand it.
+     *
+     * Sandbox only, and guarded here as well as in the runner. A production caller that
+     * moved this clock would write a whole org's balances as at the wrong date.
+     */
+    public static void simulateAsOf(Date asOf) {
+        if (!Test.isRunningTest() && !isSandbox()) {
+            throw new SecurityException(
+                'The accrual clock can only be moved in a sandbox.');
+        }
+        todayOverride = asOf;
+    }
+
+    /** Puts the clock back. Callers must do this in a finally, not on the happy path. */
+    public static void endSimulation() {
+        todayOverride = null;
+    }
+
+    private static Boolean sandboxCache;
+    private static Boolean isSandbox() {
+        if (sandboxCache == null) {
+            sandboxCache = [SELECT IsSandbox FROM Organization LIMIT 1].IsSandbox;
+        }
+        return sandboxCache;
     }
 
     // ------------------------------------------------------------------ the rule

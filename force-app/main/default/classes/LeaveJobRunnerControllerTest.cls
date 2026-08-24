@@ -138,6 +138,55 @@ private class LeaveJobRunnerControllerTest {
         System.assertEquals(before.Carry_Over_Expiry__c, after.Carry_Over_Expiry__c);
     }
 
+    /*
+     * LEAVE-51 — the accrual clock travels with the run.
+     *
+     * Without this the stored figures stay pinned to the real date while the grants move,
+     * and a 1 January preview computes carry over from a prior year that still looks
+     * part-accrued. Measured in dev5-ts before the fix: wrong on 11 of 20 rows.
+     */
+    @isTest
+    static void aFutureDatedRunMeasuresTheAccrualAtThatDate() {
+        LeaveJobRunnerController.sandboxOverride = true;
+        Integer nextYear = priorYear() + 1;
+
+        Test.startTest();
+        LeaveJobRunnerController.run(
+            Date.newInstance(nextYear, 1, 1), employeeId(), nextYear, true);
+        Test.stopTest();
+
+        Leave_Balance__c prior = [
+            SELECT Accrued_To_Date__c, Available_Balance__c FROM Leave_Balance__c
+            WHERE Employee__c = :employeeId() AND Leave_Type__c = :ANNUAL
+              AND Leave_Year__c = :priorYear() LIMIT 1];
+        System.assertEquals(12, prior.Accrued_To_Date__c,
+            'travelling past the year end closes it, so it reads its full entitlement '
+            + 'rather than the part-year figure it held while the clock stood still');
+        System.assertEquals(12, prior.Available_Balance__c,
+            'the whole entitlement. Travelling this far also runs the 30 June sweep, '
+            + 'which cancels the 4 days taken against the 6 carried and drops the rest, '
+            + 'so the carried bucket is empty by January and Available is the 12 alone. '
+            + 'This is the figure the new year is capped from, which is why the accrual '
+            + 'behind it has to be measured at the run date and not at today.');
+    }
+
+    /*
+     * The clock is global for the transaction, so a run that forgot to put it back would
+     * leave everything after it measuring the accrual at the wrong date.
+     */
+    @isTest
+    static void theClockIsPutBackAfterARun() {
+        LeaveJobRunnerController.sandboxOverride = true;
+
+        Test.startTest();
+        LeaveJobRunnerController.run(
+            Date.newInstance(priorYear() + 1, 1, 1), employeeId(), priorYear(), false);
+        Test.stopTest();
+
+        System.assertEquals(System.today(), LeaveAccrualService.asOfDate(),
+            'the accrual clock is back on the real date once the run is over');
+    }
+
     /* The mirror: committing keeps what the preview only showed. */
     @isTest
     static void acommittedRunKeepsTheChange() {
