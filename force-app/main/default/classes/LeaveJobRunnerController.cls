@@ -202,11 +202,11 @@ public with sharing class LeaveJobRunnerController {
             row.isNew = (b == null);
             row.cells = new List<Cell>{
                 new Cell('Entitlement',      num(b, 'Entitlement_Days__c'),      num(a, 'Entitlement_Days__c')),
-                new Cell('Accrued',          num(b, 'Accrued_To_Date__c'),          num(a, 'Accrued_To_Date__c')),
+                new Cell('Accrued',          num(b, 'Accrued_To_Date__c'),       num(a, 'Accrued_To_Date__c')),
                 new Cell('Carried In',       num(b, 'Carry_Over_Days__c'),       num(a, 'Carry_Over_Days__c')),
                 new Cell('Carry Over Left',  num(b, 'Carry_Over_Remaining__c'),  num(a, 'Carry_Over_Remaining__c')),
                 new Cell('Used',             num(b, 'Used_Days__c'),             num(a, 'Used_Days__c')),
-                new Cell('Available',        num(b, 'Available_Balance__c'),        num(a, 'Available_Balance__c')),
+                new Cell('Available',        num(b, 'Available_Balance__c'),     num(a, 'Available_Balance__c')),
                 new Cell('Granted On',       dat(b, 'Granted_On__c'),            dat(a, 'Granted_On__c')),
                 new Cell('Carry Expiry',     dat(b, 'Carry_Over_Expiry__c'),     dat(a, 'Carry_Over_Expiry__c')),
                 new Cell('Window Expiry',    dat(b, 'Expiry_Date__c'),           dat(a, 'Expiry_Date__c'))

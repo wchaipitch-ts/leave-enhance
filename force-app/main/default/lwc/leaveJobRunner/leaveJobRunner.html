@@ -17,15 +17,21 @@
             </div>
 
             <div class="slds-box slds-theme_warning slds-m-bottom_medium slds-text-body_small">
-                <strong>Accrued and Available ignore the date you pick.</strong> The job recalculates
-                them against the <em>real</em> date, not the one you travel to, so they will not move
-                however far you go.
-                Judge a run by what the job actually <em>writes</em>: Entitlement, Carried In,
-                Granted On, Carry Expiry and Window Expiry.
+                <strong>Accrued and Available ignore the date you pick</strong> &mdash; but the
+                job does now write them. They are stored figures, recalculated against the
+                <em>real</em> date at the start of every run, so travelling to 1 January will not
+                show you next year&rsquo;s accrual.
                 <br /><br />
-                Two consequences worth knowing. Annual leave accrues monthly, so someone who joined
-                in July shows a full-year Entitlement but only one or two days Accrued &mdash; that
-                is correct, not a bug. And a row built for a <em>future</em> leave year shows
+                If they <em>do</em> move, that is the recalculation catching up &mdash; a month
+                boundary crossed since the last run, or a row edited by hand &mdash; and not
+                something the date you picked caused. The figures that answer to the date are
+                Entitlement, Carried In, Granted On, Carry Expiry and Window Expiry.
+                <br /><br />
+                Two things worth knowing. Annual leave accrues monthly, but not on the same day for
+                everybody: someone already in service gains their day on the <strong>1st</strong>,
+                while someone who joined during the year earns theirs at <strong>month end</strong>.
+                So a July joiner shows a full-year Entitlement against only a day or two Accrued
+                &mdash; correct, not a bug. And a row built for a <em>future</em> leave year shows
                 Accrued 0, which can make Available read as a negative once days are used against
                 it.
             </div>
