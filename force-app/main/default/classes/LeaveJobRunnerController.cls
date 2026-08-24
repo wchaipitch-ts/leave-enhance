@@ -254,6 +254,31 @@ public with sharing class LeaveJobRunnerController {
         String head = r.applied
             ? 'Applied. These changes are saved.'
             : 'Preview only — everything below was rolled back and nothing was saved.';
+        /*
+         * No rows for the watched year at all, which is not the same as a run that did
+         * nothing — and an empty table under a green "preview only" banner reads like the
+         * screen is broken.
+         *
+         * Almost always the same cause: the year has never been opened. A year's rows are
+         * created by the 1 January grant and by nothing else, so travelling to any other
+         * date in a year that was never granted finds nothing to move. The 1 July sweep is
+         * the usual way to hit this — it is a date people reach for precisely because it
+         * is interesting, and it depends entirely on rows 1 January was supposed to build.
+         */
+        if (r.rows.isEmpty()) {
+            String why = head + ' ' + r.employeeName + ' has no balance rows for ' + r.year
+                + ' at all, so there was nothing to compare — this is not a failed run. '
+                + 'A year\'s rows are created by the 1 January grant and by nothing else. '
+                + 'Run 1 January ' + r.year + ' and press "Run for real" to keep it, then '
+                + 'come back to ' + r.runDate + '.';
+            if (r.orgWideChangedRows > 0) {
+                why += ' The run did create ' + r.orgWideChangedRows + ' row(s) for other '
+                    + 'employees — those are the ones whose anniversary or joining date '
+                    + 'falls on this date, and they need no prior year to exist.';
+            }
+            return why;
+        }
+
         if (changed == 0 && r.orgWideChangedRows == 0) {
             return head + ' The job ran and changed nothing for '
                 + r.employeeName + ' on ' + r.runDate + '. That is usually right: every grant '

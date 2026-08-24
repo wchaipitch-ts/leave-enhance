@@ -139,6 +139,33 @@ private class LeaveJobRunnerControllerTest {
     }
 
     /*
+     * A blank table under a green "nothing was saved" banner reads as a broken screen.
+     * The real cause is almost always a year that 1 January never opened: rows for a year
+     * are created by that grant and by nothing else, so 1 July of an ungranted year finds
+     * nothing to move. Reported from dev5-ts against a 2027-07-01 run.
+     */
+    @isTest
+    static void anUnopenedYearExplainsItselfRatherThanShowingABlankTable() {
+        LeaveJobRunnerController.sandboxOverride = true;
+        Integer neverGranted = priorYear() + 3;
+
+        Test.startTest();
+        LeaveJobRunnerController.RunResult r = LeaveJobRunnerController.run(
+            Date.newInstance(neverGranted, 7, 1), employeeId(), neverGranted, false);
+        Test.stopTest();
+
+        System.assertEquals(0, r.rows.size(),
+            'a year 1 January never opened has nothing in it to compare');
+        System.assert(r.summary.contains('no balance rows for ' + neverGranted),
+            'the summary names the cause rather than reporting 0 of 0: ' + r.summary);
+        System.assert(r.summary.contains('1 January'),
+            'and points at the run that would create them: ' + r.summary);
+        System.assert(!r.summary.contains('changed nothing'),
+            'and does not claim the job did nothing, which is a different situation '
+            + 'with a different fix: ' + r.summary);
+    }
+
+    /*
      * LEAVE-51 — the accrual clock travels with the run.
      *
      * Without this the stored figures stay pinned to the real date while the grants move,

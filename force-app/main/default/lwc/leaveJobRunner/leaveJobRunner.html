@@ -115,10 +115,22 @@
                     </tbody>
                 </table>
 
-                <p class="slds-text-body_small slds-m-top_x-small slds-text-color_weak">
-                    A cell reading <span class="moved">6 &rarr; 0</span> is one the run changed.
-                    Rows with nothing highlighted were left alone.
-                </p>
+                <template if:false={hasRows}>
+                    <div class="slds-box slds-theme_shade slds-m-top_small slds-text-body_small">
+                        <strong>No balance rows exist for this employee in {result.year}.</strong>
+                        The table is empty because there was nothing to compare, not because the
+                        run failed. A year&rsquo;s rows are built by the <strong>1 January</strong>
+                        grant and by nothing else &mdash; so pick 1 January {result.year}, press
+                        <em>Run for real</em> to keep it, then come back to this date.
+                    </div>
+                </template>
+
+                <template if:true={hasRows}>
+                    <p class="slds-text-body_small slds-m-top_x-small slds-text-color_weak">
+                        A cell reading <span class="moved">6 &rarr; 0</span> is one the run changed.
+                        Rows with nothing highlighted were left alone.
+                    </p>
+                </template>
             </template>
         </div>
     </lightning-card>

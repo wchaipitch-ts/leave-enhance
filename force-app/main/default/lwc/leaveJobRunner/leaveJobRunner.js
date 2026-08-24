@@ -80,6 +80,14 @@ export default class LeaveJobRunner extends LightningElement {
         return Boolean(this.runDate) && this.year !== this.runYear;
     }
 
+    /*
+     * An empty results table needs explaining rather than leaving blank. The usual cause
+     * is a year that was never opened by a 1 January run, so there is nothing to compare.
+     */
+    get hasRows() {
+        return Boolean(this.result && this.result.rows && this.result.rows.length);
+    }
+
     get yearOptions() {
         const base = parseInt(this.runYear || String(new Date().getFullYear()), 10);
         const years = [];
