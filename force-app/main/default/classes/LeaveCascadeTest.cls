@@ -122,16 +122,20 @@ private class LeaveCascadeTest {
 
     private static ApplicationItem__c reload(Id applId) {
         return [SELECT Request_Type__c, Leave_Days__c, Term_From__c, Term_To__c, Status__c,
-                       Split_From__c
+                       Split_From__c, Period_Leave__c
                 FROM ApplicationItem__c WHERE Id = :applId];
     }
 
-    /** The continuations of a request, earliest first — the order they were allocated. */
+    /*
+     * The continuations of a request, earliest first — the order they were allocated,
+     * with the morning before the afternoon where a boundary day is halved and two of
+     * them share one Term_From__c. 'AM leave' sorts before 'PM leave'.
+     */
     private static List<ApplicationItem__c> continuationsOf(Id parentId) {
         return [SELECT Request_Type__c, Leave_Days__c, Term_From__c, Term_To__c, Status__c,
-                       Split_From__c
+                       Split_From__c, Period_Leave__c
                 FROM ApplicationItem__c WHERE Split_From__c = :parentId
-                ORDER BY Term_From__c];
+                ORDER BY Term_From__c, Period_Leave__c];
     }
 
     private static Leave_Balance__c balance(String leaveType) {
@@ -238,28 +242,47 @@ private class LeaveCascadeTest {
         System.assertEquals(0, continuationsOf(appl.Id).size());
     }
 
-    /* A part day at a boundary belongs to the next pool, not to a rounding rule. */
+    /*
+     * LEAVE-54. A part day at a boundary is halved between the two pools rather than
+     * passed on whole. A 2.5 day grant funds two days and a morning, and Annual picks up
+     * that same afternoon.
+     */
     @isTest
-    static void aPartDayAtTheBoundaryPassesToTheNextPool() {
+    static void aPartDayAtTheBoundaryIsHalvedBetweenThePools() {
         useTestPolicies();
         setEntitlement(REFRESH, 2.5);
         setEntitlement(ANNUAL, 20);
 
+        List<Date> days = workdays(6);
         ApplicationItem__c appl = raise(REFRESH, 6, 'Draft');
         insert appl;
 
         System.assertEquals(2, reload(appl.Id).Leave_Days__c, 'two whole refresh days');
-        System.assertEquals(4, continuationsOf(appl.Id)[0].Leave_Days__c, 'the rest to annual');
+        System.assertEquals(days[1], reload(appl.Id).Term_To__c);
+
+        List<ApplicationItem__c> tail = continuationsOf(appl.Id);
+        System.assertEquals(3, tail.size(), 'the boundary day is halved, so three follow it');
+        System.assertEquals(REFRESH, tail[0].Request_Type__c, 'the last half of the grant');
+        System.assertEquals('AM leave', tail[0].Period_Leave__c);
+        System.assertEquals(days[2], tail[0].Term_From__c);
+        System.assertEquals(ANNUAL, tail[1].Request_Type__c, 'annual picks up the same afternoon');
+        System.assertEquals('PM leave', tail[1].Period_Leave__c);
+        System.assertEquals(days[2], tail[1].Term_From__c);
+        System.assertEquals(ANNUAL, tail[2].Request_Type__c);
+        System.assertEquals(3, tail[2].Leave_Days__c, 'and the three whole days after it');
 
         // Nothing is spent until somebody approves it, so the half day is only proved
-        // to have survived once the refresh segment has actually been taken.
+        // to have been taken once the refresh segments actually have been.
         Test.startTest();
-        update new ApplicationItem__c(Id = appl.Id, Status__c = 'Approved');
+        update new List<ApplicationItem__c>{
+            new ApplicationItem__c(Id = appl.Id, Status__c = 'Approved'),
+            new ApplicationItem__c(Id = tail[0].Id, Status__c = 'Approved')
+        };
         Test.stopTest();
 
-        System.assertEquals(2, balance(REFRESH).Used_Days__c);
-        System.assertEquals(0.5, balance(REFRESH).Available_Balance__c,
-            'the half day stays in the balance rather than being rounded away');
+        System.assertEquals(2.5, balance(REFRESH).Used_Days__c, 'the grant is spent to the half day');
+        System.assertEquals(0, balance(REFRESH).Available_Balance__c,
+            'rather than half of it lapsing unused when the grant expires');
     }
 
     // ------------------------------------------------------------ expiring grants

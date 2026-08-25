@@ -100,13 +100,20 @@ private class LeaveSplitTest {
 
     private static ApplicationItem__c reload(Id applId) {
         return [SELECT Request_Type__c, Leave_Days__c, Term_From__c, Term_To__c, Status__c,
-                       Split_From__c, Leave_Balance__c
+                       Split_From__c, Leave_Balance__c, Period_Leave__c
                 FROM ApplicationItem__c WHERE Id = :applId];
     }
 
+    /*
+     * Earliest first, and within a date the morning before the afternoon: since
+     * LEAVE-54 a boundary day is two records sharing one Term_From__c, so ordering on
+     * the date alone no longer settles it. 'AM leave' sorts before 'PM leave'.
+     */
     private static List<ApplicationItem__c> continuationOf(Id parentId) {
-        return [SELECT Request_Type__c, Leave_Days__c, Term_From__c, Term_To__c, Status__c, Split_From__c
-                FROM ApplicationItem__c WHERE Split_From__c = :parentId];
+        return [SELECT Request_Type__c, Leave_Days__c, Term_From__c, Term_To__c, Status__c,
+                       Split_From__c, Period_Leave__c
+                FROM ApplicationItem__c WHERE Split_From__c = :parentId
+                ORDER BY Term_From__c, Period_Leave__c];
     }
 
     private static Leave_Balance__c balance(String leaveType) {
@@ -172,21 +179,78 @@ private class LeaveSplitTest {
         System.assertEquals(days[7], unpaid.Term_To__c, 'and runs to the original end date');
     }
 
+    /*
+     * LEAVE-54. Three and a half days left against a five day request. The balance is
+     * held to the half day, so the boundary day is halved rather than the .5 being left
+     * in the pool to lapse at the year end.
+     */
     @isTest
-    static void aPartDayAtTheBoundaryGoesToTheUnpaidSide() {
+    static void aPartDayAtTheBoundaryIsHalvedBetweenTheTwoTypes() {
         useTestPolicies();
-        // Leave two and a half days available.
         Leave_Balance__c bal = [SELECT Id FROM Leave_Balance__c
                                 WHERE Employee__c = :employeeId() AND Leave_Type__c = 'Annual leave'];
-        update new Leave_Balance__c(Id = bal.Id, Used_Days__c = 2.5);
+        update new Leave_Balance__c(Id = bal.Id, Used_Days__c = 1.5);
+
+        List<Date> days = nWorkingDays(Date.newInstance(testYear(), 3, 2), 5);
+        ApplicationItem__c appl = raise('Annual leave', 5, 'Pending');
+        insert appl;
+
+        ApplicationItem__c head = reload(appl.Id);
+        System.assertEquals('Annual leave', head.Request_Type__c, 'the original keeps its type');
+        System.assertEquals(3, head.Leave_Days__c, 'three whole paid days');
+        System.assertEquals(days[2], head.Term_To__c, 'stopping the day before the boundary');
+        System.assertEquals('All day', head.Period_Leave__c);
+
+        List<ApplicationItem__c> tail = continuationOf(appl.Id);
+        System.assertEquals(3, tail.size(), 'the boundary day is halved, so three follow it');
+
+        System.assertEquals('Annual leave', tail[0].Request_Type__c, 'the paid half of the boundary');
+        System.assertEquals('AM leave', tail[0].Period_Leave__c);
+        System.assertEquals(days[3], tail[0].Term_From__c);
+        System.assertEquals(days[3], tail[0].Term_To__c, 'a half day is a single-day record');
+        System.assertEquals(0.5, tail[0].Leave_Days__c);
+
+        System.assertEquals('Unpaid leave', tail[1].Request_Type__c, 'the unpaid half beside it');
+        System.assertEquals('PM leave', tail[1].Period_Leave__c);
+        System.assertEquals(days[3], tail[1].Term_From__c, 'on the same day');
+        System.assertEquals(0.5, tail[1].Leave_Days__c);
+
+        System.assertEquals('Unpaid leave', tail[2].Request_Type__c);
+        System.assertEquals(days[4], tail[2].Term_From__c, 'and the last day is wholly unpaid');
+        System.assertEquals(1, tail[2].Leave_Days__c);
+    }
+
+    /*
+     * The point of halving it. 3.5 paid and 1.5 unpaid, where this used to give 3 and 2
+     * and leave the half day in the pool until the year ended.
+     */
+    @isTest
+    static void theHalfDayIsSpentRatherThanStranded() {
+        useTestPolicies();
+        Leave_Balance__c bal = [SELECT Id FROM Leave_Balance__c
+                                WHERE Employee__c = :employeeId() AND Leave_Type__c = 'Annual leave'];
+        update new Leave_Balance__c(Id = bal.Id, Used_Days__c = 1.5);
 
         ApplicationItem__c appl = raise('Annual leave', 5, 'Pending');
         insert appl;
 
-        System.assertEquals(2, reload(appl.Id).Leave_Days__c,
-            'two whole days are paid; the half day is not split across records');
-        System.assertEquals(3, continuationOf(appl.Id)[0].Leave_Days__c,
-            'and the remaining three go unpaid');
+        List<ApplicationItem__c> approvals = new List<ApplicationItem__c>{
+            new ApplicationItem__c(Id = appl.Id, Status__c = 'Approved')
+        };
+        for (ApplicationItem__c cont : continuationOf(appl.Id)) {
+            approvals.add(new ApplicationItem__c(Id = cont.Id, Status__c = 'Approved'));
+        }
+
+        Test.startTest();
+        update approvals;
+        Test.stopTest();
+
+        System.assertEquals(5, balance('Annual leave').Used_Days__c,
+            'the 1.5 already spent, plus the 3.5 this request could afford');
+        System.assertEquals(0, balance('Annual leave').Available_Balance__c,
+            'the pool is emptied to the half day rather than to the whole one');
+        System.assertEquals(1.5, balance('Unpaid leave').Used_Days__c,
+            'and exactly the remainder is unpaid');
     }
 
     @isTest

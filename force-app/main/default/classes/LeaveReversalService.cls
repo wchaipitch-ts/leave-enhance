@@ -142,7 +142,8 @@ public without sharing class LeaveReversalService {
         }
         List<ApplicationItem__c> siblings = [
             SELECT Id, Request_Type__c, Status__c, Term_From__c, Term_To__c, OwnerId,
-                   Split_From__c, Split_From__r.Request_Type__c, RecordTypeId, Leave_Days__c
+                   Split_From__c, Split_From__r.Request_Type__c, RecordTypeId, Leave_Days__c,
+                   Period_Leave__c
             FROM ApplicationItem__c
             WHERE Split_From__c IN :rejectedParentIds
               AND Status__c NOT IN ('Approved', 'Rejected')
@@ -197,6 +198,20 @@ public without sharing class LeaveReversalService {
             }
             head.Request_Type__c = originalType;
             head.Term_To__c = furthest;
+            /*
+             * The head may be half a day — since LEAVE-54 the split can end a segment on
+             * a morning, and that morning is the earliest survivor whenever the whole
+             * days above it were the part that was refused. Merging anything onto it
+             * makes it at least one whole day, and leaving AM or PM on a record that now
+             * spans a range is refused outright by
+             * Leave_Request_Period_Single_Day_Only.
+             *
+             * A lone survivor is not touched: half a day promoted to another type is
+             * still half a day, and its period is still true.
+             */
+            if (family.size() > 1) {
+                head.Period_Leave__c = 'All day';
+            }
             keep.add(head);
         }
 

@@ -33,9 +33,29 @@
  *
  * Balance is consumed in date order, so the days come off the pools in the order the
  * chain names them: earliest days from the requested type, latest from the end of the
- * chain. A part day at a boundary goes to the next pool — with 2.5 days left and 5
- * requested, 2 are funded here and 3 pass on, and the half day stays in the balance
- * rather than being silently rounded away.
+ * chain.
+ *
+ * HALF DAYS AT THE BOUNDARY
+ *
+ * LEAVE-54: a pool is spent to the half day, because that is the granularity a balance
+ * is held at. With 3.5 days of Annual left and five requested, the boundary day is
+ * halved:
+ *
+ *     Annual leave  Mon-Wed   3 days    All day
+ *     Annual leave  Thu       0.5 days  AM leave
+ *     Unpaid leave  Thu       0.5 days  PM leave
+ *     Unpaid leave  Fri       1 day     All day
+ *
+ * Four records where two would do for a whole-day boundary, and that is the cost of it.
+ * The alternative was what this did before: fund three days, pass two on, and leave the
+ * half in the pool until the year ended and it lapsed unused.
+ *
+ * The boundary day has to be two records because Period_Leave__c is the only place a
+ * half day can be expressed and it is meaningless on a range — refused there by
+ * Leave_Request_Period_Single_Day_Only, and ignored by calculateLeaveDays, which counts
+ * a range in whole days. Nothing downstream needed changing for it: deduction, the
+ * calendar Event and Man_hour__c all read one record at a time and all already
+ * understood AM and PM.
  *
  * EXPIRING GRANTS
  *
@@ -49,6 +69,10 @@ public without sharing class LeaveSplitService {
 
     @TestVisible private static final String TYPE_UNPAID = 'Unpaid leave';
     private static final String STATUS_APPROVED = 'Approved';
+
+    private static final String ALL_DAY  = 'All day';
+    private static final String AM_LEAVE = 'AM leave';
+    private static final String PM_LEAVE = 'PM leave';
 
     /*
      * A mis-configured Overflow_To__c pointing back up its own chain cannot spin the
@@ -73,15 +97,53 @@ public without sharing class LeaveSplitService {
      */
     private static Boolean rebuilding = false;
 
-    /** One contiguous run of working days, funded by one pool. */
+    /*
+     * Half a working day: the unit balance is actually held in, and so the unit it is
+     * consumed in. Measuring in whole days is what used to strand the half — with 3.5
+     * days left and 5 requested, three were funded and the .5 sat in the pool until the
+     * year ended.
+     */
+    private class Half {
+        Date day;
+        Boolean isMorning;
+        Half(Date day, Boolean isMorning) {
+            this.day = day;
+            this.isMorning = isMorning;
+        }
+    }
+
+    /** One contiguous run of half days, funded by one pool. */
     private class Segment {
         String leaveType;
-        Integer firstDay;   // index into the request's working days
-        Integer dayCount;
-        Segment(String leaveType, Integer firstDay, Integer dayCount) {
+        Integer firstHalf;  // index into the request's half days
+        Integer halfCount;
+        Segment(String leaveType, Integer firstHalf, Integer halfCount) {
             this.leaveType = leaveType;
-            this.firstDay = firstDay;
-            this.dayCount = dayCount;
+            this.firstHalf = firstHalf;
+            this.halfCount = halfCount;
+        }
+    }
+
+    /*
+     * One record to be written for a segment: a run of whole days, or a single half day
+     * at either end of it.
+     *
+     * A segment needs more than one record only because Period_Leave__c means nothing on
+     * a range — Leave_Request_Period_Single_Day_Only refuses AM or PM there, and
+     * calculateLeaveDays would count the boundary day as a whole one anyway. So the day a
+     * pool runs out on becomes a single-day record of its own on each side of the
+     * boundary, and the whole days stay in one range record between them.
+     */
+    private class Piece {
+        String leaveType;
+        Date startsOn;
+        Date endsOn;
+        String period;
+        Piece(String leaveType, Date startsOn, Date endsOn, String period) {
+            this.leaveType = leaveType;
+            this.startsOn = startsOn;
+            this.endsOn = endsOn;
+            this.period = period;
         }
     }
 
@@ -213,7 +275,7 @@ public without sharing class LeaveSplitService {
         // is the figure the walk measures against the pools.
         reevaluate([
             SELECT Id, OwnerId, Request_Type__c, Status__c, Term_From__c, Term_To__c,
-                   Leave_Days__c, Split_From__c, RecordTypeId, Remark__c
+                   Leave_Days__c, Split_From__c, RecordTypeId, Remark__c, Period_Leave__c
             FROM ApplicationItem__c WHERE Id IN :ids
         ]);
     }
@@ -263,8 +325,9 @@ public without sharing class LeaveSplitService {
                 continue;
             }
 
+            List<Half> halves = halvesFor(appl, workingDays);
             List<Segment> segments =
-                allocate(appl, chainByRecord.get(appl.Id), workingDays, poolByKey);
+                allocate(appl, chainByRecord.get(appl.Id), halves, poolByKey);
 
             /*
              * No segments means no pool in the chain could be measured at all — a
@@ -281,20 +344,36 @@ public without sharing class LeaveSplitService {
                 continue;
             }
 
+            List<Piece> pieces = new List<Piece>();
+            for (Segment seg : segments) {
+                pieces.addAll(piecesFor(seg, halves));
+            }
+            if (pieces.isEmpty()) {
+                continue;
+            }
+
+            /*
+             * The first record keeps the request's own start and the last keeps its own
+             * end, so a range that opens or closes on a weekend covers the same calendar
+             * dates after the split as before it. Only the interior boundaries land on
+             * working days.
+             *
+             * A half day cannot carry a weekend edge with it — it is a single-day record
+             * by construction — so it keeps the working day it actually falls on. In
+             * practice only the head can be affected: the last type in the chain absorbs
+             * every remaining half, so the final record always ends on a whole day.
+             */
             Date rangeEnd = appl.Term_To__c == null ? appl.Term_From__c : appl.Term_To__c;
+            if (ALL_DAY.equals(pieces[0].period)) {
+                pieces[0].startsOn = appl.Term_From__c;
+            }
+            Piece tail = pieces[pieces.size() - 1];
+            if (ALL_DAY.equals(tail.period)) {
+                tail.endsOn = rangeEnd;
+            }
 
-            for (Integer i = 0; i < segments.size(); i++) {
-                Segment seg = segments[i];
-                Boolean isFinal = (i == segments.size() - 1);
-                /*
-                 * The first segment keeps the request's own start and the last keeps its
-                 * own end, so a range that opens or closes on a weekend covers the same
-                 * calendar dates after the split as before it. Only the interior
-                 * boundaries land on working days.
-                 */
-                Date segFrom = (i == 0) ? appl.Term_From__c : workingDays[seg.firstDay];
-                Date to = isFinal ? rangeEnd : workingDays[seg.firstDay + seg.dayCount - 1];
-
+            for (Integer i = 0; i < pieces.size(); i++) {
+                Piece piece = pieces[i];
                 if (i == 0) {
                     ApplicationItem__c head = new ApplicationItem__c(Id = appl.Id);
                     /*
@@ -303,13 +382,15 @@ public without sharing class LeaveSplitService {
                      * full one helps nobody, and the employee still gets exactly the days
                      * they asked for on exactly the dates they asked for.
                      */
-                    if (!seg.leaveType.equals(appl.Request_Type__c)) {
-                        head.Request_Type__c = seg.leaveType;
+                    if (!piece.leaveType.equals(appl.Request_Type__c)) {
+                        head.Request_Type__c = piece.leaveType;
                     }
-                    head.Term_To__c = to;
+                    head.Term_From__c = piece.startsOn;
+                    head.Term_To__c = piece.endsOn;
+                    head.Period_Leave__c = piece.period;
                     toUpdate.add(head);
                 } else {
-                    continuations.add(continuationOf(appl, seg.leaveType, segFrom, to));
+                    continuations.add(continuationOf(appl, piece));
                 }
             }
 
@@ -339,19 +420,39 @@ public without sharing class LeaveSplitService {
     }
 
     /*
-     * Walks the chain, handing each pool as many of the remaining working days as it
-     * can fund, in date order. The last type in the chain carries whatever is left
+     * The request as half days, which is the unit the walk below consumes balance in.
+     *
+     * A request that is itself already a half day is one half and cannot be divided
+     * again: it either fits a pool or moves down the chain whole. Everything else is two
+     * halves per working day, morning first, so the walk runs in date order.
+     */
+    private static List<Half> halvesFor(ApplicationItem__c appl, List<Date> workingDays) {
+        List<Half> halves = new List<Half>();
+        if (workingDays.size() == 1 && isHalfDay(appl.Period_Leave__c)) {
+            halves.add(new Half(workingDays[0], AM_LEAVE.equals(appl.Period_Leave__c)));
+            return halves;
+        }
+        for (Date day : workingDays) {
+            halves.add(new Half(day, true));
+            halves.add(new Half(day, false));
+        }
+        return halves;
+    }
+
+    /*
+     * Walks the chain, handing each pool as many of the remaining half days as it can
+     * fund, in date order. The last type in the chain carries whatever is left
      * regardless of its balance — that is Unpaid leave, which grants its entitlement as
      * it is used and so can always absorb the remainder.
      *
      * Returns one segment when the request fits in the pool it asked for, and an empty
-     * list when nothing in the chain could fund a single day, which leaves the record
-     * alone rather than rewriting it on no information.
+     * list when nothing in the chain could fund a single half day, which leaves the
+     * record alone rather than rewriting it on no information.
      */
     private static List<Segment> allocate(ApplicationItem__c appl, List<String> chain,
-                                          List<Date> workingDays, Map<String, Pool> poolByKey) {
+                                          List<Half> halves, Map<String, Pool> poolByKey) {
         List<Segment> segments = new List<Segment>();
-        Integer total = workingDays.size();
+        Integer total = halves.size();
         Integer cursor = 0;
         Integer yr = appl.Term_From__c.year();
 
@@ -361,7 +462,7 @@ public without sharing class LeaveSplitService {
                 ? total - cursor
                 : capacityOf(poolByKey.get(
                       ApplicationItemTriggerLogic.balanceKey(appl.OwnerId, chain[i], yr)),
-                      workingDays, cursor, total);
+                      halves, cursor, total);
             if (take > 0) {
                 segments.add(new Segment(chain[i], cursor, take));
                 cursor += take;
@@ -375,25 +476,72 @@ public without sharing class LeaveSplitService {
          * and says so, which is a better failure than a request quietly losing dates.
          */
         if (cursor < total && !segments.isEmpty()) {
-            segments[segments.size() - 1].dayCount += total - cursor;
+            segments[segments.size() - 1].halfCount += total - cursor;
         }
         return segments;
     }
 
     /*
-     * Whole days only: a part day at the boundary belongs to the next pool.
+     * The records one segment becomes.
+     *
+     * A pool can run out in the middle of a day at either end of a segment, and that
+     * boundary day has to be a record of its own: Period_Leave__c is the only place a
+     * half day can be expressed, and it is meaningless on a range — refused there by
+     * Leave_Request_Period_Single_Day_Only, and ignored by calculateLeaveDays, which
+     * would count the day as whole. So a segment is at most three records: the afternoon
+     * it starts on, the whole days, and the morning it ends on.
+     *
+     * With 3.5 days of Annual left and Monday to Friday requested, that gives Mon-Wed
+     * paid, Thursday morning paid, Thursday afternoon unpaid and Friday unpaid. The half
+     * day is spent rather than stranded in the pool until the year ends.
+     */
+    private static List<Piece> piecesFor(Segment seg, List<Half> halves) {
+        List<Piece> pieces = new List<Piece>();
+        Integer first = seg.firstHalf;
+        Integer last  = first + seg.halfCount - 1;
+
+        if (!halves[first].isMorning) {
+            pieces.add(new Piece(seg.leaveType, halves[first].day, halves[first].day, PM_LEAVE));
+            first++;
+        }
+        // Held back rather than added here, so the whole days below stay in date order
+        // between the two half days.
+        Piece closing = (first <= last && halves[last].isMorning)
+            ? new Piece(seg.leaveType, halves[last].day, halves[last].day, AM_LEAVE)
+            : null;
+        if (closing != null) {
+            last--;
+        }
+        if (first <= last) {
+            pieces.add(new Piece(seg.leaveType, halves[first].day, halves[last].day, ALL_DAY));
+        }
+        if (closing != null) {
+            pieces.add(closing);
+        }
+        return pieces;
+    }
+
+    /*
+     * How many half days this pool can fund, counting from the cursor.
+     *
+     * Measured in halves rather than whole days, because that is the granularity a
+     * balance is actually held at. Rounding the day figure down instead — which is what
+     * this did before — funded three days out of 3.5 and left the half in the pool, where
+     * it stayed until the year ended. Anything finer than a half day is still rounded
+     * away, but no balance can hold it.
      *
      * An expiring balance stops at the first working day outside its window rather than
      * skipping over it, because a continuation has to be a contiguous range of dates. A
      * refresh grant with three days left but two of them falling after the expiry funds
-     * two days, and the rest cascades on.
+     * two days, and the rest cascades on. Both halves of a day carry the same date, so
+     * the window can only ever cut between days, never through one.
      */
-    private static Integer capacityOf(Pool pool, List<Date> workingDays,
+    private static Integer capacityOf(Pool pool, List<Half> halves,
                                       Integer cursor, Integer total) {
         if (pool == null || pool.available == null || pool.available <= 0) {
             return 0;
         }
-        Integer affordable = (Integer) pool.available.round(System.RoundingMode.DOWN);
+        Integer affordable = (Integer) (pool.available * 2).round(System.RoundingMode.DOWN);
         if (affordable > total - cursor) {
             affordable = total - cursor;
         }
@@ -402,7 +550,7 @@ public without sharing class LeaveSplitService {
         }
         Integer usable = 0;
         while (usable < affordable) {
-            Date day = workingDays[cursor + usable];
+            Date day = halves[cursor + usable].day;
             if (day > pool.closesOn || (pool.opensOn != null && day < pool.opensOn)) {
                 break;
             }
@@ -457,27 +605,44 @@ public without sharing class LeaveSplitService {
      * so a draft splits into drafts and a submitted request into submitted ones, and the
      * whole family travels through approval together.
      */
-    private static ApplicationItem__c continuationOf(ApplicationItem__c parent, String leaveType,
-                                                     Date startFrom, Date endOn) {
+    private static ApplicationItem__c continuationOf(ApplicationItem__c parent, Piece piece) {
         return new ApplicationItem__c(
             RecordTypeId    = parent.RecordTypeId,
-            Request_Type__c = leaveType,
-            Period_Leave__c = 'All day',
-            Term_From__c    = startFrom,
-            Term_To__c      = endOn,
-            Remark__c       = continuationRemark(parent, leaveType),
+            Request_Type__c = piece.leaveType,
+            Period_Leave__c = piece.period,
+            Term_From__c    = piece.startsOn,
+            Term_To__c      = piece.endsOn,
+            Remark__c       = continuationRemark(parent, piece),
             Status__c       = parent.Status__c,
             OwnerId         = parent.OwnerId,
             Split_From__c   = parent.Id
         );
     }
 
-    private static String continuationRemark(ApplicationItem__c parent, String leaveType) {
-        String suffix = ' [' + leaveType.toLowerCase() + ' continuation of '
-                      + parent.Request_Type__c + ']';
+    /*
+     * Half of a boundary day is described as such rather than as a continuation of
+     * another type, because it usually is not one: the morning that finishes off the
+     * Annual balance carries the same type as the request it came from, and calling it
+     * an "annual leave continuation of Annual leave" would tell the employee nothing.
+     */
+    private static String continuationRemark(ApplicationItem__c parent, Piece piece) {
+        String suffix = isHalfDay(piece.period)
+            ? ' [' + piece.period.toLowerCase() + ', ' + piece.leaveType.toLowerCase()
+                   + ', split from ' + parent.Request_Type__c + ']'
+            : ' [' + piece.leaveType.toLowerCase() + ' continuation of '
+                   + parent.Request_Type__c + ']';
         String base = parent.Remark__c == null ? '' : parent.Remark__c;
         Integer room = 255 - suffix.length();
         return (base.length() > room ? base.substring(0, room) : base) + suffix;
+    }
+
+    /*
+     * ApplicationItemTriggerLogic has the same check, but private. Duplicated rather
+     * than widened: it is two string comparisons, and the alternative is opening a
+     * detail of the day count to every caller of that class.
+     */
+    private static Boolean isHalfDay(String periodLeave) {
+        return AM_LEAVE.equals(periodLeave) || PM_LEAVE.equals(periodLeave);
     }
 
     private static Boolean isSplittable(ApplicationItem__c appl, Boolean allowTails) {
