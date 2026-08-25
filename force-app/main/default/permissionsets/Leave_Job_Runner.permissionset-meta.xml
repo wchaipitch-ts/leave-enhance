@@ -6,9 +6,9 @@
     </customPermissions>
     <description>LEAVE-49, TEMPORARY. Carries Run_Leave_Job and nothing else, so a BA can drive the year-end cycle in a sandbox without being given Modify All Data. Assign in the sandbox only, and remove it along with the component once the cycle has been signed off.</description>
     <hasActivationRequired>false</hasActivationRequired>
+    <label>Leave Job Runner</label>
     <tabSettings>
         <tab>Leave_Job_Runner</tab>
         <visibility>Visible</visibility>
     </tabSettings>
-    <label>Leave Job Runner</label>
 </PermissionSet>

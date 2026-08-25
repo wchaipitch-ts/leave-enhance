@@ -3,10 +3,10 @@
     <active>false</active>
     <allowRecall>false</allowRecall>
     <allowedSubmitters>
-        <type>owner</type>
+        <type>creator</type>
     </allowedSubmitters>
     <allowedSubmitters>
-        <type>creator</type>
+        <type>owner</type>
     </allowedSubmitters>
     <approvalPageFields>
         <field>Name</field>

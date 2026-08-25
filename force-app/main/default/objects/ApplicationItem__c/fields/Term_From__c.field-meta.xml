@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>Term_From__c</fullName>
-    <label>Term From</label>
+    <label>Start Date</label>
     <required>true</required>
     <trackTrending>false</trackTrending>
     <type>Date</type>

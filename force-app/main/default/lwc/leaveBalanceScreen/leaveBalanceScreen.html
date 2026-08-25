@@ -3,19 +3,19 @@
     <div class="slds-grid slds-grid_stretch slds-gutters_medium slds-m-bottom_medium">
         
         <!-- LEFT COLUMN: Employee Info -->
-        <div class="slds-col slds-size_3-of-12">
+        <div class="slds-col slds-size_3-of-12 custom-employee-col">
             <div class="slds-box slds-theme_default custom-card-style" style="height: 100%;">
                 <div class="slds-media slds-m-bottom_small">
                     <div class="slds-media__figure">
-                        <span class="slds-avatar slds-avatar_circle" style="width: 80px; height: 80px;">
+                        <span class="slds-avatar slds-avatar_circle" style="width:150px; height:150px;">
                             <img alt={employee.name} src={employee.photoUrl} title={employee.name} />
                         </span>
                     </div>
-                    <div class="slds-media__body slds-p-left_small">
+                    <div class="slds-media__body slds-p-left_small" style="padding-top: 1.2rem;">
                         <div class="slds-text-title_bold" style="font-size: 0.75rem; color: #000;">Name</div>
-                        <div class="slds-m-bottom_x-small slds-truncate" style="font-size: 0.8rem;">
-                            <a href={employee.userUrl} target="_blank">{employee.name}</a>
-                        </div>
+                            <div class="slds-m-bottom_x-small name-multiline-truncate" style="font-size: 0.8rem;">
+                                    <a href={employee.userUrl} target="_blank">{employee.name}</a>
+                            </div>
                         
                         <div class="slds-text-title_bold" style="font-size: 0.75rem; color: #000;">Employee Number</div>
                         <div class="slds-m-bottom_x-small text-blue" style="font-size: 0.8rem;">{employee.employeeNumber}</div>

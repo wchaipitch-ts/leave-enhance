@@ -2,34 +2,42 @@
 	<!-- ======================================================= -->
 	<!-- TOP SECTION: Unified Box containing Summary & Timestamp -->
 	<!-- ======================================================= -->
-	<div class="slds-box slds-p-around_none slds-theme_default slds-m-bottom_medium" style="border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); overflow: hidden;">
-		
-		<!-- 🌟 Use slds-wrap for responsiveness: Stacks columns on small screens -->
-		<div class="slds-grid slds-grid_stretch slds-wrap">
-			
-			<!-- Left/Center Column: Leave Summary Card (75% on desktop, 100% on mobile) -->
-			<div class="slds-col slds-size_1-of-1 slds-large-size_9-of-12">
-				<c-leave-summary-card 
-					target-user-id={userId} 
-					target-year={selectedYear}
-					target-month={selectedMonth}>
-				</c-leave-summary-card>
-			</div>
+<div class="slds-box slds-p-around_none slds-theme_default slds-m-bottom_medium" style="border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); overflow: hidden;">
+        
+        <!-- [FIX] Replaced the non-standard 'slds-grid_stretch' with standard CSS inline style 'align-items: stretch;' -->
+        <div class="slds-grid slds-wrap" style="align-items: stretch;">
+            
+            <!-- 
+                [FIX 1] LEFT COLUMN: Leave Summary Card
+                - Added 'style="display: flex;"' to ensure the child LWC can expand to full height.
+                - Input Data: userId, selectedYear, selectedMonth (Passed down to child).
+            -->
+            <div class="slds-col slds-size_1-of-1 slds-large-size_9-of-12" style="display: flex;">
+                <c-leave-summary-card 
+                    target-user-id={userId} 
+                    target-year={selectedYear}
+                    target-month={selectedMonth}
+                    style="width: 100%;">
+                </c-leave-summary-card>
+            </div>
 
-			<!-- Right Column: Timestamp Clock (25% on desktop, 100% on mobile) -->
-			<!-- Center the content vertically and horizontally -->
-			<div class="slds-col slds-size_1-of-1 slds-large-size_3-of-12 slds-border_left slds-grid slds-grid_vertical-align-center slds-grid_align-center slds-p-around_medium" style="position: relative;">
-				
-				<c-timestamp stamp={stamp} onstamped={handleStamped}></c-timestamp>
-				
-				<!-- Security Overlay: Prevents clicking the timestamp if viewing someone else's record -->
-				<template lwc:if={isNotCurrentUser}>
-					<div class="slds-spinner_container" style="background-color: rgba(255, 255, 255, 0.6); z-index: 2;" title="You cannot stamp time for other users."></div>
-				</template>
-			</div>
-			
-		</div>
-	</div>
+            <!-- 
+                [FIX 2] RIGHT COLUMN: Timestamp Clock
+                - Added 'align-self: stretch; min-height: 100%;' to force the 'slds-border_left' to span the absolute full height of the white box.
+                - Input Data: stamp (Passed down to child).
+                - Output Event: onstamped (Received from child, triggers handleStamped).
+            -->
+            <div class="slds-col slds-size_1-of-1 slds-large-size_3-of-12 slds-border_left slds-grid slds-grid_vertical-align-center slds-grid_align-center slds-p-around_medium" style="position: relative; padding-top: 1rem; align-self: stretch; min-height: 100%;">
+                
+                <c-timestamp stamp={stamp} onstamped={handleStamped}></c-timestamp>
+                
+                <template lwc:if={isNotCurrentUser}>
+                    <div class="slds-spinner_container" style="background-color: rgba(255, 255, 255, 0.6); z-index: 2;" title="You cannot stamp time for other users."></div>
+                </template>
+            </div>
+            
+        </div>
+    </div>
 
 	<!-- ======================================================= -->
 	<!-- MIDDLE SECTION: Application Item List                   -->
@@ -242,5 +250,14 @@
 	<template if:true={isShowMap}>
         <!-- ... (Map Modal Code) ... -->
 	</template>
+
+
+	<!-- EMBEDDED CHILD MODAL: ApplicationItem Creation LWC -->
+    <template if:true={isNewAppModalOpen}>
+        <c-application-item-new-action
+            onrecordsuccess={handleAppSuccess}
+            onclose={handleAppClose}>
+        </c-application-item-new-action>
+    </template>
 
 </template>

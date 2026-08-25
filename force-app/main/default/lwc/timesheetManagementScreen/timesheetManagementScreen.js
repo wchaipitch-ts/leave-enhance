@@ -129,6 +129,8 @@ export default class timesheetManagementScreen extends NavigationMixin(Lightning
 	// Timesheet Data
 	@track dateList = [];
 	@track timesheetDataList = [];
+	@track isNewAppModalOpen = false;
+
 
 	connectedCallback() {
 		if (this.isShowLog) console.log('connectedCallback Loaded');
@@ -1117,29 +1119,40 @@ export default class timesheetManagementScreen extends NavigationMixin(Lightning
 		});
 	}
 
-	openCreateAIModal(event) {
-		if (this.isShowLog) console.log('openCreateAIModal Start!');
+	/**
+     * @description Handles the icon click to open the ApplicationItem Creation Modal.
+     * @param {Event} event - UI Click Event containing target date.
+     */
+    openCreateAIModal(event) {
+        if (this.isShowLog) console.log('openCreateAIModal Start!');
 
-		this.selectedDate = event.target.dataset.id.split(':')[0];
-		this.selectedRecordId = event.target.dataset.id.split(':')[1];
+        this.selectedDate = event.target.dataset.id.split(':')[0];
+        this.selectedRecordId = event.target.dataset.id.split(':')[1];
 
-		const defaultValues = encodeDefaultFieldValues({
-			Term_From__c: this.selectedDate
-		});
+        // Open the pop-up modal directly without executing NavigationMixin redirect
+        this.isNewAppModalOpen = true;
+    }
 
-		this[NavigationMixin.Navigate]({
-			type: 'standard__objectPage',
-			attributes: {
-				objectApiName: 'ApplicationItem__c',
-				actionName: 'new'
-			},
-			state: {
-				defaultFieldValues: defaultValues
-			}
-		});
-	}
+    /**
+     * @description Closes the ApplicationItem New Modal window.
+     */
+    handleAppClose() {
+        this.isNewAppModalOpen = false;
+    }
+
+    /**
+     * @description Handles post-creation success from Child LWC.
+     * Closes modal and refreshes the timesheet table.
+     */
+    handleAppSuccess() {
+        this.isNewAppModalOpen = false;
+        this.setDateList(); // Refreshes the 31-day timesheet table
+    }
 
 	onLeaveCancel() {
 		this.isShowLeave = false;
 	}
+
+
+	
 }

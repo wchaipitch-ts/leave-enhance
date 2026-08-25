@@ -91,7 +91,7 @@ private class LeaveAccrualServiceTest {
 
     @isTest
     static void continuingEmployeeIsUnaffectedByMonthLength() {
-        // The month-end bump is what made February interesting, and this branch has none.
+        // The month-end bump is what made February interesting, and nothing has one now.
         System.assertEquals(2, LeaveAccrualService.accruedFor(
             JOINED_2020, 2024, 'Monthly', 12, Date.newInstance(2024, 2, 28)),
             'Two days all through February, leap year or not.');
@@ -101,42 +101,54 @@ private class LeaveAccrualServiceTest {
     }
 
     @isTest
-    static void joinerIsStillCreditedAtMonthEnd() {
+    static void joinerIsCreditedOnTheFirstOfTheJoiningMonth() {
         Date joinedJuly = Date.newInstance(2024, 7, 10);
-        System.assertEquals(0, LeaveAccrualService.accruedFor(
-            joinedJuly, 2024, 'Monthly', 6, Date.newInstance(2024, 7, 1)),
-            'A joiner is NOT credited on the 1st — their first month has to be worked.');
-        System.assertEquals(0, LeaveAccrualService.accruedFor(
-            joinedJuly, 2024, 'Monthly', 6, Date.newInstance(2024, 7, 30)),
-            'Still nothing the day before the month closes.');
+        System.assertEquals(1, LeaveAccrualService.accruedFor(
+            joinedJuly, 2024, 'Monthly', 6, Date.newInstance(2024, 7, 10)),
+            'A joiner holds a day the day they join: the joining month is credited at '
+            + 'its start, exactly as every other month is.');
         System.assertEquals(1, LeaveAccrualService.accruedFor(
             joinedJuly, 2024, 'Monthly', 6, Date.newInstance(2024, 7, 31)),
-            'The joining month is earned once it has been worked.');
+            'And month end adds nothing on top — July was credited once already.');
     }
 
     @isTest
-    static void joinerStillHandlesShortAndLeapMonths() {
-        // The last-day-of-month bump only survives on the joiner branch, so this is
-        // where February still has to be got right.
+    static void joinerIsUnaffectedByMonthLength() {
+        // February was the interesting case only because the joiner branch carried a
+        // last-day-of-month bump. It no longer does, so February reads like any month.
         Date joinedJan2024 = Date.newInstance(2024, 1, 10);
-        System.assertEquals(1, LeaveAccrualService.accruedFor(
-            joinedJan2024, 2024, 'Monthly', 12, Date.newInstance(2024, 2, 28)),
-            'In a leap year 28 February is not month end, so February is not yet earned.');
+        System.assertEquals(2, LeaveAccrualService.accruedFor(
+            joinedJan2024, 2024, 'Monthly', 12, Date.newInstance(2024, 2, 1)),
+            'February is earned on the 1st, not at the end.');
         System.assertEquals(2, LeaveAccrualService.accruedFor(
             joinedJan2024, 2024, 'Monthly', 12, Date.newInstance(2024, 2, 29)),
-            '29 February is the last day of a leap February and credits it.');
+            'The extra day of a leap February changes nothing.');
         System.assertEquals(2, LeaveAccrualService.accruedFor(
             Date.newInstance(2023, 1, 10), 2023, 'Monthly', 12, Date.newInstance(2023, 2, 28)),
-            '28 February is the last day in a common year and credits it.');
+            'Nor does the last day of a common February.');
     }
 
     @isTest
     static void monthlyForAJoinerCountsFromTheJoiningMonth() {
         Date joinedJuly = Date.newInstance(2024, 7, 10);
-        System.assertEquals(2, LeaveAccrualService.accruedFor(
+        System.assertEquals(3, LeaveAccrualService.accruedFor(
             joinedJuly, 2024, 'Monthly', 6, Date.newInstance(2024, 9, 15)),
-            'A July joiner has completed July and August by mid-September — counted from '
-            + 'the joining month, not from January.');
+            'A July joiner holds July, August and September by mid-September — counted '
+            + 'from the joining month, not from January.');
+    }
+
+    @isTest
+    static void joinerTopsOutAtTheProRatedEntitlementAndNoSooner() {
+        // LEAVE-53, the case that started it: joined 19 March, entitlement 13 - 3 = 10.
+        Date joinedMarch = Date.newInstance(2026, 3, 19);
+        System.assertEquals(6, LeaveAccrualService.accruedFor(
+            joinedMarch, 2026, 'Monthly', 10, Date.newInstance(2026, 8, 25)),
+            'March through August inclusive is six days, not five: August is credited on '
+            + 'the 1st rather than the 31st.');
+        System.assertEquals(10, LeaveAccrualService.accruedFor(
+            joinedMarch, 2026, 'Monthly', 10, Date.newInstance(2026, 12, 1)),
+            'The tenth and last day lands on 1 December. Crediting the month in progress '
+            + 'brings the entitlement forward by a month, it does not overpay it.');
     }
 
     @isTest
@@ -178,7 +190,7 @@ private class LeaveAccrualServiceTest {
             Used_Days__c        = 0
         );
         // Measured before the employee joined, which is one of the few ways a Monthly
-        // row genuinely reads zero now that a continuing employee opens January with a day.
+        // row genuinely reads zero now that every row opens its first month with a day.
         Date joinedNovember = Date.newInstance(2024, 11, 4);
         Date midMarch = Date.newInstance(2024, 3, 15);
 

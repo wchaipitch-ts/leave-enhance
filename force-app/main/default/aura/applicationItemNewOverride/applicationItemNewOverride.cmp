@@ -1,0 +1,15 @@
+<!-- 
+    Aura Wrapper Component used to override the standard "New" action.
+-->
+<aura:component implements="lightning:actionOverride" access="global">
+    
+    <!-- Attribute to explicitly capture the Record Type ID passed by the framework -->
+    <aura:attribute name="recordTypeId" type="String" />
+
+    <!-- 
+        Passes the 'recordTypeId' attribute directly into the public '@api recordTypeId'.
+        Explicitly sets 'isStandalone="true"' so the LWC knows it is running as an Action Override.
+    -->
+    <c:applicationItemNewAction recordTypeId="{!v.recordTypeId}" isStandalone="true"></c:applicationItemNewAction>
+
+</aura:component>

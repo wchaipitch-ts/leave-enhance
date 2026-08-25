@@ -48,3 +48,17 @@
     box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     /* Removed height: 100% so bottom summary box auto-fits content */
 }
+
+.slds-gutters_medium .slds-col.custom-employee-col {
+    padding-right: 0; /* You can change this to var(--lwc-spacingSmall, 0.5rem) if you still want a little gap */
+}
+
+
+.name-multiline-truncate {
+    display: -webkit-box;
+    -webkit-line-clamp: 2; /* Defines the maximum number of lines allowed */
+    -webkit-box-orient: vertical;
+    overflow: hidden; /* Hides any extra text that falls outside the 2 lines */
+    word-break: break-word; /* Ensures long continuous text (like Thai names) breaks correctly */
+    white-space: normal; /* Forces text to wrap, overriding any inherited nowrap behavior */
+}

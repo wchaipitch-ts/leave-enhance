@@ -3,7 +3,6 @@
     <fullName>Converted_From_Unpaid__c</fullName>
     <defaultValue>false</defaultValue>
     <description>Set on the paid request raised by converting Unpaid leave days back to Annual leave. Split From points at the Unpaid request the days came out of. Without this marker a converted record is indistinguishable from the unpaid continuation of a split, which is the opposite kind of record.</description>
-    <externalId>false</externalId>
     <inlineHelpText>Ticked when this request was raised by converting unpaid days to Annual leave. Set automatically.</inlineHelpText>
     <label>Converted From Unpaid</label>
     <trackTrending>false</trackTrending>

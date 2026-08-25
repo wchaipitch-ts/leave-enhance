@@ -90,7 +90,7 @@
 /* ========================================== */
 /* NOTIFICATION BOXES                         */
 /* ========================================== */
-/* Yellow warning box for probation messages */
+
 .warning-box {
     background-color: #fff9d6;
     border: 1px solid #eadd86;
@@ -100,9 +100,10 @@
     align-items: center;
     text-align: left;
     color: #333;
+    /* [FIX] Increased from 75px to 85px to safely accommodate 3 lines of text across all screens */
+    min-height: 85px; 
 }
 
-/* Blue info box for general messages */
 .info-box {
     background-color: #e8f3fd;
     border: 1px solid #b7d6f5;
@@ -112,4 +113,71 @@
     align-items: center;
     text-align: left;
     color: #333;
+    /* [FIX] Ensure this matches the warning-box height perfectly */
+    min-height: 85px; 
+}
+
+/* ========================================== */
+/* FOOTER SPACING CONTROLS                    */
+/* ========================================== */
+
+/* Class applied when the user IS on probation */
+/* ========================================== */
+/* FOOTER SPACING CONTROLS                    */
+/* ========================================== */
+
+/* 
+ * Class applied when the user IS on probation.
+ * [FIX] Changed from 'padding-top' to 'margin-top'.
+ * This pushes the entire box downwards away from the top edge of its container, 
+ * rather than making the inside of the box taller.
+ */
+.probation-spacing {
+    margin-top: 0.7rem; /* Adjust this value (e.g., 0.5rem, 1.5rem) until it aligns perfectly */
+}
+
+/* 
+ * Class applied when the user is NOT on probation.
+ * Controls the vertical placement of the standard text to match the probation box's level.
+ */
+/* .standard-spacing {
+    margin-top: 0.8rem; 
+} */
+
+.blue-sync-icon {
+    /* Changes the primary color of the SVG icon to Salesforce Blue (#0070d2) */
+    --sds-c-icon-color-foreground-default: #0070d2; 
+}
+
+.hours-left-col {
+    width: 75px;
+    white-space: nowrap; /* Prevents "Standard Work" from breaking into two lines */
+}
+
+.name-multiline {
+    display: -webkit-box;
+    -webkit-line-clamp: 2; /* Maximum number of lines allowed */
+    -webkit-box-orient: vertical;
+    overflow: hidden; /* Hides any text that overflows beyond 2 lines */
+    word-break: break-word; /* Breaks long continuous words (like very long Thai names) to fit the box */
+    white-space: normal; /* Overrides any standard SLDS nowrap rules */
+}
+
+
+.centered-divider {
+    border-top: 1px solid #dddbda; 
+    
+    /* Adjust width to your preference (e.g., 85% or 90%) */
+    width: 85%; 
+    
+    /* Top and bottom vertical spacing */
+    margin-top: 1.5rem; 
+    margin-bottom: 1.5rem; 
+    
+    /* 
+     * [FIX] Removed 'auto' and set a specific left margin.
+     * 0px will align it perfectly with the left edge of the Avatar image.
+     * If you want it slightly pushed in, change this to 0.5rem or 1rem.
+     */
+    margin-left: 0; 
 }

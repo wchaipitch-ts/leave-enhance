@@ -86,11 +86,13 @@
     </actionOverrides>
     <actionOverrides>
         <actionName>New</actionName>
-        <type>Default</type>
+        <content>applicationItemNewOverride</content>
+        <formFactor>Large</formFactor>
+        <skipRecordTypeSelect>true</skipRecordTypeSelect>
+        <type>LightningComponent</type>
     </actionOverrides>
     <actionOverrides>
         <actionName>New</actionName>
-        <formFactor>Large</formFactor>
         <type>Default</type>
     </actionOverrides>
     <actionOverrides>
@@ -161,9 +163,8 @@
     <externalSharingModel>Private</externalSharingModel>
     <label>ApplicationItem</label>
     <nameField>
-        <displayFormat>APPI-{00000}</displayFormat>
         <label>ApplicationItem No.</label>
-        <type>AutoNumber</type>
+        <type>Text</type>
     </nameField>
     <pluralLabel>ApplicationItems</pluralLabel>
     <searchLayouts>

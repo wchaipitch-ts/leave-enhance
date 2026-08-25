@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 
+    This XML file defines the metadata and configuration for the Lightning Web Component. 
+    It tells Salesforce where and how this component can be used.
+-->
+<LightningComponentBundle xmlns="http://soap.sforce.com/2006/04/metadata">
+    <!-- Specifies the API version. Keep this updated to use the latest features. -->
+    <apiVersion>65.0</apiVersion>
+
+    <!-- isExposed must be true to make this component visible in declarative tools (like Setup). -->
+    <isExposed>true</isExposed>
+
+    <targets>
+        <!-- 
+            Target 'lightning__RecordAction' specifically allows this LWC 
+            to be configured as a Quick Action on a Record Detail Page. 
+        -->
+        <target>lightning__RecordAction</target>
+    </targets>
+
+    <targetConfigs>
+        <targetConfig targets="lightning__RecordAction">
+            <!-- 
+                'ScreenAction' indicates that clicking the button will open a UI modal window.
+                Alternatively, 'Action' (Headless) would run logic in the background without a UI. 
+            -->
+            <actionType>ScreenAction</actionType>
+        </targetConfig>
+    </targetConfigs>
+</LightningComponentBundle>

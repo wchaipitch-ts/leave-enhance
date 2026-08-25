@@ -12,15 +12,19 @@
             <!-- 1.1 User Info -->
             <div class="slds-grid slds-m-bottom_small">
                 <div class="slds-col slds-grow-none slds-m-right_medium">
-                    <span class="slds-avatar slds-avatar_circle" style="width: 75px; height: 75px;">
+                    <span class="slds-avatar slds-avatar_circle" style="width: 120px; height: 120px;">
                         <img alt={userName} src={userAvatar} title={userName} />
                     </span>
                 </div>
-                <div class="slds-col" style="font-size: 0.8rem; color: #000;">
+                <!-- <div class="slds-col" style="font-size: 0.8rem; color: #000;"> -->
+                    <div class="slds-col" style="font-size: 0.8rem; color: #000; padding-left: 0.5rem;">
                     <div class="slds-text-title_bold" style="font-size: 0.7rem;">Name</div>
-                    <div class="slds-m-bottom_xx-small slds-truncate">
+                    <div class="slds-m-bottom_xx-small name-multiline">
                         <lightning-formatted-url value={userPath} tooltip={userName} label={userName} target="_blank"></lightning-formatted-url>
                     </div>
+                    <!-- <div class="slds-m-bottom_xx-small slds-truncate">
+                        <lightning-formatted-url value={userPath} tooltip={userName} label={userName} target="_blank"></lightning-formatted-url>
+                    </div> -->
                     
                     <div class="slds-text-title_bold" style="font-size: 0.7rem;">Employee Number</div>
                     <div class="slds-m-bottom_xx-small slds-truncate text-blue">{employeeNumber}</div>
@@ -37,28 +41,49 @@
             <!-- Horizontal Divider -->
             <div class="slds-border_top slds-m-vertical_medium"></div>
 
-            <!-- 1.2 Monthly Working Hours -->
-            <div class="slds-grid slds-wrap slds-p-top_small">
-                <div class="slds-col slds-size_1-of-2 slds-m-bottom_medium">
-                    <div class="slds-text-title_bold" style="font-size: 0.7rem;">Standard Work</div>
-                    <div class="slds-m-bottom_xx-small slds-truncate text-blue">{standardWorkStr}</div>
-                </div>
-                <div class="slds-col slds-size_1-of-2 slds-m-bottom_medium">
-                    <div class="slds-text-title_bold" style="font-size: 0.7rem;">Worked Hours</div>
-                    <!-- <div class="hour-label">Worked Hours</div> -->
-                    <div class="slds-m-bottom_xx-small slds-truncate text-blue">{workedHoursStr}</div>
-                </div>
-                <div class="slds-col slds-size_1-of-2">
-                     <div class="slds-text-title_bold" style="font-size: 0.7rem;">Total Hours</div>
-                    <!-- <div class="hour-label">Total Hours</div> -->
-                    <div class="slds-m-bottom_xx-small slds-truncate text-blue">{totalHoursStr}</div>
-                </div>
-                <div class="slds-col slds-size_1-of-2">
-                    <div class="slds-text-title_bold" style="font-size: 0.7rem;">Overtime Hours</div>
-                    <!-- <div class="hour-label">Overtime Hours</div> -->
-                    <div class="slds-m-bottom_xx-small slds-truncate text-blue">{overtimeHoursStr}</div>
-                </div>
-            </div>
+           <!-- 1.2 Monthly Working Hours -->
+<div class="slds-grid slds-p-top_small">
+    
+    <!-- 
+      LEFT COLUMN: Standard Work & Total Hours
+      Uses 'slds-grow-none' and 'slds-m-right_medium' to match the Avatar spacing above.
+      The 'hours-left-col' class forces the width to exactly 75px. 
+    -->
+    <div class="slds-col slds-grow-none slds-m-right_medium hours-left-col">
+        
+        <div class="slds-m-bottom_medium">
+            <div class="slds-text-title_bold" style="font-size: 0.7rem;">Standard Work</div>
+            <div class="slds-m-bottom_xx-small slds-truncate text-blue">{standardWorkStr}</div>
+        </div>
+        
+        <div>
+            <div class="slds-text-title_bold" style="font-size: 0.7rem;">Total Hours</div>
+            <div class="slds-m-bottom_xx-small slds-truncate text-blue">{totalHoursStr}</div>
+        </div>
+        
+    </div>
+
+    <!-- 
+      RIGHT COLUMN: Worked Hours & Overtime Hours
+      Uses standard 'slds-col' to flexibly take up the remaining space, 
+      aligning perfectly with the User Info text above. 
+    -->
+    <!-- <div class="slds-col"> -->
+        <div class="slds-col" style="padding-left: 3.2rem;"> <!-- Adjusted padding to align with the left column's content -->
+        
+        <div class="slds-m-bottom_medium">
+            <div class="slds-text-title_bold" style="font-size: 0.7rem;">Worked Hours</div>
+            <div class="slds-m-bottom_xx-small slds-truncate text-blue">{workedHoursStr}</div>
+        </div>
+        
+        <div>
+            <div class="slds-text-title_bold" style="font-size: 0.7rem;">Overtime Hours</div>
+            <div class="slds-m-bottom_xx-small slds-truncate text-blue">{overtimeHoursStr}</div>
+        </div>
+        
+    </div>
+
+</div>
         </div>
 
         <!-- ========================================== -->
@@ -67,10 +92,10 @@
         <!-- ========================================== -->
         <div class="slds-col slds-size_1-of-1 slds-large-size_8-of-12 slds-p-vertical_medium">
             
-            <div class="slds-grid slds-p-horizontal_medium slds-wrap" style="height: 100%;">
+            <div class="slds-grid slds-p-horizontal_medium slds-wrap" style="height: 100%; padding-top: 3rem;">
                 
                 <!-- ================= LEFT: ANNUAL LEAVE ================= -->
-                <div class="slds-col slds-size_1-of-1 slds-large-size_1-of-2 slds-border_right slds-p-horizontal_medium slds-grid slds-grid_vertical slds-m-bottom_medium">
+                <div class="slds-col slds-size_1-of-1 slds-large-size_1-of-2 slds-border_right slds-p-horizontal_medium slds-grid slds-grid_vertical" style="height: 100%;">
                     
                     <div class="slds-grow">
                         <div class="slds-grid slds-grid_align-spread slds-m-bottom_medium">
@@ -134,12 +159,16 @@
                 </div>
 
                 <!-- ================= RIGHT: REFRESHMENT LEAVE ================= -->
-                <div class="slds-col slds-size_1-of-1 slds-large-size_1-of-2 slds-p-horizontal_medium slds-grid slds-grid_vertical">
+                <div class="slds-col slds-size_1-of-1 slds-large-size_1-of-2 slds-p-horizontal_medium slds-grid slds-grid_vertical" style="height: 100%;">
                     
                     <div class="slds-grow">
                         <div class="slds-grid slds-grid_align-spread slds-m-bottom_medium">
                             <div class="slds-col slds-text-heading_small">
-                                <lightning-icon icon-name="standard:sync" size="small" class="slds-m-right_x-small"></lightning-icon>
+                               <lightning-icon 
+                                    icon-name="utility:sync" 
+                                    size="small" 
+                                    class="slds-m-right_x-small blue-sync-icon">
+                                </lightning-icon>
                                 <b style="color: #000;">Refreshment Leave</b>
                             </div>
                             <div class="slds-col">
@@ -175,17 +204,26 @@
                     </div>
 
                     <!-- Auto-Margin Footer -->
+                    <!-- Auto-Margin Footer -->
                     <div class="footer-align">
+                        
                         <template if:true={isOnProbation}>
-                            <div class="info-box">
+                            <!-- [FIX] Removed inline style. Added 'probation-spacing' class for independent CSS control -->
+                            <div class="info-box probation-spacing">
                                 <lightning-icon icon-name="utility:lock" size="x-small" class="slds-m-right_small"></lightning-icon>
-                                <Span>Refreshment Leave will be available
-                                        on your next anniversary date.</Span>
+                                <span>Refreshment Leave will be available on your next anniversary date.</span>
                             </div>
                         </template>
+                        
                         <template if:false={isOnProbation}>
-                            Next Refresh on <span class="text-blue" style="font-weight: 600;">{refreshmentLeave.nextRefresh}</span> (In {refreshmentLeave.daysUntilRefresh} Days)
+                            <!-- [FIX] Removed invalid style from <template> tag. Added 'standard-spacing' class to the inner div -->
+                            <!-- <div class="standard-spacing"> -->
+                            <div>
+                                Next Refresh on <span class="text-blue" style="font-weight: 600;">{refreshmentLeave.nextRefresh}</span> 
+                                (In {refreshmentLeave.daysUntilRefresh} Days)
+                            </div>
                         </template>
+
                     </div>
                 </div>
 

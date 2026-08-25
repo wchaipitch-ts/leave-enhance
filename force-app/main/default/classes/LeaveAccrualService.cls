@@ -10,16 +10,19 @@
  * Moving the rule here was a refactor and changed nothing. LEAVE-52 then changed one
  * thing deliberately, and it is the only intended difference from the old formula:
  *
- *   A continuing employee — one who joined in an EARLIER year — is credited their
- *   monthly day on the FIRST of the month rather than the last. Someone who has been
- *   here for years is not made to wait until the 31st for a day they will certainly
- *   earn. This also brings the balance row back into step with the legacy
- *   User.Accrued_Leave_Days__c formula, which has always used MONTH(TODAY()).
+ *   The monthly day is credited on the FIRST of the month rather than the last, for
+ *   EVERYONE on Monthly accrual. Nobody is made to wait until the 31st for a day they
+ *   will certainly earn: a continuing employee opens January with a day in hand, and
+ *   somebody who joins in July reads one day in July. This is what the legacy
+ *   User.Accrued_Leave_Days__c formula has always done — MONTH(TODAY()) for a
+ *   continuing employee, MONTH(TODAY()) - MONTH(Start_Date__c) + 1 for a joiner.
  *
- *   Employees who joined DURING the leave year are unaffected and still earn at month
- *   end. Their entitlement is already pro-rated to 13 - joining month, so crediting a
- *   part-worked first month in advance on top of that would pay for a month nobody
- *   has worked.
+ *   LEAVE-53: the joiner half of that was missed the first time round. Only the
+ *   continuing branch was moved to month start, so a March joiner read 5 days on
+ *   25 August where the formula field and the User formula both said 6. Crediting the
+ *   month in progress is NOT paying a day ahead of the pro-rate: the entitlement is
+ *   13 - joining month COUNTING the joining month, so a March joiner tops out at
+ *   exactly 10 either way. The two rules only ever differed by a month of timing.
  *
  * Any OTHER movement is a bug in here, not a new rule.
  *
@@ -123,22 +126,21 @@ public with sharing class LeaveAccrualService {
      * stopped short would otherwise strand days the employee had already worked for.
      *
      * In the CURRENT year only Monthly accrues; everything else is granted up front and
-     * reads its entitlement in full. Monthly credits one day a month, but WHEN in the
-     * month depends on whether the employee was already in service when the year opened:
+     * reads its entitlement in full. Monthly credits one day a month and the day lands on
+     * the FIRST of the month for everybody, so the month in progress is already earned.
+     * All that differs is where the count starts:
      *
-     *   Joined in an EARLIER year — the day lands on the 1st. Somebody who has been here
-     *   for years is not made to wait until the 31st for a day they will certainly earn,
-     *   so January opens with one day already available and the twelfth lands on
-     *   1 December rather than on New Year's Eve.
+     *   Joined in an EARLIER year — count from January. The year opens with one day
+     *   already available and the twelfth lands on 1 December rather than on New
+     *   Year's Eve.
      *
-     *   Joined DURING this year — the day still lands at month end, so the joining month
-     *   is earned only once it has been worked. Their entitlement is already pro-rated to
-     *   13 - joining month, and crediting a part-worked first month in advance on top of
-     *   that would hand over a day nobody has worked for. This is the branch the
-     *   last-day-of-month bump exists for.
+     *   Joined DURING this year — count from the joining month, so the joining month
+     *   itself reads one day. Their entitlement is pro-rated to 13 - joining month
+     *   COUNTING that month, so this still tops out at exactly the entitlement: a March
+     *   joiner is granted 10 and reaches 10 on 1 December.
      *
-     * Either way the count is measured from the joining month for a joiner and from
-     * January for everybody else.
+     * Months before the joining month come out negative and are floored at zero, so a row
+     * created ahead of a joiner is never a debt.
      *
      * @param startDate       the employee's joining date; null means nothing is earned
      * @param leaveYear       the balance row's leave year
@@ -160,22 +162,16 @@ public with sharing class LeaveAccrualService {
             return entitlement;
         }
 
-        Integer monthsEarned;
-        if (startDate.year() == leaveYear) {
-            // A joiner: count from the joining month, and only once that month is done.
-            monthsEarned = asOf.month() - startDate.month();
-            if (isLastDayOfMonth(asOf)) {
-                monthsEarned++;
-            }
-        } else {
-            /*
-             * Already in service when the year opened, so the current month is credited
-             * at its START. asOf.month() already counts it — adding the month-end bump
-             * here as well would pay the same month twice and hand over next month's day
-             * on the 31st.
-             */
-            monthsEarned = asOf.month();
-        }
+        /*
+         * The current month is credited at its START, so it counts. A joiner counts from
+         * the joining month and everybody else from January — the + 1 is what makes the
+         * joining month itself earned, the same way asOf.month() already counts January
+         * for a continuing employee. A month-end bump on top of either branch would pay
+         * the same month twice and hand over next month's day on the 31st.
+         */
+        Integer monthsEarned = startDate.year() == leaveYear
+            ? asOf.month() - startDate.month() + 1
+            : asOf.month();
 
         Decimal earned = monthsEarned;
         if (earned > entitlement) earned = entitlement;
@@ -314,10 +310,6 @@ public with sharing class LeaveAccrualService {
             }
         }
         return START_DATE_CACHE;
-    }
-
-    private static Boolean isLastDayOfMonth(Date value) {
-        return value.day() == Date.daysInMonth(value.year(), value.month());
     }
 
     /*

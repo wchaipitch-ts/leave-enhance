@@ -1,3 +1,9 @@
+:host {
+    --sds-c-card-color-border: transparent;
+    --sds-c-card-shadow: none;
+    --sds-c-card-color-background: transparent; 
+}
+
 /* Date Formatting */
 .date-text {
     font-size: 1.1rem;

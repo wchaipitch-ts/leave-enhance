@@ -1,0 +1,155 @@
+<template>
+    <!-- SLDS Modal Container rendering standard Pop-up Dialog -->
+    <section role="dialog" tabindex="-1" aria-modal="true" class="slds-modal slds-fade-in-open slds-modal_medium">
+        <div class="slds-modal__container">
+            
+            <!-- Modal Header -->
+            <header class="slds-modal__header">
+                <button class="slds-button slds-button_icon slds-modal__close slds-button_icon-inverse" title="Close" onclick={handleCancel}>
+                    <lightning-icon icon-name="utility:close" alternative-text="close" variant="inverse" size="small"></lightning-icon>
+                    <span class="slds-assistive-text">Close</span>
+                </button>
+
+                <!-- Dynamic Title based on current step -->
+                <h2 class="slds-modal__title slds-hyphenate slds-text-heading_medium">
+                    <template if:true={isSelectingRecordType}>New ApplicationItem</template>
+                    <template if:true={isFormStep}>
+                        <template if:true={isOvertimeForm}>New ApplicationItem: Overtime Request</template>
+                        <template if:true={isLeaveForm}>New ApplicationItem: Leave Request</template>
+                    </template>
+                </h2>
+            </header>
+
+            <!-- Modal Content Body -->
+            <div class="slds-modal__content slds-p-around_medium">
+                
+                <!-- STEP 1: RECORD TYPE SELECTION -->
+                <template if:true={isSelectingRecordType}>
+                    <div class="slds-p-horizontal_large slds-p-vertical_medium">
+                        <div class="slds-form-element slds-form-element_horizontal">
+                            <label class="slds-form-element__label slds-text-title_bold" style="color: #514f4d;  padding-left: 10rem;">
+                                Select a record type
+                            </label>
+                            <div class="slds-form-element__control">
+                                <lightning-radio-group 
+                                    name="recordTypeRadio"
+                                    label=""
+                                    variant="label-hidden"
+                                    options={recordTypeOptions}
+                                    value={selectedRecordTypeId}
+                                    onchange={handleRecordTypeSelection}
+                                    type="radio">
+                                </lightning-radio-group>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+
+                <!-- STEP 2: DYNAMIC DATA ENTRY FORM -->
+                <template if:true={isFormStep}>
+                    <lightning-record-edit-form
+                        object-api-name="ApplicationItem__c"
+                        record-type-id={selectedRecordTypeId}
+                        onsubmit={handleNewSubmit}
+                        onsuccess={handleSuccess}>
+                        
+                        <lightning-messages></lightning-messages>
+
+                        <!-- LEAVE REQUEST FORM LAYOUT -->
+                        <template if:true={isLeaveForm}>
+                            <div class="slds-grid slds-wrap slds-gutters">
+                                <div class="slds-col slds-size_1-of-2">
+                                    <lightning-combobox 
+                                        name="Request_Type__c"
+                                        label="Request Type" 
+                                        value={currentLeaveType} 
+                                        options={requestTypeOptions}
+                                        required
+                                        onchange={handleFieldChange}
+                                        dropdown-alignment="auto"
+                                        variant="label-inline"
+                                        class="slds-m-bottom_small">
+                                    </lightning-combobox>
+                                    
+                                    <lightning-input-field field-name="Term_From__c" required onchange={handleFieldChange}></lightning-input-field>
+                                    <lightning-input-field field-name="Remark__c" required></lightning-input-field>
+                                </div>
+                                
+                                <div class="slds-col slds-size_1-of-2">
+                                    <lightning-input-field field-name="Period_Leave__c" required onchange={handleFieldChange}></lightning-input-field>
+                                    
+                                    <div class="slds-form-element slds-form-element_horizontal">
+                                        <label class="slds-form-element__label">
+                                            <abbr class="slds-required" style="visibility: hidden;">*</abbr>End Date
+                                        </label>
+                                        <div class="slds-form-element__control">
+                                            <lightning-input-field field-name="Term_To__c" variant="label-hidden" onchange={handleFieldChange} class="slds-m-bottom_none"></lightning-input-field>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+
+                        <!-- OVERTIME REQUEST FORM LAYOUT -->
+                        <template if:true={isOvertimeForm}>
+                            <div class="slds-grid slds-wrap slds-gutters">
+                                <div class="slds-col slds-size_1-of-2">
+                                    <lightning-input-field field-name="Term_From__c" required onchange={handleFieldChange}></lightning-input-field>
+                                    
+                                    <div class="slds-form-element slds-form-element_horizontal">
+                                        <label class="slds-form-element__label">
+                                            <abbr class="slds-required" style="visibility: hidden;">*</abbr>End Date
+                                        </label>
+                                        <div class="slds-form-element__control">
+                                            <lightning-input-field field-name="Term_To__c" variant="label-hidden" onchange={handleFieldChange} class="slds-m-bottom_none"></lightning-input-field>
+                                        </div>
+                                    </div>
+
+                                    <lightning-input-field field-name="Remark__c" required></lightning-input-field>
+                                    <lightning-input-field field-name="Project__c" required></lightning-input-field>
+                                </div>
+
+                                <div class="slds-col slds-size_1-of-2">
+                                    <lightning-input-field field-name="OT_Start__c" required onchange={handleFieldChange}></lightning-input-field>
+                                    <lightning-input-field field-name="OT_End__c" required onchange={handleFieldChange}></lightning-input-field>
+                                    <lightning-input-field field-name="Employee__c" required></lightning-input-field>
+                                </div>
+                            </div>
+                        </template>
+
+                        <!-- LEAVE WARNING BANNER -->
+                        <template if:true={showLeaveWarning}>
+                            <div class="slds-scoped-notification slds-media slds-media_center slds-theme_warning slds-m-top_medium slds-m-bottom_medium" role="status">
+                                <div class="slds-media__figure">
+                                    <lightning-icon icon-name="utility:warning" size="small"></lightning-icon>
+                                </div>
+                                <div class="slds-media__body slds-p-left_small">
+                                    <p style="color: #000; font-weight: bold;">{leaveWarningMessage}</p>
+                                </div>
+                            </div>
+                        </template>
+
+                        <!-- FORM ACTION BUTTONS FOR STEP 2 -->
+                        <div class="slds-m-top_large slds-text-align_right">
+                            <lightning-button label="Cancel" onclick={handleCancel} class="slds-m-right_x-small"></lightning-button>
+                            <lightning-button variant="brand" type="submit" label="Save"></lightning-button>
+                        </div>
+
+                    </lightning-record-edit-form>
+                </template>
+            </div>
+
+            <!-- Modal Footer (Step 1) -->
+            <template if:true={isSelectingRecordType}>
+                <footer class="slds-modal__footer">
+                    <lightning-button label="Cancel" onclick={handleCancel} class="slds-m-right_x-small"></lightning-button>
+                    <lightning-button label="Next" variant="brand" onclick={handleNextToForm}></lightning-button>
+                </footer>
+            </template>
+
+        </div>
+    </section>
+
+    <!-- Backdrop Overlay -->
+    <div class="slds-backdrop slds-backdrop_open"></div>
+</template>

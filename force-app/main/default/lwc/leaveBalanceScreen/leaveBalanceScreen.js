@@ -27,7 +27,7 @@ const COLUMNS = [
         type: 'text',
         cellAttributes: { class: { fieldName: 'usedColor' } }
     },
-    { label: 'Carry Over', fieldName: 'carryRemainingStr', type: 'text' },
+    { label: 'Carry Over', fieldName: 'carriedInStr', type: 'text' },
     { 
         label: 'Available', 
         fieldName: 'availableStr', 
@@ -179,7 +179,7 @@ export default class LeaveBalanceScreen extends NavigationMixin(LightningElement
                 entitlementStr: `${item.entitlement || 0} Days`,
                 accruedStr: `${item.accrued || 0} Days`,
                 usedStr: `${item.used || 0} Days`,
-                carryRemainingStr: `${item.carryRemaining || 0} Days`,
+                carriedInStr: `${item.carriedIn || 0} Days`,
                 availableStr: `${item.available || 0} Days`,
                 
                 entitlementColor: 'slds-text-link',

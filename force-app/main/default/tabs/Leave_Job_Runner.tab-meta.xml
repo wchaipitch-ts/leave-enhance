@@ -3,5 +3,5 @@
     <description>LEAVE-49, TEMPORARY. Runs the nightly leave grant job for a chosen date, in a sandbox only. Delete before production.</description>
     <flexiPage>Leave_Job_Runner</flexiPage>
     <label>Leave Job Runner</label>
-    <motif>Custom53: Wrench</motif>
+    <motif>Custom53: Bell</motif>
 </CustomTab>
