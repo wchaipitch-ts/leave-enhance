@@ -39,7 +39,7 @@ export default class LeaveMigration extends LightningElement {
     }
 
     load() {
-        getSteps()
+        getSteps({ year: this.year })
             .then((data) => {
                 this.steps = data.map((s) => this.decorate(s, null));
             })
@@ -89,7 +89,15 @@ export default class LeaveMigration extends LightningElement {
         this.steps = this.steps.map((s) => this.decorate(s, s.outcome));
     }
 
-    handleYear(e) { this.year = parseInt(e.target.value, 10); }
+    /*
+     * Reloading matters: step 03's block reason is computed against the year, because
+     * whether 01 and 02 still have work outstanding depends on which year is being
+     * migrated. A stale reason would either hide a real blocker or invent one.
+     */
+    handleYear(e) {
+        this.year = parseInt(e.target.value, 10);
+        this.load();
+    }
 
     handleConfirmation(e) {
         this.confirmation = e.target.value;

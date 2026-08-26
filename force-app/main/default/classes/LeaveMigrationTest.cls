@@ -127,16 +127,64 @@ private class LeaveMigrationTest {
         System.assert(out.blockedReason.contains('already been approved'), out.blockedReason);
     }
 
-    /* And is allowed while the two sides are still in step, which is the cutover window. */
+    /*
+     * Allowed only once the steps it depends on are clean and nobody has been approved -
+     * which together are the cutover window.
+     */
     @isTest
-    static void step03RunsWhileNothingHasBeenApprovedYet() {
+    static void step03RunsOnceItsPrerequisitesAreMet() {
         Test.startTest();
+        LeaveMigrationService.run('01', thisYear(), true);
+        LeaveMigrationService.run('02', thisYear(), true);
         LeaveMigrationService.StepOutcome out =
             LeaveMigrationService.run('03', thisYear(), false);
         Test.stopTest();
 
-        System.assertEquals(null, out.blockedReason);
+        System.assertEquals(null, out.blockedReason, 'nothing left standing in its way');
         System.assert(out.summary.startsWith('Would write'), out.summary);
+    }
+
+    /*
+     * Order, enforced rather than documented. 01 and 02 fix the User fields 03 seeds
+     * from, so running 03 first bakes the wrong allocations into every balance row. The
+     * fixture is deliberately wrong, so both still have work.
+     */
+    @isTest
+    static void step03WaitsForTheStepsItSeedsFrom() {
+        Test.startTest();
+        LeaveMigrationService.StepOutcome out =
+            LeaveMigrationService.run('03', thisYear(), true);
+        Test.stopTest();
+
+        System.assertNotEquals(null, out.blockedReason);
+        System.assertEquals(false, out.applied, 'and it did not run anyway');
+        System.assert(out.blockedReason.contains('01'), out.blockedReason);
+        System.assert(out.blockedReason.startsWith('Refused for now'),
+            'this one clears by doing something, unlike the consumption block');
+    }
+
+    /*
+     * The permanent blocker outranks the ordering one. Telling somebody to go and run
+     * step 01 first would be a wasted errand when the step can never run again whatever
+     * they do.
+     */
+    @isTest
+    static void thePermanentRefusalIsReportedAheadOfTheOrderingOne() {
+        insert new ApplicationItem__c(
+            Request_Type__c = ANNUAL, Period_Leave__c = 'All day',
+            Term_From__c = Date.newInstance(thisYear(), 12, 3),
+            Remark__c = 'precedence fixture', Status__c = 'Draft',
+            OwnerId = employee().Id, Balance_Applied_Days__c = 1
+        );
+
+        Test.startTest();
+        // 01 and 02 are also outstanding, so both blockers apply at once.
+        String reason = LeaveMigrationService.blockReasonFor('03', thisYear());
+        Test.stopTest();
+
+        System.assert(reason.startsWith('Refused, permanently'), reason);
+        System.assert(!reason.contains('Apply them first'),
+            'the fixable advice is withheld when the step can never run');
     }
 
     // ------------------------------------------------------------------- the screen
@@ -144,7 +192,7 @@ private class LeaveMigrationTest {
     @isTest
     static void theScreenListsEveryStepWithItsOwnBlockReason() {
         Test.startTest();
-        List<LeaveMigrationController.StepInfo> steps = LeaveMigrationController.getSteps();
+        List<LeaveMigrationController.StepInfo> steps = LeaveMigrationController.getSteps(thisYear());
         Test.stopTest();
 
         System.assertEquals(6, steps.size());

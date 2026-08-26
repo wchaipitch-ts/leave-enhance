@@ -93,19 +93,68 @@ public with sharing class LeaveMigrationService {
      * frozen User fields 03 would seed from.
      */
     public static String blockReasonFor(String step) {
+        return blockReasonFor(step, System.today().year());
+    }
+
+    public static String blockReasonFor(String step, Integer yr) {
         if (!'03'.equals(step)) {
             return null;
         }
+
+        /*
+         * Checked first because it is the only one that can never be cleared.
+         * Balance_Applied_Days__c is written by deductLeaveBalance the moment a request
+         * is approved, so a single stamped request is proof that consumption now lives on
+         * Leave_Balance__c and no longer matches the frozen User fields 03 would seed
+         * from. Telling somebody to go and run step 01 first, when the step can never run
+         * again whatever they do, would be a wasted errand.
+         */
         Integer consumed = [
             SELECT COUNT() FROM ApplicationItem__c WHERE Balance_Applied_Days__c != NULL
         ];
-        if (consumed == 0) {
-            return null;
+        if (consumed > 0) {
+            return 'Refused, permanently. ' + consumed + ' request(s) have already been '
+                + 'approved under the new system, so the balances hold consumption the old '
+                + 'User fields know nothing about. Re-seeding from those fields would revert '
+                + 'it and quietly give those days back. This step is only safe before the '
+                + 'first approval, and that moment has passed in this org.';
         }
-        return 'Refused. ' + consumed + ' request(s) have already been approved under the '
-            + 'new system, so the balances hold consumption the old User fields know '
-            + 'nothing about. Re-seeding from those fields would revert it and quietly '
-            + 'give those days back. This step is only safe before the first approval.';
+
+        /*
+         * Nothing to build against. Step 03 iterates active policy rows, so with none
+         * present it creates nothing, writes nothing and reports success - a green box
+         * saying "0 balance rows across 0 active leave types", which reads like a
+         * completed step rather than a missing prerequisite. The custom metadata records
+         * have to exist first, and they cannot be deployed into this org.
+         */
+        Integer active = 0;
+        for (Leave_Type_Policy__mdt policy : Leave_Type_Policy__mdt.getAll().values()) {
+            if (policy.Active__c == true) active++;
+        }
+        if (active == 0) {
+            return 'Refused. There are no active Leave Type Policy records, so this step '
+                + 'would create no balance rows at all and report success while doing it. '
+                + 'Create the policy records in Setup first — they cannot be deployed.';
+        }
+
+        /*
+         * Order, and the only one of the three that clears by doing something. 01 and 02
+         * fix the User fields 03 seeds from, so running 03 first bakes the wrong
+         * allocations into every balance row and the only way back is the snapshot. Both
+         * are measured rather than remembered: if either still has outstanding work, it
+         * has not been run.
+         */
+        List<String> outstanding = new List<String>();
+        if (run('01', yr, false).affected > 0) outstanding.add('01');
+        if (run('02', yr, false).affected > 0) outstanding.add('02');
+        if (!outstanding.isEmpty()) {
+            return 'Refused for now. Step(s) ' + String.join(outstanding, ' and ') + ' still '
+                + 'have changes outstanding, and they fix the User fields this step seeds '
+                + 'from. Running out of order bakes the wrong allocations into every balance '
+                + 'row, and the only way back is the snapshot. Apply them first.';
+        }
+
+        return null;
     }
 
     // ------------------------------------------------------------------------ 01
@@ -195,7 +244,7 @@ public with sharing class LeaveMigrationService {
     private static StepOutcome stepBackfillBalances(Integer yr, Boolean apply) {
         StepOutcome out = new StepOutcome('03', TITLES.get('03'));
 
-        String blocked = blockReasonFor('03');
+        String blocked = blockReasonFor('03', yr);
         if (blocked != null) {
             out.blockedReason = blocked;
             out.summary = blocked;

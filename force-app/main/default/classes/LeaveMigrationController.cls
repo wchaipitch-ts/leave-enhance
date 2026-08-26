@@ -63,14 +63,14 @@ public with sharing class LeaveMigrationController {
 
     /** The six steps in order, each carrying its own reason for being unavailable. */
     @AuraEnabled
-    public static List<StepInfo> getSteps() {
+    public static List<StepInfo> getSteps(Integer year) {
         assertAllowed();
         List<StepInfo> out = new List<StepInfo>();
         for (String s : LeaveMigrationService.stepsInOrder()) {
             StepInfo info = new StepInfo();
             info.step = s;
             info.title = LeaveMigrationService.TITLES.get(s);
-            info.blockedReason = LeaveMigrationService.blockReasonFor(s);
+            info.blockedReason = LeaveMigrationService.blockReasonFor(s, resolveYear(year));
             out.add(info);
         }
         return out;
