@@ -296,4 +296,100 @@ private class LeaveMigrationTest {
         }
         Test.stopTest();
     }
+
+    // ----------------------------------------------------------- seeded from history
+
+    /*
+     * The change that matters most for a real cutover. The frozen User counters were a
+     * hand-kept cache and they had drifted: measured against dev5, 8 of 57 employee-and-type
+     * pairs disagreed with the approved history and all but two were LOW, one by fourteen
+     * days. Seeding from a counter that has missed fourteen approved days hands that person
+     * two weeks of leave they already took.
+     */
+    @isTest
+    static void theApprovedHistoryIsCountedPerOwnerAndType() {
+        insert new List<ApplicationItem__c>{
+            new ApplicationItem__c(Request_Type__c = ANNUAL, Period_Leave__c = 'All day',
+                Term_From__c = Date.newInstance(thisYear(), 12, 7),
+                Term_To__c = Date.newInstance(thisYear(), 12, 9),
+                Remark__c = 'history fixture a', Status__c = 'Draft', OwnerId = employee().Id),
+            new ApplicationItem__c(Request_Type__c = ANNUAL, Period_Leave__c = 'All day',
+                Term_From__c = Date.newInstance(thisYear(), 12, 14),
+                Remark__c = 'history fixture b', Status__c = 'Draft', OwnerId = employee().Id)
+        };
+        // Drafts consume nothing, so history must ignore them.
+        Test.startTest();
+        Map<String, Decimal> drafts = LeaveMigrationService.usedFromHistory(thisYear());
+        Test.stopTest();
+
+        System.assertEquals(null, drafts.get(employee().Id + '|' + ANNUAL),
+            'a draft has been taken by nobody');
+    }
+
+    /*
+     * Whichever source knows about more consumption wins. History corrects a counter that
+     * drifted low; the counter still covers leave taken before request records existed,
+     * which history cannot see. Taking the lower of the two would give somebody their days
+     * back twice.
+     */
+    @isTest
+    static void usageTakesTheHigherOfTheCounterAndTheHistory() {
+        Id owner = employee().Id;
+        Map<String, Decimal> history = new Map<String, Decimal>{
+            owner + '|' + ANNUAL => 14,
+            owner + '|Sick leave' => 0
+        };
+        LeaveMigrationService.StepOutcome out =
+            LeaveMigrationService.run('02', thisYear(), false);   // any outcome, for its log
+
+        Test.startTest();
+        Decimal drifted = LeaveMigrationService.usedFor(history, owner, ANNUAL, 0, out, 'X');
+        Decimal older = LeaveMigrationService.usedFor(history, owner, 'Sick leave', 3, out, 'X');
+        Decimal absent = LeaveMigrationService.usedFor(history, owner, 'Personal leave', 2, out, 'X');
+        Test.stopTest();
+
+        System.assertEquals(14, drifted, 'the counter said 0 and 14 days were approved');
+        System.assertEquals(3, older, 'history saw none, so the counter stands');
+        System.assertEquals(2, absent, 'no history entry at all is not the same as zero taken');
+    }
+
+    /*
+     * Why step 05 stamps as well as links. LeaveReversalService gives back
+     * Balance_Applied_Days__c and nothing else, so a request that is linked but unstamped
+     * looks correct on the balance's related list and returns ZERO days when it is
+     * rejected — the employee stays charged for leave that was refused.
+     *
+     * The linked-but-unstamped shape cannot be built through ordinary DML: approving
+     * stamps it, and the approved-record lock refuses to let it be cleared afterwards.
+     * It only exists for records that predate the trigger, which is exactly the population
+     * step 05 is for. So the consequence is tested here directly, on the reversal itself.
+     */
+    @isTest
+    static void anUnstampedRequestGivesNothingBackWhenRejected() {
+        Leave_Balance__c bal = new Leave_Balance__c(
+            Employee__c = employee().Id, Leave_Type__c = ANNUAL, Leave_Year__c = thisYear(),
+            External_Key__c = employee().Id + '-' + ANNUAL + '-' + thisYear(),
+            Entitlement_Days__c = 12, Accrual_Method__c = 'Upfront',
+            Carry_Over_Days__c = 0, Used_Days__c = 3, Pending_Days__c = 0, Status__c = 'Active');
+        insert bal;
+
+        Test.startTest();
+        LeaveReversalService.restoreBalances(new List<ApplicationItem__c>{
+            new ApplicationItem__c(Leave_Balance__c = bal.Id, Balance_Applied_Days__c = null)
+        });
+        Decimal afterUnstamped =
+            [SELECT Used_Days__c FROM Leave_Balance__c WHERE Id = :bal.Id].Used_Days__c;
+
+        LeaveReversalService.restoreBalances(new List<ApplicationItem__c>{
+            new ApplicationItem__c(Leave_Balance__c = bal.Id, Balance_Applied_Days__c = 3)
+        });
+        Decimal afterStamped =
+            [SELECT Used_Days__c FROM Leave_Balance__c WHERE Id = :bal.Id].Used_Days__c;
+        Test.stopTest();
+
+        System.assertEquals(3, afterUnstamped,
+            'unstamped: the days stay spent even though the request was refused');
+        System.assertEquals(0, afterStamped, 'stamped: they come back');
+    }
+
 }

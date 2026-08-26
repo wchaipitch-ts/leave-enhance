@@ -157,6 +157,56 @@ public with sharing class LeaveMigrationService {
         return null;
     }
 
+    /*
+     * What the approved requests say each person has taken this year, keyed by owner and
+     * leave type.
+     *
+     * This is the source the migration trusts. The frozen User counters were a hand-kept
+     * cache and they have drifted: in dev5, 8 of 57 disagreed with the history and all
+     * but two were LOW, one by fourteen days. Seeding from a counter that has missed
+     * fourteen approved days hands that employee two weeks of leave they already took.
+     *
+     * Split families need no special handling: each record carries its own type and its
+     * own day count, so a request divided into Refresh, Annual and Unpaid contributes to
+     * three separate pools exactly as it consumed them.
+     */
+    @TestVisible
+    private static Map<String, Decimal> usedFromHistory(Integer yr) {
+        Map<String, Decimal> byOwnerAndType = new Map<String, Decimal>();
+        for (AggregateResult ar : [
+            SELECT OwnerId owner, Request_Type__c type, SUM(Leave_Days__c) days
+            FROM ApplicationItem__c
+            WHERE Status__c = 'Approved'
+              AND Term_From__c != NULL
+              AND CALENDAR_YEAR(Term_From__c) = :yr
+              AND RecordType.DeveloperName != 'Overtime_Request'
+            GROUP BY OwnerId, Request_Type__c
+        ]) {
+            byOwnerAndType.put((String) ar.get('owner') + '|' + (String) ar.get('type'),
+                               (Decimal) ar.get('days'));
+        }
+        return byOwnerAndType;
+    }
+
+    /*
+     * The higher of the two, never the counter alone. History wins where the counter
+     * drifted low, and the counter still wins for leave taken before the request records
+     * existed, which history cannot see. Whichever source knows about more consumption is
+     * the one that is right; taking the lower would give somebody days back twice.
+     */
+    @TestVisible
+    private static Decimal usedFor(Map<String, Decimal> history, Id ownerId, String type,
+                                   Decimal counter, StepOutcome out, String name) {
+        Decimal fromCounter = zeroIfNull(counter);
+        Decimal fromHistory = zeroIfNull(history.get(ownerId + '|' + type));
+        if (fromHistory > fromCounter) {
+            out.log('USED  ' + name + ' | ' + type + ' | counter said ' + fromCounter
+                + ', approved history says ' + fromHistory + ' — taking the history');
+            return fromHistory;
+        }
+        return fromCounter;
+    }
+
     // ------------------------------------------------------------------------ 01
 
     /*
@@ -256,6 +306,7 @@ public with sharing class LeaveMigrationService {
             if (p.Active__c == true) policies.add(p);
         }
         List<Refresh_Leave_Rule__mdt> tiers = Refresh_Leave_Rule__mdt.getAll().values();
+        Map<String, Decimal> history = usedFromHistory(yr);
 
         Set<String> existingKeys = new Set<String>();
         for (Leave_Balance__c b : [
@@ -295,17 +346,17 @@ public with sharing class LeaveMigrationService {
 
                 if (TYPE_ANNUAL.equals(p.Leave_Type__c)) {
                     ent      = u.Annual_Leave_Allocated__c;
-                    used     = zeroIfNull(u.Annual_Leave_Used__c);
+                    used     = usedFor(history, u.Id, TYPE_ANNUAL, u.Annual_Leave_Used__c, out, u.Name);
                     carry    = zeroIfNull(u.Carry_Over_Days__c);
                     carryExp = u.Carry_Over_Expiry__c;
                     seeded++;
                 } else if (TYPE_SICK.equals(p.Leave_Type__c)) {
                     ent  = u.Sick_Leave_Allocated__c;
-                    used = zeroIfNull(u.Sick_Leave_Used__c);
+                    used = usedFor(history, u.Id, TYPE_SICK, u.Sick_Leave_Used__c, out, u.Name);
                     seeded++;
                 } else if (TYPE_PERSONAL.equals(p.Leave_Type__c)) {
                     ent  = u.Personal_Leave_Allocated__c;
-                    used = zeroIfNull(u.Personal_Leave_Used__c);
+                    used = usedFor(history, u.Id, TYPE_PERSONAL, u.Personal_Leave_Used__c, out, u.Name);
                     seeded++;
                 } else if (TYPE_REFRESH.equals(p.Leave_Type__c)) {
                     if (u.Refresh_Leave_Granted_Year__c == yr) {
@@ -332,6 +383,18 @@ public with sharing class LeaveMigrationService {
                         ent = 0;
                         grantedOn = null;
                     }
+                }
+
+                /*
+                 * Every other type had no counter at all, so the approved history is the
+                 * only record that it was ever taken. Unpaid leave in particular arrives
+                 * this way, and without it a migrated employee looks as though they have
+                 * taken none.
+                 */
+                if (!TYPE_ANNUAL.equals(p.Leave_Type__c) && !TYPE_SICK.equals(p.Leave_Type__c)
+                    && !TYPE_PERSONAL.equals(p.Leave_Type__c)
+                    && !TYPE_REFRESH.equals(p.Leave_Type__c)) {
+                    used = zeroIfNull(history.get(u.Id + '|' + p.Leave_Type__c));
                 }
 
                 String key = u.Id + '-' + p.Leave_Type__c + '-' + yr;
@@ -422,7 +485,20 @@ public with sharing class LeaveMigrationService {
 
     // ------------------------------------------------------------------------ 05
 
-    /* Approved requests only: a pending one has consumed nothing. */
+    /*
+     * Approved requests only: a pending one has consumed nothing.
+     *
+     * Two fields, not one. The lookup gives each balance its related list of what spent
+     * it. Balance_Applied_Days__c is what a later rejection GIVES BACK - LeaveReversalService
+     * returns that figure and nothing else, so a linked-but-unstamped request looks correct
+     * on screen and returns zero days when refused. Proved against dev5: the same reversal
+     * moved Used_Days from 1 to 1 unstamped, and 1 to 0 stamped.
+     *
+     * Stamping is only honest because step 03 now seeds usage from this same approved
+     * history. When usage came from the hand-kept counters there was no guarantee a given
+     * request was in the figure at all, and handing back days that were never taken off
+     * would have been the worse error.
+     */
     private static StepOutcome stepLinkBalances(Boolean apply) {
         StepOutcome out = new StepOutcome('05', TITLES.get('05'));
 
@@ -437,7 +513,7 @@ public with sharing class LeaveMigrationService {
         Integer noBalance = 0;
 
         for (ApplicationItem__c appl : [
-            SELECT Id, Name, OwnerId, Request_Type__c, Term_From__c
+            SELECT Id, Name, OwnerId, Request_Type__c, Term_From__c, Leave_Days__c
             FROM ApplicationItem__c
             WHERE Leave_Balance__c = NULL
               AND Status__c = 'Approved'
@@ -452,10 +528,15 @@ public with sharing class LeaveMigrationService {
                 noBalance++;
                 continue;
             }
-            toLink.add(new ApplicationItem__c(Id = appl.Id, Leave_Balance__c = balanceId));
+            toLink.add(new ApplicationItem__c(
+                Id = appl.Id,
+                Leave_Balance__c = balanceId,
+                Balance_Applied_Days__c = zeroIfNull(appl.Leave_Days__c)
+            ));
             out.affected++;
             out.log(appl.Name + ' | ' + appl.Request_Type__c + ' '
-                + appl.Term_From__c.year() + ' | linked');
+                + appl.Term_From__c.year() + ' | linked, ' + zeroIfNull(appl.Leave_Days__c)
+                + ' day(s) recorded as taken');
         }
 
         if (apply && !toLink.isEmpty()) {
@@ -463,8 +544,10 @@ public with sharing class LeaveMigrationService {
             out.applied = true;
         }
         out.summary = phrase(out, 'approved request')
-            + ' ' + noBalance + ' had no matching balance row, which is expected for leave '
-            + 'types that keep no balance.';
+            + ' Each is linked to its balance row and stamped with what it took, so a later '
+            + 'rejection gives the right number of days back. ' + noBalance + ' had no '
+            + 'matching balance row, which is expected for leave types that keep no balance '
+            + 'and for anything dated outside the migrated year.';
         return out;
     }
 
