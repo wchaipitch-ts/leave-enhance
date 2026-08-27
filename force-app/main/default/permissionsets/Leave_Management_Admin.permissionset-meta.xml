@@ -1,9 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <PermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">
-    <customPermissions>
-        <enabled>true</enabled>
-        <name>Convert_Unpaid_Leave</name>
-    </customPermissions>
     <description>Full access to Leave Balance records and fields. Needed because custom fields deployed via the Metadata API have no field-level security by default - only universally required fields are visible without it.</description>
     <fieldPermissions>
         <editable>true</editable>
@@ -177,6 +173,15 @@
     </fieldPermissions>
     <hasActivationRequired>false</hasActivationRequired>
     <label>Leave Management Admin</label>
+    <objectPermissions>
+        <allowCreate>true</allowCreate>
+        <allowDelete>true</allowDelete>
+        <allowEdit>true</allowEdit>
+        <allowRead>true</allowRead>
+        <modifyAllRecords>true</modifyAllRecords>
+        <object>ApplicationItem__c</object>
+        <viewAllRecords>true</viewAllRecords>
+    </objectPermissions>
     <objectPermissions>
         <allowCreate>true</allowCreate>
         <allowDelete>true</allowDelete>

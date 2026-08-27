@@ -174,8 +174,42 @@ public without sharing class LeaveConversionService {
      */
     public static ConversionView view(Id requestId) {
         ApplicationItem__c src = load(requestId);
-        LeaveBalanceService.assertCanView(src.OwnerId);
+        /*
+         * Asked, not asserted. ApplicationItem__c is Public Read, so colleagues open one
+         * another's requests routinely, and assertCanView would throw at every one of
+         * them — which the card renders as a red banner reading "You do not have
+         * permission to view another employee's leave balance."
+         *
+         * That banner is worse than useless. Nobody reading it was trying to see a
+         * balance; they opened a leave request. What belongs on a record whose
+         * conversion is none of your business is nothing at all.
+         *
+         * convert() and revert() still assert, because a caller reaching them is acting
+         * rather than looking.
+         */
+        if (!permitted() || !LeaveBalanceService.canView(src.OwnerId)) {
+            return hiddenView(src);
+        }
         return buildView(src);
+    }
+
+    /*
+     * Enough of a view for the card to take itself off the page, and nothing else. The
+     * figures are deliberately absent rather than zeroed-and-populated: this caller is
+     * not entitled to them, and a zero is still an answer.
+     */
+    private static ConversionView hiddenView(ApplicationItem__c src) {
+        ConversionView v = new ConversionView();
+        v.requestId           = src.Id;
+        v.showsConversion     = false;
+        v.canConvert          = false;
+        v.canRevert           = false;
+        v.convertibleDays     = 0;
+        v.convertedDays       = 0;
+        v.remainingUnpaidDays = 0;
+        v.annualAvailable     = 0;
+        v.convertedRequests   = new List<ConvertedRequest>();
+        return v;
     }
 
     // ==================================================================== converting

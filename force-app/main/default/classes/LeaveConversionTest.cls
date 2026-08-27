@@ -542,9 +542,10 @@ private class LeaveConversionTest {
         Test.stopTest();
 
         System.assertEquals(true, refused, 'an unpermitted caller reached the conversion');
-        System.assert(
-            TimesheetController.getUnpaidConversion(appl.Id).blockedReason.contains('manager action'),
-            'and the card says why rather than leaving it blank');
+        System.assertEquals(false,
+            TimesheetController.getUnpaidConversion(appl.Id).showsConversion,
+            'and the card was never offered to them in the first place — the reason is '
+          + 'withheld along with the figures, because none of it is theirs to read');
         System.assertEquals('Unpaid leave', reload(appl.Id).Request_Type__c,
             'the days are still unpaid');
         System.assertEquals(0, childrenOf(appl.Id).size(), 'and nothing was raised beside them');
@@ -684,5 +685,48 @@ private class LeaveConversionTest {
         System.assertEquals(0.5, back[0].Leave_Days__c, 'half a day, not a whole one');
         System.assertEquals(0, balance('Annual leave').Used_Days__c, 'and the Annual day is given back');
         System.assertEquals(0.5, balance('Unpaid leave').Used_Days__c, 'charged unpaid again');
+    }
+
+    /*
+     * The case that put a red banner on a colleague's screen. ApplicationItem__c is
+     * Public Read, so opening somebody else's leave request is ordinary; the card used
+     * to answer that by throwing, which the LWC renders as an error.
+     */
+    @isTest
+    static void someoneWhoMayNotSeeTheBalanceGetsNoCardRatherThanAnError() {
+        useTestPolicies();
+        asManager();
+        LeaveBalanceService.canViewOthersCache = false;  // not on the timesheet permission
+        ApplicationItem__c appl = raiseUnpaid(3, 'Approved');
+
+        Test.startTest();
+        LeaveConversionService.ConversionView v = TimesheetController.getUnpaidConversion(appl.Id);
+        Test.stopTest();
+
+        System.assertEquals(false, v.showsConversion, 'the card takes itself off the page');
+        System.assertEquals(false, v.canConvert, 'and offers nothing');
+        System.assertEquals(0, v.convertibleDays,
+            'the figures are withheld, not zeroed: this caller may not have them');
+    }
+
+    @isTest
+    static void actingOnARecordYouMayNotSeeIsStillRefused() {
+        useTestPolicies();
+        asManager();
+        ApplicationItem__c appl = raiseUnpaid(3, 'Approved');
+        LeaveBalanceService.canViewOthersCache = false;
+
+        Test.startTest();
+        Boolean refused = false;
+        try {
+            TimesheetController.convertUnpaidLeave(appl.Id, 2);
+        } catch (AuraHandledException e) {
+            refused = true;
+        }
+        Test.stopTest();
+
+        System.assertEquals(true, refused,
+            'looking is silent, but acting is not: convert still asserts');
+        System.assertEquals(0, childrenOf(appl.Id).size(), 'and nothing was raised');
     }
 }

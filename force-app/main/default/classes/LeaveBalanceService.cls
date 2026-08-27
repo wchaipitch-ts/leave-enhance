@@ -246,9 +246,22 @@ public without sharing class LeaveBalanceService {
         return resolveAndAuthorise(employeeId);
     }
 
+    /**
+     * The same question, answered rather than enforced.
+     *
+     * A screen that shows a section only to those who may see it needs to ask before it
+     * renders, not be stopped afterwards: an exception reaches the browser as an error
+     * message, and "you may not see this" is not an error when the answer is simply to
+     * show nothing. assertCanView remains for callers that are about to act.
+     */
+    public static Boolean canView(Id employeeId) {
+        Id target = employeeId == null ? UserInfo.getUserId() : employeeId;
+        return target == UserInfo.getUserId() || canViewOthers();
+    }
+
     private static Id resolveAndAuthorise(Id employeeId) {
         Id target = employeeId == null ? UserInfo.getUserId() : employeeId;
-        if (target != UserInfo.getUserId() && !canViewOthers()) {
+        if (!canView(target)) {
             throw new AuraHandledException(
                 'You do not have permission to view another employee\'s leave balance.');
         }
