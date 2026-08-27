@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>Converted_On__c</fullName>
-    <description>When the unpaid days on this request were converted to Annual leave. Payroll asks when a correction was made, not only that it was.</description>
-    <inlineHelpText>When this request was raised by an unpaid leave conversion. Set automatically.</inlineHelpText>
-    <label>Converted On</label>
+    <description>The day the unpaid days on this request were converted to Annual leave. Payroll asks when a correction was made, not only that it was, and reports the month&apos;s conversions off this field.
+
+A Date rather than a Date/Time on purpose. The figure is only ever read a day at a time, and a Date/Time would have had to be reduced to one for grouping — DATEVALUE converts in GMT, so a conversion made in the Bangkok morning of the 1st would have filed under the previous month. Ordering within a day is still on CreatedDate if anyone needs it.</description>
+    <inlineHelpText>The day this request was raised by an unpaid leave conversion. Set automatically.</inlineHelpText>
+    <label>Converted Date</label>
     <required>false</required>
     <trackTrending>false</trackTrending>
-    <type>DateTime</type>
+    <type>Date</type>
 </CustomField>

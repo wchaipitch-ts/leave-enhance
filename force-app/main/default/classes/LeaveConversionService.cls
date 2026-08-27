@@ -202,7 +202,7 @@ public without sharing class LeaveConversionService {
                 Remark__c                = remarkWith(src.Remark__c, convertedNote(src)),
                 Converted_From_Unpaid__c = true,
                 Converted_From_Status__c = src.Status__c,
-                Converted_On__c          = System.now(),
+                Converted_On__c          = System.today(),
                 Converted_By__c          = UserInfo.getUserId()
             );
             return;
@@ -582,7 +582,7 @@ public without sharing class LeaveConversionService {
             Converted_From_Unpaid__c = true,
             // What the days were before this, so reverting can put them back as they were.
             Converted_From_Status__c = src.Status__c,
-            Converted_On__c          = System.now(),
+            Converted_On__c          = System.today(),
             Converted_By__c          = UserInfo.getUserId()
         );
     }
