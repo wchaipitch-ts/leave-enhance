@@ -129,8 +129,6 @@ public without sharing class LeaveConversionService {
         @AuraEnabled public String  name;
         @AuraEnabled public Decimal days;
         @AuraEnabled public String  status;
-        /** True while the days are still only asked for, not granted. */
-        @AuraEnabled public Boolean awaitingApproval;
     }
 
     // ==================================================================== permission
@@ -491,7 +489,6 @@ public without sharing class LeaveConversionService {
             made.name               = child.Name;
             made.days               = zeroIfNull(child.Leave_Days__c);
             made.status             = child.Status__c;
-            made.awaitingApproval   = !STATUS_APPROVED.equals(child.Status__c);
             v.convertedRequests.add(made);
         }
         /*

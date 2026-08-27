@@ -19,8 +19,8 @@
                         <div class="slds-media__body">
                             <h2 class="slds-text-heading_small conversion-title">Unpaid Leave Conversion</h2>
                             <p class="slds-text-body_small slds-text-color_weak">
-                                You can convert this unpaid leave to paid leave if the employee has
-                                sufficient balance in the future.
+                                Convert these unpaid days to Annual leave, up to what the
+                                employee's balance can pay for now.
                             </p>
                         </div>
                     </div>
@@ -58,9 +58,9 @@
                 </div>
 
                 <!--
-                    The days are not paid until this Draft is approved, so the card has to
-                    lead somewhere: a Converted Days figure with no way to reach what it
-                    counts is how a Draft nobody submitted goes unnoticed.
+                    A Converted Days figure with no way to reach what it counts is a number
+                    nobody can check. These are approved, paid records now, and the manager
+                    who made them is the one most likely to want to look.
                 -->
                 <template if:true={hasConvertedRequests}>
                     <div class="slds-m-top_medium slds-border_top slds-p-top_small">
@@ -74,12 +74,7 @@
                                         minimum-fraction-digits="2">
                                     </lightning-formatted-number>
                                     <span> days · </span>
-                                    <template if:true={made.awaitingApproval}>
-                                        <span class="slds-text-color_weak">{made.status} — not yet approved</span>
-                                    </template>
-                                    <template if:false={made.awaitingApproval}>
-                                        <span class="slds-text-color_success">{made.status}</span>
-                                    </template>
+                                    <span class="slds-text-color_success">{made.status}</span>
                                 </div>
                             </div>
                         </template>
@@ -124,15 +119,17 @@
                     <lightning-input
                         type="number"
                         label="Days to convert"
-                        min="1"
-                        step="1"
+                        min="0.5"
+                        step="0.5"
+                        max={convertibleDays}
                         value={daysToConvert}
                         onchange={handleDaysChange}>
                     </lightning-input>
                     <p class="slds-m-top_small slds-text-body_small slds-text-color_weak">
-                        The converted days become an Annual leave request in Draft. The owner
-                        submits it for approval — nothing is deducted from the Annual balance
-                        until it is approved. The earliest days are converted first.
+                        The converted days become an approved Annual leave request and come
+                        off the employee's Annual balance now. The earliest days convert
+                        first, and half a day converts as a morning or an afternoon of its
+                        own.
                     </p>
                 </div>
 

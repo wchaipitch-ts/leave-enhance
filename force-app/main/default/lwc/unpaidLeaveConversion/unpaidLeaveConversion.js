@@ -2,7 +2,8 @@
  * LEAVE-44 — the Unpaid Leave Conversion card, on an ApplicationItem__c record page.
  *
  * Shows what of this unpaid absence the Annual balance could pay for now, and turns
- * those days into an Annual leave request in Draft for the owner to submit.
+ * those days into an approved Annual leave request. Manager-only: Apex returns
+ * showsConversion false to anyone else and the card removes itself.
  *
  * Every figure comes from TimesheetController.getUnpaidConversion and none of them is
  * stored on the record, so nothing is calculated here: doing the arithmetic twice, once
@@ -70,6 +71,12 @@ export default class UnpaidLeaveConversion extends NavigationMixin(LightningElem
         ];
     }
 
+    /* The ceiling on the input. Apex refuses more in any case, but a field that lets
+       you type a number it will not accept is a worse way to find that out. */
+    get convertibleDays() {
+        return this.view ? this.view.convertibleDays : 0;
+    }
+
     get convertedRequests() {
         return (this.view && this.view.convertedRequests) || [];
     }
@@ -109,19 +116,23 @@ export default class UnpaidLeaveConversion extends NavigationMixin(LightningElem
     }
 
     /*
+     * Half days convert as a morning or an afternoon of their own, so the input accepts
+     * .5 — and rejects anything finer here rather than letting Apex be the one to say so.
+     */
+    get daysAreValid() {
+        const days = Number(this.daysToConvert);
+        return days > 0 && Number.isInteger(days * 2);
+    }
+
+    /*
      * What reverting is about to do, in the terms the person pressing it is thinking in.
      * "Reject" on its own reads as refusing the absence; what it refuses is the paid
      * request the conversion made, and the days themselves stay exactly where they were.
      */
     get revertWarning() {
-        const spent = this.convertedRequests.some((made) => !made.awaitingApproval);
-        return spent
-            ? 'The converted request has been approved. Revoking it gives those Annual leave '
-              + 'days back to the balance and removes the calendar entries and timesheet '
-              + 'bookings it created. The days go back to being unpaid, as they were before '
-              + 'the conversion.'
-            : 'The converted request has not been approved, so no Annual leave has been spent. '
-              + 'The days go back to being unpaid, as they were before the conversion.';
+        return 'Revoking the converted request gives those Annual leave days back to the '
+             + 'balance and removes the calendar entries and timesheet bookings it created. '
+             + 'The days go back to being unpaid, as they were before the conversion.';
     }
 
     days(value) {
@@ -145,8 +156,9 @@ export default class UnpaidLeaveConversion extends NavigationMixin(LightningElem
 
     async handleConvert() {
         const days = Number(this.daysToConvert);
-        if (!days || days <= 0) {
-            this.toast('Enter how many days to convert', '', 'warning');
+        if (!this.daysAreValid) {
+            this.toast('Enter how many days to convert',
+                'Whole or half days only.', 'warning');
             return;
         }
 
@@ -156,7 +168,7 @@ export default class UnpaidLeaveConversion extends NavigationMixin(LightningElem
             this.showConvertModal = false;
             this.toast(
                 'Converted to Annual leave',
-                'The converted days are a Draft request. Submit it for approval to have them paid.',
+                'The days are approved and have come off the Annual balance.',
                 'success'
             );
             await this.refresh();

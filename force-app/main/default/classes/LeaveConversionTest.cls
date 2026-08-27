@@ -345,8 +345,6 @@ private class LeaveConversionTest {
         System.assertEquals('Partially Converted', v.conversionStatus, 'which is what that is called');
         System.assertEquals(1, v.convertedRequests.size(), 'and the card can link to what it made');
         System.assertEquals('Approved', v.convertedRequests[0].status, 'paid as it was converted');
-        System.assertEquals(false, v.convertedRequests[0].awaitingApproval,
-            'nobody is waiting on a signature for it');
         System.assertEquals(0, balance('Annual leave').Available_Balance__c,
             'the two Annual days are genuinely gone, not merely claimed');
         System.assertEquals(false, v.canConvert,
