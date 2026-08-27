@@ -171,6 +171,7 @@ export default class LeaveBalanceScreen extends NavigationMixin(LightningElement
         this.tableData = balances.map((item, index) => {
             const recordId = item.id || item.Id || item.recordId || item.leaveBalanceId || item.balanceId;
             const url = recordId ? `/${recordId}` : null;
+        const carryOverRemaining = item.carryRemaining !== undefined ? item.carryRemaining : 0;
 
             return {
                 ...item,
@@ -179,8 +180,10 @@ export default class LeaveBalanceScreen extends NavigationMixin(LightningElement
                 entitlementStr: `${item.entitlement || 0} Days`,
                 accruedStr: `${item.accrued || 0} Days`,
                 usedStr: `${item.used || 0} Days`,
-                carriedInStr: `${item.carriedIn || 0} Days`,
+                // carriedInStr: `${item.carriedIn || 0} Days`,
+                carriedInStr: `${carryOverRemaining} / ${item.carriedIn || 0} Days`,
                 availableStr: `${item.available || 0} Days`,
+                
                 
                 entitlementColor: 'slds-text-link',
                 usedColor: 'slds-text-color_error',
