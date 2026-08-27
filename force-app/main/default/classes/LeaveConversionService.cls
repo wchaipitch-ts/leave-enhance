@@ -240,6 +240,10 @@ public without sharing class LeaveConversionService {
             update new ApplicationItem__c(
                 Id                       = src.Id,
                 Request_Type__c          = TYPE_ANNUAL,
+                // Approved for the same reason the raised records are, and in the same
+                // breath as the type change: an Annual request left in Draft here is a
+                // conversion that never reaches the balance.
+                Status__c                = STATUS_APPROVED,
                 Remark__c                = remarkWith(src.Remark__c, convertedNote(src)),
                 Converted_From_Unpaid__c = true,
                 Converted_From_Status__c = src.Status__c,
@@ -373,10 +377,16 @@ public without sharing class LeaveConversionService {
     }
 
     /*
-     * A Draft converted in place: this record IS the conversion. Nothing was raised
-     * beside it, so reverting is turning it back into what it was rather than rejecting
-     * anything — unless it has since been approved, in which case it has spent Annual
-     * balance and booked its days, and only a rejection gives those back.
+     * A record converted in place: this record IS the conversion, nothing was raised
+     * beside it. A conversion now lands Approved, so it has spent Annual balance and
+     * booked its days, and only a rejection gives those back — LeaveReversalService's
+     * work, driven by the status transition as it is everywhere else.
+     *
+     * The Draft branch is for conversions made before they landed Approved. Those spent
+     * nothing, so they can simply be turned back into what they were rather than being
+     * rejected and re-raised. Nothing this class writes reaches it any more, but the
+     * records it is for are sitting in the org, and rejecting one would take back an
+     * Annual day it never spent.
      */
     private static void revertInPlace(ApplicationItem__c src, String reason) {
         if (STATUS_DRAFT.equals(src.Status__c)) {
@@ -423,7 +433,6 @@ public without sharing class LeaveConversionService {
 
         v.convertedRequests = new List<ConvertedRequest>();
         Decimal converted = 0;
-        Decimal awaitingApproval = 0;
         for (ApplicationItem__c child : [
             SELECT Id, Name, Leave_Days__c, Status__c
             FROM ApplicationItem__c
@@ -445,16 +454,6 @@ public without sharing class LeaveConversionService {
             made.status             = child.Status__c;
             made.awaitingApproval   = !STATUS_APPROVED.equals(child.Status__c);
             v.convertedRequests.add(made);
-            /*
-             * A converted request in Draft or Pending has not spent the balance yet —
-             * the approval will. Counting it as spent anyway is what stops the card
-             * offering the same two days a second time and letting the employee raise
-             * more paid leave than exists, only for the second approval to be refused
-             * by deductLeaveBalance long after they thought it was settled.
-             */
-            if (!STATUS_APPROVED.equals(child.Status__c)) {
-                awaitingApproval += zeroIfNull(child.Leave_Days__c);
-            }
         }
         /*
          * A record converted in place is its own converted days: the conversion did not
@@ -470,15 +469,18 @@ public without sharing class LeaveConversionService {
         v.remainingUnpaidDays = stillCounts ? zeroIfNull(src.Leave_Days__c) : 0;
 
         Leave_Balance__c annual = annualBalanceFor(src);
-        // The balance as it stands, which is what the employee sees on the balance page.
+        /*
+         * The balance as it stands, which is what the employee sees on the balance page
+         * and what a conversion spends. Nothing is held back against conversions already
+         * made from this record: they were approved as they were made, so the days they
+         * took are out of Used_Days__c and out of this figure already.
+         */
         v.annualAvailable = annual == null ? 0 : availableOn(annual);
-        // What is left of it once this record's own unapproved conversions are counted.
-        Decimal spendable = floorAtZero(v.annualAvailable - awaitingApproval);
 
-        v.blockedReason   = blockedReasonFor(src, annual, v, spendable);
+        v.blockedReason   = blockedReasonFor(src, annual, v);
         v.canConvert      = v.blockedReason == null;
         v.convertibleDays = v.canConvert
-            ? wholeDays(min(v.remainingUnpaidDays, spendable))
+            ? wholeDays(min(v.remainingUnpaidDays, v.annualAvailable))
             : 0;
         v.revertBlockedReason = revertBlockedReasonFor(src, v.convertedRequests);
         v.canRevert           = v.revertBlockedReason == null;
@@ -515,7 +517,7 @@ public without sharing class LeaveConversionService {
      * the way rather than the last one checked.
      */
     private static String blockedReasonFor(ApplicationItem__c src, Leave_Balance__c annual,
-                                           ConversionView v, Decimal spendable) {
+                                           ConversionView v) {
         // Before anything about the record, so canConvert can never come back true for
         // somebody convert() would refuse. The card is already hidden from them, but a
         // view object that contradicts the service it describes is a trap for the next
@@ -557,13 +559,9 @@ public without sharing class LeaveConversionService {
                 ? 'The Annual leave balance for ' + src.Term_From__c.year() + ' is locked.'
                 : annual.Lock_Reason__c;
         }
-        if (spendable < 1) {
-            return availableOn(annual) >= 1
-                ? 'The Annual leave days left in ' + src.Term_From__c.year() + ' are already '
-                  + 'claimed by a converted request from this absence that is waiting for '
-                  + 'approval. Submit it, or reject it to release them.'
-                : 'There is no whole Annual leave day available in ' + src.Term_From__c.year()
-                  + ' to convert these days into.';
+        if (availableOn(annual) < 1) {
+            return 'There is no whole Annual leave day available in ' + src.Term_From__c.year()
+                 + ' to convert these days into.';
         }
         return null;
     }
@@ -627,9 +625,19 @@ public without sharing class LeaveConversionService {
             Term_From__c             = startDay,
             Term_To__c               = endDay,
             Remark__c                = remarkWith(src.Remark__c, convertedNote(src)),
-            // Draft on purpose: the owner submits it, and the approval is what spends
-            // the Annual balance. Nothing here deducts anything.
-            Status__c                = STATUS_DRAFT,
+            /*
+             * Approved on insert. The manager doing the converting is the person who
+             * would have approved it, so sending it back for a signature they have just
+             * given is a round trip that buys nothing — and one the employee has to
+             * complete, which is how days a manager believed were converted end up
+             * sitting in a Draft nobody submitted while payroll pays out on them.
+             *
+             * The trigger treats an inserted Approved record as a fresh approval, as it
+             * already does for unpaidRemainder below: deductLeaveBalance spends the
+             * Annual balance in this same transaction and refuses an overdraw, so
+             * nothing here can quietly pay for days that do not exist.
+             */
+            Status__c                = STATUS_APPROVED,
             OwnerId                  = src.OwnerId,
             Split_From__c            = src.Id,
             Converted_From_Unpaid__c = true,
@@ -744,10 +752,6 @@ public without sharing class LeaveConversionService {
 
     private static Decimal min(Decimal a, Decimal b) {
         return a < b ? a : b;
-    }
-
-    private static Decimal floorAtZero(Decimal value) {
-        return value < 0 ? 0 : value;
     }
 
     private static Decimal zeroIfNull(Decimal value) {

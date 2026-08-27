@@ -169,7 +169,7 @@ private class LeaveConversionTest {
     // ------------------------------------------------------------ approved, in full
 
     @isTest
-    static void convertingAnApprovedRequestInFullGivesBackTheUnpaidDaysAndRaisesADraft() {
+    static void convertingAnApprovedRequestInFullGivesBackTheUnpaidDaysAndPaysThem() {
         useTestPolicies();
         asManager();
         ApplicationItem__c appl = raiseUnpaid(2, 'Approved');
@@ -189,14 +189,16 @@ private class LeaveConversionTest {
         List<ApplicationItem__c> raised = childrenOf(appl.Id);
         System.assertEquals(1, raised.size(), 'one request replaces it');
         System.assertEquals('Annual leave', raised[0].Request_Type__c, 'now a paid one');
-        System.assertEquals('Draft', raised[0].Status__c, 'which the owner still has to submit');
+        System.assertEquals('Approved', raised[0].Status__c,
+            'approved as it was made: the manager converting it is the one who would sign');
         System.assertEquals(2, raised[0].Leave_Days__c, 'for the days that were unpaid');
         System.assertEquals(true, raised[0].Converted_From_Unpaid__c, 'and it says where it came from');
         System.assertEquals('Approved', raised[0].Converted_From_Status__c,
             'including what the days were, which is what reverting has to put back');
 
-        System.assertEquals(0, balance('Annual leave').Used_Days__c,
-            'nothing is spent until that Draft is approved');
+        System.assertEquals(2, balance('Annual leave').Used_Days__c,
+            'and the Annual balance is spent in the same transaction, by the ordinary '
+          + 'deduction rather than by anything the conversion does itself');
     }
 
     // ------------------------------------------------------------ approved, in part
@@ -219,7 +221,7 @@ private class LeaveConversionTest {
 
         System.assertEquals('Annual leave', raised[0].Request_Type__c,
             'the earliest days convert first, as the split consumes balance in date order');
-        System.assertEquals('Draft', raised[0].Status__c, 'awaiting the owner');
+        System.assertEquals('Approved', raised[0].Status__c, 'paid as it was converted');
         System.assertEquals(2, raised[0].Leave_Days__c, 'two days paid');
         System.assertEquals(days[0], raised[0].Term_From__c, 'starting where the absence did');
         System.assertEquals(days[1], raised[0].Term_To__c, 'and stopping at the second day');
@@ -268,7 +270,10 @@ private class LeaveConversionTest {
 
         ApplicationItem__c after = reload(appl.Id);
         System.assertEquals('Annual leave', after.Request_Type__c, 'the request itself becomes the paid one');
-        System.assertEquals('Draft', after.Status__c, 'still the owner\'s to submit');
+        System.assertEquals('Approved', after.Status__c,
+            'and is approved in the same breath: an Annual request left in Draft here '
+          + 'would be a conversion that never reached the balance');
+        System.assertEquals(2, balance('Annual leave').Used_Days__c, 'which it did');
         System.assertEquals(true, after.Converted_From_Unpaid__c, 'marked as converted');
         System.assertEquals(UserInfo.getUserId(), after.Converted_By__c, 'by whoever did it');
         System.assertEquals(0, childrenOf(appl.Id).size(),
@@ -313,10 +318,13 @@ private class LeaveConversionTest {
         System.assertEquals(2, v.remainingUnpaidDays, 'two still unpaid');
         System.assertEquals('Partially Converted', v.conversionStatus, 'which is what that is called');
         System.assertEquals(1, v.convertedRequests.size(), 'and the card can link to what it made');
-        System.assertEquals('Draft', v.convertedRequests[0].status, 'which is still waiting on the owner');
-        System.assertEquals(true, v.convertedRequests[0].awaitingApproval, 'nobody is paid for it yet');
+        System.assertEquals('Approved', v.convertedRequests[0].status, 'paid as it was converted');
+        System.assertEquals(false, v.convertedRequests[0].awaitingApproval,
+            'nobody is waiting on a signature for it');
+        System.assertEquals(0, balance('Annual leave').Available_Balance__c,
+            'the two Annual days are genuinely gone, not merely claimed');
         System.assertEquals(false, v.canConvert,
-            'the balance is spoken for by the Draft, so nothing more is offered');
+            'so the remaining unpaid days have nothing left to convert into');
     }
 
     // --------------------------------------------------------------------- revert
@@ -408,10 +416,26 @@ private class LeaveConversionTest {
         TimesheetController.revertConversion(appl.Id, 'wrong request');
         Test.stopTest();
 
+        /*
+         * Rejected rather than edited back. The conversion approved it, so it has spent
+         * Annual balance and booked its days, and only a rejection gives those back —
+         * the same route every other revoked request takes.
+         */
         ApplicationItem__c after = reload(appl.Id);
-        System.assertEquals('Unpaid leave', after.Request_Type__c, 'and back it goes');
-        System.assertEquals('Draft', after.Status__c, 'to the state it was converted from');
-        System.assertEquals(false, after.Converted_From_Unpaid__c, 'with the stamp cleared');
+        System.assertEquals('Rejected', after.Status__c, 'the paid request is revoked');
+        System.assertEquals(0, balance('Annual leave').Used_Days__c,
+            'which is what puts the Annual days back');
+
+        List<ApplicationItem__c> back = [
+            SELECT Status__c, Request_Type__c, Leave_Days__c
+            FROM ApplicationItem__c
+            WHERE OwnerId = :employeeId() AND Request_Type__c = 'Unpaid leave'
+              AND Status__c != 'Rejected' AND Id != :appl.Id
+        ];
+        System.assertEquals(1, back.size(), 'and the days come back as unpaid');
+        System.assertEquals('Draft', back[0].Status__c,
+            'as the Draft they were before anybody converted them');
+        System.assertEquals(2, back[0].Leave_Days__c, 'all of them');
     }
 
     @isTest
@@ -482,17 +506,21 @@ private class LeaveConversionTest {
         ApplicationItem__c appl = raiseUnpaid(3, 'Approved');
 
         Test.startTest();
-        String message;
+        Boolean refused = false;
         try {
             TimesheetController.convertUnpaidLeave(appl.Id, 2);
-            System.assert(false, 'an unpermitted caller reached the conversion');
-        } catch (Exception e) {
-            message = e.getMessage();
+        } catch (AuraHandledException e) {
+            // The message is asserted through blockedReason below. AuraHandledException
+            // reports getMessage() as "Script-thrown exception" under test, which is why
+            // nothing here reads it — the same reason the other refusal tests do not.
+            refused = true;
         }
         Test.stopTest();
 
-        System.assert(message.contains('manager action'),
-            'and is told why rather than being failed silently: ' + message);
+        System.assertEquals(true, refused, 'an unpermitted caller reached the conversion');
+        System.assert(
+            TimesheetController.getUnpaidConversion(appl.Id).blockedReason.contains('manager action'),
+            'and the card says why rather than leaving it blank');
         System.assertEquals('Unpaid leave', reload(appl.Id).Request_Type__c,
             'the days are still unpaid');
         System.assertEquals(0, childrenOf(appl.Id).size(), 'and nothing was raised beside them');
@@ -509,15 +537,16 @@ private class LeaveConversionTest {
         LeaveConversionService.permittedOverride = false;
 
         Test.startTest();
-        String message;
+        Boolean refused = false;
         try {
             TimesheetController.revertConversion(appl.Id, 'changed my mind');
-            System.assert(false, 'an unpermitted caller revoked a conversion');
-        } catch (Exception e) {
-            message = e.getMessage();
+        } catch (AuraHandledException e) {
+            refused = true;
         }
         Test.stopTest();
 
-        System.assert(message.contains('manager action'), 'and is told why: ' + message);
+        System.assertEquals(true, refused, 'an unpermitted caller revoked a conversion');
+        System.assertEquals('Approved', childrenOf(appl.Id)[0].Status__c,
+            'and the converted days are still paid, which is the point of refusing');
     }
 }
