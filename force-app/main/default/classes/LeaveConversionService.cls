@@ -414,6 +414,22 @@ public without sharing class LeaveConversionService {
         update toReject;
 
         /*
+         * The source is still here and still rejected, which is what convertApproved
+         * leaves behind: a settled request cannot be trimmed, so it is reversed whole and
+         * replaced. Putting the absence back is then a status change on the record it
+         * always was, rather than a new record standing in for it.
+         *
+         * Worth the extra branch. Raising a replacement leaves the employee's history
+         * carrying a rejected husk and a new LR- number for days that never moved, and
+         * every convert-and-revert cycle adds another pair. Restoring the original leaves
+         * no such trail, which is what "as they were" is supposed to mean.
+         */
+        if (STATUS_REJECTED.equals(src.Status__c) && TYPE_UNPAID.equals(src.Request_Type__c)) {
+            revertOntoSource(src, reason);
+            return;
+        }
+
+        /*
          * A Draft source was shortened rather than replaced when it was converted, so
          * the days can simply go back onto it and the absence is one record again — the
          * shape it had before anybody pressed anything. Anything else has to be raised
@@ -445,6 +461,47 @@ public without sharing class LeaveConversionService {
             restored.add(restoredUnpaid(src, one));
         }
         insert restored;
+    }
+
+    /*
+     * Puts a rejected source back as the absence it was, and clears away what was raised
+     * to stand in for it.
+     *
+     * The unpaid remainder goes first. A partial conversion left it covering the days
+     * that stayed unpaid, and the source is about to cover those same dates again —
+     * rejected rather than deleted, so the unpaid balance it spent comes back the way it
+     * does everywhere else, and so the record survives to be looked at.
+     *
+     * Restoring the source is then one status change, and nothing needs looking up to
+     * know which one: convertApproved is the only path that rejects a source and it only
+     * runs on an approved one. The trigger reads Rejected to Approved as a fresh
+     * approval, so it re-deducts the unpaid days, re-grants the entitlement that comes
+     * with them, and re-books the calendar entries and man hours.
+     */
+    private static void revertOntoSource(ApplicationItem__c src, String reason) {
+        List<ApplicationItem__c> standingIn = new List<ApplicationItem__c>();
+        for (ApplicationItem__c one : [
+            SELECT Id, Remark__c FROM ApplicationItem__c
+            WHERE Split_From__c = :src.Id
+              AND Request_Type__c = :TYPE_UNPAID
+              AND Converted_From_Unpaid__c = false
+              AND Status__c != :STATUS_REJECTED
+        ]) {
+            standingIn.add(new ApplicationItem__c(
+                Id        = one.Id,
+                Status__c = STATUS_REJECTED,
+                Remark__c = remarkWith(one.Remark__c, revertedNote(reason))
+            ));
+        }
+        if (!standingIn.isEmpty()) {
+            update standingIn;
+        }
+
+        update new ApplicationItem__c(
+            Id        = src.Id,
+            Status__c = STATUS_APPROVED,
+            Remark__c = remarkWith(src.Remark__c, revertedNote(reason))
+        );
     }
 
     /*

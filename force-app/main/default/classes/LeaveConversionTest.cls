@@ -380,15 +380,24 @@ private class LeaveConversionTest {
         System.assertEquals(1, paid.size(), 'the paid request is still there');
         System.assertEquals('Rejected', paid[0].Status__c, 'but revoked');
 
-        List<ApplicationItem__c> back = restoredUnpaidUnder(appl.Id);
-        System.assertEquals(1, back.size(), 'and the days are unpaid again');
-        System.assertEquals('Approved', back[0].Status__c,
-            'approved, as they were before anybody converted them');
-        System.assertEquals(2, back[0].Leave_Days__c, 'all of them');
+        /*
+         * The absence is the record it always was, not a replacement standing in for it.
+         * Raising a new one left the employee's history carrying a rejected husk and a
+         * fresh LR- number for days that never moved.
+         */
+        ApplicationItem__c after = reload(appl.Id);
+        System.assertEquals('Approved', after.Status__c,
+            'the original comes back, approved as it was before anybody converted it');
+        System.assertEquals('Unpaid leave', after.Request_Type__c, 'and unpaid as it was');
+        System.assertEquals(2, after.Leave_Days__c, 'for all of its days');
+        System.assertEquals(0, restoredUnpaidUnder(appl.Id).size(),
+            'with nothing raised beside it');
 
         Leave_Balance__c unpaid = balance('Unpaid leave');
         System.assertEquals(2, unpaid.Used_Days__c, 'charged to the unpaid balance again');
         System.assertEquals(2, unpaid.Entitlement_Days__c, 'with the entitlement granted to match');
+        System.assertEquals(0, balance('Annual leave').Used_Days__c,
+            'and the Annual days the conversion spent are given back');
     }
 
     /*
@@ -679,11 +688,14 @@ private class LeaveConversionTest {
         TimesheetController.revertConversion(appl.Id, 'converted in error');
         Test.stopTest();
 
-        List<ApplicationItem__c> back = restoredUnpaidUnder(appl.Id);
-        System.assertEquals(1, back.size(), 'the day comes back unpaid');
-        System.assertEquals('PM leave', back[0].Period_Leave__c, 'as the afternoon it was');
-        System.assertEquals(0.5, back[0].Leave_Days__c, 'half a day, not a whole one');
-        System.assertEquals(0, balance('Annual leave').Used_Days__c, 'and the Annual day is given back');
+        ApplicationItem__c after = reload(appl.Id);
+        System.assertEquals('Approved', after.Status__c, 'the original afternoon comes back');
+        System.assertEquals('Unpaid leave', after.Request_Type__c, 'unpaid again');
+        System.assertEquals('PM leave', after.Period_Leave__c,
+            'and still an afternoon — restoring it as a whole day would grant an unpaid '
+          + 'day, and the entitlement behind it, for a morning that was worked');
+        System.assertEquals(0.5, after.Leave_Days__c, 'half a day, not a whole one');
+        System.assertEquals(0, balance('Annual leave').Used_Days__c, 'the Annual day is given back');
         System.assertEquals(0.5, balance('Unpaid leave').Used_Days__c, 'charged unpaid again');
     }
 
@@ -728,5 +740,42 @@ private class LeaveConversionTest {
         System.assertEquals(true, refused,
             'looking is silent, but acting is not: convert still asserts');
         System.assertEquals(0, childrenOf(appl.Id).size(), 'and nothing was raised');
+    }
+
+    /*
+     * A partial conversion left an unpaid remainder standing beside the converted days.
+     * The restored source covers those dates again, so the remainder cannot stay: two
+     * records claiming the same day would deduct the unpaid balance for it twice.
+     */
+    @isTest
+    static void revertingAPartialConversionClearsTheRemainderItRaised() {
+        useTestPolicies();
+        asManager();
+        List<Date> days = nWorkingDays(Date.newInstance(testYear(), 3, 2), 5);
+        ApplicationItem__c appl = raiseUnpaid(5, 'Approved');
+
+        Test.startTest();
+        TimesheetController.convertUnpaidLeave(appl.Id, 2);
+        System.assertEquals(2, childrenOf(appl.Id).size(),
+            'two days paid and three left unpaid beside them');
+        TimesheetController.revertConversion(appl.Id, 'converted in error');
+        Test.stopTest();
+
+        ApplicationItem__c after = reload(appl.Id);
+        System.assertEquals('Approved', after.Status__c, 'the whole absence comes back on one record');
+        System.assertEquals(days[0], after.Term_From__c, 'over the dates it always had');
+        System.assertEquals(days[4], after.Term_To__c, 'to the end of it');
+        System.assertEquals(5, after.Leave_Days__c, 'all five days');
+
+        for (ApplicationItem__c one : childrenOf(appl.Id)) {
+            System.assertEquals('Rejected', one.Status__c,
+                'and everything raised to stand in for it is revoked, not left claiming '
+              + 'the same dates: ' + one.Request_Type__c);
+        }
+
+        Leave_Balance__c unpaid = balance('Unpaid leave');
+        System.assertEquals(5, unpaid.Used_Days__c,
+            'the unpaid balance is charged once for five days, not twice for three of them');
+        System.assertEquals(0, balance('Annual leave').Used_Days__c, 'and the Annual days come back');
     }
 }
