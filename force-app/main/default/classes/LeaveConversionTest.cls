@@ -102,8 +102,32 @@ private class LeaveConversionTest {
         return appl;
     }
 
+    /*
+     * Raises the Annual entitlement past the two days the setup grants, for a test that
+     * needs more. Accrued_To_Date__c is written from it on save under Upfront accrual.
+     */
+    private static void annualEntitlement(Decimal days) {
+        Leave_Balance__c bal = [
+            SELECT Id FROM Leave_Balance__c
+            WHERE Employee__c = :employeeId() AND Leave_Type__c = 'Annual leave' LIMIT 1
+        ];
+        update new Leave_Balance__c(Id = bal.Id, Entitlement_Days__c = days);
+    }
+
+    /** A single-day unpaid absence taken as a morning or an afternoon. */
+    private static ApplicationItem__c raiseUnpaidHalf(String period, String status) {
+        ApplicationItem__c appl = new ApplicationItem__c(
+            Request_Type__c = 'Unpaid leave', Period_Leave__c = period,
+            Term_From__c = nWorkingDays(Date.newInstance(testYear(), 3, 2), 1)[0],
+            Remark__c = 'conversion test', Status__c = status, OwnerId = employeeId()
+        );
+        insert appl;
+        return appl;
+    }
+
     private static ApplicationItem__c reload(Id applId) {
         return [SELECT Request_Type__c, Status__c, Leave_Days__c, Term_From__c, Term_To__c,
+                       Period_Leave__c,
                        Converted_From_Unpaid__c, Converted_From_Status__c, Converted_On__c,
                        Converted_By__c, Split_From__c
                 FROM ApplicationItem__c WHERE Id = :applId];
@@ -111,14 +135,16 @@ private class LeaveConversionTest {
 
     private static List<ApplicationItem__c> childrenOf(Id parentId) {
         return [SELECT Request_Type__c, Status__c, Leave_Days__c, Term_From__c, Term_To__c,
-                       Converted_From_Unpaid__c, Converted_From_Status__c, Converted_By__c
+                       Period_Leave__c, Converted_From_Unpaid__c, Converted_From_Status__c,
+                       Converted_By__c
                 FROM ApplicationItem__c WHERE Split_From__c = :parentId
                 ORDER BY Term_From__c];
     }
 
     /** What a revert put back: the unpaid records raised beside a revoked conversion. */
     private static List<ApplicationItem__c> restoredUnpaidUnder(Id parentId) {
-        return [SELECT Request_Type__c, Status__c, Leave_Days__c, Term_From__c, Term_To__c
+        return [SELECT Request_Type__c, Status__c, Leave_Days__c, Term_From__c, Term_To__c,
+                       Period_Leave__c
                 FROM ApplicationItem__c
                 WHERE Split_From__c = :parentId
                   AND Request_Type__c = 'Unpaid leave'
@@ -548,5 +574,117 @@ private class LeaveConversionTest {
         System.assertEquals(true, refused, 'an unpermitted caller revoked a conversion');
         System.assertEquals('Approved', childrenOf(appl.Id)[0].Status__c,
             'and the converted days are still paid, which is the point of refusing');
+    }
+
+    // ------------------------------------------------------------------ half days
+
+    /*
+     * LEAVE-54 spends a balance to the half day at a split boundary; a conversion now
+     * cuts at one. Converting 2.5 of a 3-day unpaid absence pays for Monday, Tuesday and
+     * Wednesday morning, and leaves Wednesday afternoon unpaid — four records where the
+     * absence was one, because Period_Leave__c is the only place a half day can be said
+     * and it means nothing on a range.
+     */
+    @isTest
+    static void aBoundaryHalfDayConvertsAsItsOwnRecord() {
+        useTestPolicies();
+        asManager();
+        annualEntitlement(3);  // the setup's two days cannot pay for two and a half
+        List<Date> days = nWorkingDays(Date.newInstance(testYear(), 3, 2), 3);
+        ApplicationItem__c appl = raiseUnpaid(3, 'Approved');
+
+        Test.startTest();
+        TimesheetController.convertUnpaidLeave(appl.Id, 2.5);
+        Test.stopTest();
+
+        System.assertEquals('Rejected', reload(appl.Id).Status__c, 'the original is reversed whole');
+
+        List<ApplicationItem__c> raised = childrenOf(appl.Id);
+        System.assertEquals(3, raised.size(), 'rebuilt as the three records it now is');
+
+        System.assertEquals('Annual leave', raised[0].Request_Type__c, 'the whole paid days');
+        System.assertEquals('All day', raised[0].Period_Leave__c, 'in one range');
+        System.assertEquals(days[0], raised[0].Term_From__c, 'from the first day');
+        System.assertEquals(days[1], raised[0].Term_To__c, 'to the second');
+        System.assertEquals(2, raised[0].Leave_Days__c, 'two days of it');
+
+        System.assertEquals('Annual leave', raised[1].Request_Type__c, 'then the paid morning');
+        System.assertEquals('AM leave', raised[1].Period_Leave__c, 'as a morning, on its own record');
+        System.assertEquals(days[2], raised[1].Term_From__c, 'on the boundary day');
+        System.assertEquals(0.5, raised[1].Leave_Days__c, 'counting half a day');
+
+        System.assertEquals('Unpaid leave', raised[2].Request_Type__c, 'and the afternoon stays unpaid');
+        System.assertEquals('PM leave', raised[2].Period_Leave__c, 'as an afternoon');
+        System.assertEquals(days[2], raised[2].Term_From__c, 'on the same day');
+        System.assertEquals(0.5, raised[2].Leave_Days__c, 'the other half of it');
+
+        System.assertEquals(2.5, balance('Annual leave').Used_Days__c,
+            'and the Annual balance is spent to the half day, as the split spends it');
+    }
+
+    @isTest
+    static void anAbsenceThatIsItselfHalfADayConvertsWithoutBecomingAWholeOne() {
+        useTestPolicies();
+        asManager();
+        ApplicationItem__c appl = raiseUnpaidHalf('PM leave', 'Approved');
+        System.assertEquals(0.5, reload(appl.Id).Leave_Days__c, 'half a day taken unpaid');
+
+        Test.startTest();
+        LeaveConversionService.ConversionView v = TimesheetController.getUnpaidConversion(appl.Id);
+        System.assertEquals(0.5, v.convertibleDays, 'and half a day is what is on offer');
+        TimesheetController.convertUnpaidLeave(appl.Id, 0.5);
+        Test.stopTest();
+
+        List<ApplicationItem__c> raised = childrenOf(appl.Id);
+        System.assertEquals(1, raised.size(), 'one paid record replaces it');
+        System.assertEquals('Annual leave', raised[0].Request_Type__c, 'now paid');
+        System.assertEquals('PM leave', raised[0].Period_Leave__c,
+            'and still the afternoon: the absence happened then, and converting it is '
+          + 'about who pays rather than when it fell');
+        System.assertEquals(0.5, raised[0].Leave_Days__c, 'half a day, not a whole one');
+        System.assertEquals(0.5, balance('Annual leave').Used_Days__c, 'half a day spent');
+    }
+
+    @isTest
+    static void aQuarterDayIsRefusedBecauseNoBalanceHoldsOne() {
+        useTestPolicies();
+        asManager();
+        ApplicationItem__c appl = raiseUnpaid(3, 'Approved');
+
+        Test.startTest();
+        Boolean refused = false;
+        try {
+            TimesheetController.convertUnpaidLeave(appl.Id, 1.25);
+        } catch (AuraHandledException e) {
+            refused = true;
+        }
+        Test.stopTest();
+
+        System.assertEquals(true, refused, 'a quarter day is not a thing a balance can hold');
+        System.assertEquals(0, childrenOf(appl.Id).size(), 'and nothing was raised');
+    }
+
+    /*
+     * Reverting has to put a half day back as a half day. Restoring it as a whole one
+     * would grant an unpaid day, and the entitlement that comes with it, for a morning
+     * the employee worked.
+     */
+    @isTest
+    static void revertingAHalfDayConversionPutsBackAHalfDay() {
+        useTestPolicies();
+        asManager();
+        ApplicationItem__c appl = raiseUnpaidHalf('PM leave', 'Approved');
+
+        Test.startTest();
+        TimesheetController.convertUnpaidLeave(appl.Id, 0.5);
+        TimesheetController.revertConversion(appl.Id, 'converted in error');
+        Test.stopTest();
+
+        List<ApplicationItem__c> back = restoredUnpaidUnder(appl.Id);
+        System.assertEquals(1, back.size(), 'the day comes back unpaid');
+        System.assertEquals('PM leave', back[0].Period_Leave__c, 'as the afternoon it was');
+        System.assertEquals(0.5, back[0].Leave_Days__c, 'half a day, not a whole one');
+        System.assertEquals(0, balance('Annual leave').Used_Days__c, 'and the Annual day is given back');
+        System.assertEquals(0.5, balance('Unpaid leave').Used_Days__c, 'charged unpaid again');
     }
 }

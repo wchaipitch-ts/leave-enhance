@@ -65,6 +65,10 @@ public without sharing class LeaveConversionService {
     private static final String STATUS_APPROVED = 'Approved';
     private static final String STATUS_REJECTED = 'Rejected';
 
+    private static final String ALL_DAY  = 'All day';
+    private static final String AM_LEAVE = 'AM leave';
+    private static final String PM_LEAVE = 'PM leave';
+
     private static final String LABEL_OPEN        = 'Draft';
     private static final String LABEL_PARTIAL     = 'Partially Converted';
     private static final String LABEL_FULL        = 'Fully Converted';
@@ -196,9 +200,10 @@ public without sharing class LeaveConversionService {
             throw new AuraHandledException(before.blockedReason);
         }
 
-        Integer wanted = wholeDaysRequested(days, before);
+        Integer wanted = halfDaysRequested(days, before);
         List<Date> workingDays = ApplicationItemTriggerLogic.workingDaysFor(
             src, ApplicationItemTriggerLogic.holidaysForBatch(new List<ApplicationItem__c>{ src }));
+        List<Half> halves = halvesFor(src, workingDays);
 
         /*
          * The day count comes from Leave_Days__c and the dates from workingDaysFor, and
@@ -206,19 +211,19 @@ public without sharing class LeaveConversionService {
          * written when a different Holiday calendar was in force. Cutting on a figure the
          * dates do not support would put the boundary in the wrong place, so the dates win.
          */
-        if (workingDays.size() < wanted) {
-            wanted = workingDays.size();
+        if (halves.size() < wanted) {
+            wanted = halves.size();
         }
         if (wanted <= 0) {
             throw new AuraHandledException('This request covers no working day that could be converted.');
         }
-        Boolean whole = wanted >= workingDays.size();
+        Boolean whole = wanted >= halves.size();
 
         try {
             if (STATUS_APPROVED.equals(src.Status__c)) {
-                convertApproved(src, workingDays, wanted, whole);
+                convertApproved(src, halves, wanted, whole);
             } else {
-                convertDraft(src, workingDays, wanted, whole);
+                convertDraft(src, halves, wanted, whole);
             }
         } catch (DmlException e) {
             // The validation rules carry the message the user needs — the probation
@@ -231,10 +236,15 @@ public without sharing class LeaveConversionService {
 
     /*
      * A Draft has spent nothing and booked nothing, so it can be edited in place.
-     * Converting all of it is a change of type; converting part of it moves the start
-     * date past the converted days and raises the paid ones beside it.
+     * Converting all of it is a change of type — the period rides along untouched, so a
+     * half-day absence stays the half day it was. Converting part of it narrows the
+     * record to the first of what is still unpaid and raises the rest beside it.
+     *
+     * The remainder can be more than one record now: half a boundary day cannot share a
+     * record with the whole days after it, so Wednesday afternoon and Thursday-to-Friday
+     * are two, not one.
      */
-    private static void convertDraft(ApplicationItem__c src, List<Date> workingDays,
+    private static void convertDraft(ApplicationItem__c src, List<Half> halves,
                                      Integer wanted, Boolean whole) {
         if (whole) {
             update new ApplicationItem__c(
@@ -252,9 +262,26 @@ public without sharing class LeaveConversionService {
             );
             return;
         }
-        // Shortened first, so the two records never claim the same dates at any point.
-        update new ApplicationItem__c(Id = src.Id, Term_From__c = workingDays[wanted]);
-        insert convertedRequest(src, workingDays[0], workingDays[wanted - 1]);
+        List<Piece> converted = piecesFor(halves, 0, wanted);
+        List<Piece> remainder = piecesFor(halves, wanted, halves.size() - wanted);
+
+        // Shortened first, so no two records claim the same half day at any point.
+        Piece head = remainder[0];
+        update new ApplicationItem__c(
+            Id              = src.Id,
+            Term_From__c    = head.startsOn,
+            Term_To__c      = head.endsOn,
+            Period_Leave__c = head.period
+        );
+
+        List<ApplicationItem__c> raised = new List<ApplicationItem__c>();
+        for (Integer i = 1; i < remainder.size(); i++) {
+            raised.add(unpaidPiece(src, remainder[i], src.Status__c));
+        }
+        for (Piece piece : converted) {
+            raised.add(convertedRequest(src, piece));
+        }
+        insert raised;
     }
 
     /*
@@ -263,7 +290,7 @@ public without sharing class LeaveConversionService {
      * LeaveReversalService's work, driven by the status transition rather than repeated
      * here, so a conversion cannot restore a balance differently from a rejection.
      */
-    private static void convertApproved(ApplicationItem__c src, List<Date> workingDays,
+    private static void convertApproved(ApplicationItem__c src, List<Half> halves,
                                         Integer wanted, Boolean whole) {
         update new ApplicationItem__c(
             Id        = src.Id,
@@ -271,18 +298,20 @@ public without sharing class LeaveConversionService {
             Remark__c = remarkWith(src.Remark__c, convertedNote(src))
         );
 
-        List<ApplicationItem__c> raised = new List<ApplicationItem__c>{
-            convertedRequest(src, workingDays[0], workingDays[wanted - 1])
-        };
+        List<ApplicationItem__c> raised = new List<ApplicationItem__c>();
+        for (Piece piece : piecesFor(halves, 0, wanted)) {
+            raised.add(convertedRequest(src, piece));
+        }
         if (!whole) {
             /*
              * Raised already Approved, which the trigger treats as a fresh approval: it
              * re-deducts the unpaid balance for these days and re-books their calendar
-             * entries and man hours. The employee is not asked to submit days that were
-             * approved as unpaid and are staying unpaid — only the converted ones need a
-             * decision, and they are the Draft above.
+             * entries and man hours. Nobody is asked to sign a second time for days that
+             * were approved as unpaid and are staying unpaid.
              */
-            raised.add(unpaidRemainder(src, workingDays[wanted]));
+            for (Piece piece : piecesFor(halves, wanted, halves.size() - wanted)) {
+                raised.add(unpaidPiece(src, piece, STATUS_APPROVED));
+            }
         }
         insert raised;
     }
@@ -359,11 +388,21 @@ public without sharing class LeaveConversionService {
          * beside it: the source was rejected and replaced, and an approved record cannot
          * be widened in any case.
          */
+        /*
+         * Only when every record involved is a whole day. Widening a PM-leave record to
+         * start on an earlier date would make a range carrying a half-day period, which
+         * Leave_Request_Period_Single_Day_Only refuses and calculateLeaveDays would
+         * miscount anyway. A half-day boundary is put back beside the record instead —
+         * more records than the absence started with, which is the cost of the boundary
+         * being two records in the first place.
+         */
         Boolean absorb = TYPE_UNPAID.equals(src.Request_Type__c)
                       && STATUS_DRAFT.equals(src.Status__c)
                       && src.Term_From__c != null
                       && earliest != null
-                      && earliest < src.Term_From__c;
+                      && earliest < src.Term_From__c
+                      && ALL_DAY.equals(src.Period_Leave__c)
+                      && allWholeDays(made);
         if (absorb) {
             update new ApplicationItem__c(Id = src.Id, Term_From__c = earliest);
             return;
@@ -480,7 +519,7 @@ public without sharing class LeaveConversionService {
         v.blockedReason   = blockedReasonFor(src, annual, v);
         v.canConvert      = v.blockedReason == null;
         v.convertibleDays = v.canConvert
-            ? wholeDays(min(v.remainingUnpaidDays, v.annualAvailable))
+            ? halfDays(min(v.remainingUnpaidDays, v.annualAvailable))
             : 0;
         v.revertBlockedReason = revertBlockedReasonFor(src, v.convertedRequests);
         v.canRevert           = v.revertBlockedReason == null;
@@ -541,14 +580,8 @@ public without sharing class LeaveConversionService {
         if (src.Term_From__c == null) {
             return 'This request has no start date, so there are no days to convert.';
         }
-        if (v.remainingUnpaidDays < 1) {
-            /*
-             * Half days are the case that lands here with days still on the record. The
-             * split leaves a part day in the balance rather than rounding it away, and
-             * conversion follows it: half a day of Annual leave for half a day unpaid
-             * would have to be raised by hand.
-             */
-            return 'There is no whole unpaid day left on this request to convert.';
+        if (v.remainingUnpaidDays < 0.5) {
+            return 'There is no unpaid day left on this request to convert.';
         }
         if (annual == null) {
             return 'No Annual leave balance exists for ' + src.Term_From__c.year()
@@ -559,8 +592,8 @@ public without sharing class LeaveConversionService {
                 ? 'The Annual leave balance for ' + src.Term_From__c.year() + ' is locked.'
                 : annual.Lock_Reason__c;
         }
-        if (availableOn(annual) < 1) {
-            return 'There is no whole Annual leave day available in ' + src.Term_From__c.year()
+        if (availableOn(annual) < 0.5) {
+            return 'There is no Annual leave day available in ' + src.Term_From__c.year()
                  + ' to convert these days into.';
         }
         return null;
@@ -601,29 +634,33 @@ public without sharing class LeaveConversionService {
              - zeroIfNull(bal.Used_Days__c);
     }
 
-    private static Integer wholeDaysRequested(Decimal days, ConversionView before) {
+    /** How many half days were asked for. Halves, because that is what a balance holds. */
+    private static Integer halfDaysRequested(Decimal days, ConversionView before) {
         Decimal wanted = days == null ? before.convertibleDays : days;
         if (wanted == null || wanted <= 0) {
             throw new AuraHandledException('Enter how many days to convert.');
         }
-        if (wanted != wanted.round(System.RoundingMode.DOWN)) {
-            throw new AuraHandledException('Unpaid days convert in whole days only.');
+        Decimal halves = wanted * 2;
+        if (halves != halves.round(System.RoundingMode.DOWN)) {
+            throw new AuraHandledException('Unpaid days convert in whole or half days only.');
         }
         if (wanted > before.convertibleDays) {
             throw new AuraHandledException('Only ' + plain(before.convertibleDays)
                 + ' of the ' + plain(before.remainingUnpaidDays) + ' unpaid day(s) on this '
                 + 'request can be converted right now.');
         }
-        return Integer.valueOf(wanted);
+        return Integer.valueOf(halves);
     }
 
-    private static ApplicationItem__c convertedRequest(ApplicationItem__c src, Date startDay, Date endDay) {
+    private static ApplicationItem__c convertedRequest(ApplicationItem__c src, Piece piece) {
         return new ApplicationItem__c(
             RecordTypeId             = src.RecordTypeId,
             Request_Type__c          = TYPE_ANNUAL,
-            Period_Leave__c          = 'All day',
-            Term_From__c             = startDay,
-            Term_To__c               = endDay,
+            // The piece's own period, not All day. Converting the morning of a boundary
+            // day into a whole paid day would pay for an afternoon that was worked.
+            Period_Leave__c          = piece.period,
+            Term_From__c             = piece.startsOn,
+            Term_To__c               = piece.endsOn,
             Remark__c                = remarkWith(src.Remark__c, convertedNote(src)),
             /*
              * Approved on insert. The manager doing the converting is the person who
@@ -633,7 +670,7 @@ public without sharing class LeaveConversionService {
              * sitting in a Draft nobody submitted while payroll pays out on them.
              *
              * The trigger treats an inserted Approved record as a fresh approval, as it
-             * already does for unpaidRemainder below: deductLeaveBalance spends the
+             * already does for the unpaid remainder beside it: deductLeaveBalance spends the
              * Annual balance in this same transaction and refuses an overdraw, so
              * nothing here can quietly pay for days that do not exist.
              */
@@ -657,7 +694,12 @@ public without sharing class LeaveConversionService {
         return new ApplicationItem__c(
             RecordTypeId    = src.RecordTypeId,
             Request_Type__c = TYPE_UNPAID,
-            Period_Leave__c = 'All day',
+            /*
+             * The revoked request's own period. Restoring half a day as a whole one
+             * would grant an unpaid day, and the entitlement behind it, for a morning
+             * the employee worked.
+             */
+            Period_Leave__c = made.Period_Leave__c,
             Term_From__c    = made.Term_From__c,
             Term_To__c      = made.Term_To__c,
             Remark__c       = remarkWith(src.Remark__c, ' [unpaid days restored from ' + made.Name + ']'),
@@ -668,10 +710,114 @@ public without sharing class LeaveConversionService {
         );
     }
 
+    // ============================================================ half-day shaping
+
+    /*
+     * A morning or an afternoon of one working day, and the records a run of them
+     * becomes.
+     *
+     * DUPLICATED FROM LeaveSplitService.halvesFor/piecesFor, which is the original and
+     * the one to read for why any of it is shaped this way. The two must agree: the
+     * split builds the tiling of an absence and a conversion re-cuts one it built, so a
+     * boundary shaped differently here than there produces a family where some records
+     * came from one rule and some from another. Change both, or extract them.
+     *
+     * Kept separate for now because this service uses only the shaping — it has no
+     * overflow chain, no pools and no expiry windows, which is most of what that class
+     * is — and pulling four private inner types out of a trigger-critical class is work
+     * of its own.
+     */
+    private class Half {
+        Date day;
+        Boolean isMorning;
+        Half(Date day, Boolean isMorning) {
+            this.day = day;
+            this.isMorning = isMorning;
+        }
+    }
+
+    private class Piece {
+        Date startsOn;
+        Date endsOn;
+        String period;
+        Piece(Date startsOn, Date endsOn, String period) {
+            this.startsOn = startsOn;
+            this.endsOn = endsOn;
+            this.period = period;
+        }
+    }
+
+    /*
+     * The request as half days, which is the unit a conversion is now cut in. A request
+     * that is itself already a half day is one half and cannot be divided again — the
+     * absence happened in that morning or that afternoon, and conversion is about who
+     * pays for it, not when it fell.
+     */
+    private static List<Half> halvesFor(ApplicationItem__c src, List<Date> workingDays) {
+        List<Half> halves = new List<Half>();
+        if (workingDays.size() == 1 && isHalfDay(src.Period_Leave__c)) {
+            halves.add(new Half(workingDays[0], AM_LEAVE.equals(src.Period_Leave__c)));
+            return halves;
+        }
+        for (Date day : workingDays) {
+            halves.add(new Half(day, true));
+            halves.add(new Half(day, false));
+        }
+        return halves;
+    }
+
+    /*
+     * The records one run of halves becomes: at most the afternoon it starts on, the
+     * whole days, and the morning it ends on.
+     *
+     * A boundary day has to be a record of its own because Period_Leave__c is the only
+     * place a half day can be expressed and it means nothing on a range — refused there
+     * by Leave_Request_Period_Single_Day_Only, and ignored by calculateLeaveDays, which
+     * counts a range in whole days.
+     *
+     * The closing morning is built early and held back so it lands after the whole-day
+     * range rather than before it, which is what keeps the records in date order.
+     */
+    private static List<Piece> piecesFor(List<Half> halves, Integer first, Integer count) {
+        List<Piece> pieces = new List<Piece>();
+        Integer last = first + count - 1;
+
+        if (!halves[first].isMorning) {
+            pieces.add(new Piece(halves[first].day, halves[first].day, PM_LEAVE));
+            first++;
+        }
+        Piece closing = (first <= last && halves[last].isMorning)
+            ? new Piece(halves[last].day, halves[last].day, AM_LEAVE)
+            : null;
+        if (closing != null) {
+            last--;
+        }
+        if (first <= last) {
+            pieces.add(new Piece(halves[first].day, halves[last].day, ALL_DAY));
+        }
+        if (closing != null) {
+            pieces.add(closing);
+        }
+        return pieces;
+    }
+
+    private static Boolean allWholeDays(List<ApplicationItem__c> records) {
+        for (ApplicationItem__c one : records) {
+            if (isHalfDay(one.Period_Leave__c)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static Boolean isHalfDay(String period) {
+        return AM_LEAVE.equals(period) || PM_LEAVE.equals(period);
+    }
+
     private static List<ApplicationItem__c> convertedChildrenOf(Id parentId) {
         return [
             SELECT Id, Name, Term_From__c, Term_To__c, Status__c, Remark__c,
-                   Leave_Days__c, Converted_From_Status__c
+                   Leave_Days__c, Period_Leave__c, Converted_From_Status__c
             FROM ApplicationItem__c
             WHERE Split_From__c = :parentId
               AND Converted_From_Unpaid__c = true
@@ -696,15 +842,16 @@ public without sharing class LeaveConversionService {
             : ' [conversion reverted: ' + reason.trim() + ']';
     }
 
-    private static ApplicationItem__c unpaidRemainder(ApplicationItem__c src, Date startDay) {
+    /** One stretch of what stays unpaid, in the state those days are meant to be in. */
+    private static ApplicationItem__c unpaidPiece(ApplicationItem__c src, Piece piece, String status) {
         return new ApplicationItem__c(
             RecordTypeId    = src.RecordTypeId,
             Request_Type__c = TYPE_UNPAID,
-            Period_Leave__c = 'All day',
-            Term_From__c    = startDay,
-            Term_To__c      = src.Term_To__c,
+            Period_Leave__c = piece.period,
+            Term_From__c    = piece.startsOn,
+            Term_To__c      = piece.endsOn,
             Remark__c       = remarkWith(src.Remark__c, ' [unpaid remainder of ' + src.Name + ']'),
-            Status__c       = STATUS_APPROVED,
+            Status__c       = status,
             OwnerId         = src.OwnerId,
             Split_From__c   = src.Id
         );
@@ -746,8 +893,19 @@ public without sharing class LeaveConversionService {
         return value == null ? '0' : value.stripTrailingZeros().toPlainString();
     }
 
-    private static Decimal wholeDays(Decimal value) {
-        return value <= 0 ? 0 : value.round(System.RoundingMode.DOWN);
+    /*
+     * Floored to the half day, which is the granularity a balance is held at and now the
+     * granularity a conversion cuts at. Anything finer is rounded away because no balance
+     * can hold it.
+     *
+     * Long division would truncate, so the halves go back through Decimal to be halved.
+     */
+    private static Decimal halfDays(Decimal value) {
+        if (value == null || value <= 0) {
+            return 0;
+        }
+        Long halves = (value * 2).round(System.RoundingMode.DOWN);
+        return Decimal.valueOf(halves) / 2;
     }
 
     private static Decimal min(Decimal a, Decimal b) {
