@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomPermission xmlns="http://soap.sforce.com/2006/04/metadata">
+    <description>Allows converting an employee&apos;s Unpaid leave days to Annual leave. A payroll correction on somebody else&apos;s record, so it is a manager&apos;s call and not the employee&apos;s. Checked in Apex: hiding the card governs the button, not the API.</description>
+    <isLicensed>false</isLicensed>
+    <label>Convert Unpaid Leave</label>
+</CustomPermission>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">
+    <customPermissions>
+        <enabled>true</enabled>
+        <name>Convert_Unpaid_Leave</name>
+    </customPermissions>
+    <description>What a manager needs to convert an employee&apos;s unpaid days to Annual leave. Carries the custom permission and nothing else: reading the employee&apos;s balance is a separate grant the conversion checks for as well.</description>
+    <hasActivationRequired>false</hasActivationRequired>
+    <label>Leave Conversion Manager</label>
+</PermissionSet>

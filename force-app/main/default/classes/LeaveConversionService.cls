@@ -58,6 +58,8 @@ public without sharing class LeaveConversionService {
     @TestVisible private static final String TYPE_UNPAID = 'Unpaid leave';
     @TestVisible private static final String TYPE_ANNUAL = 'Annual leave';
 
+    private static final String PERMISSION = 'Convert_Unpaid_Leave';
+
     private static final String STATUS_DRAFT    = 'Draft';
     private static final String STATUS_PENDING  = 'Pending';
     private static final String STATUS_APPROVED = 'Approved';
@@ -127,9 +129,47 @@ public without sharing class LeaveConversionService {
         @AuraEnabled public Boolean awaitingApproval;
     }
 
+    // ==================================================================== permission
+
+    /*
+     * Test hook. FeatureManagement reads the running user's assignments, and granting a
+     * permission set to yourself mid-transaction needs System.runAs gymnastics that
+     * obscure what is actually being tested. Mirrors OvertimeRequestGuard.
+     */
+    @TestVisible private static Boolean permittedOverride;
+
+    /** True when the running user may convert somebody's unpaid days to Annual leave. */
+    @TestVisible
+    private static Boolean permitted() {
+        if (permittedOverride != null) {
+            return permittedOverride;
+        }
+        return FeatureManagement.checkPermission(PERMISSION);
+    }
+
+    /*
+     * The writes refuse rather than going quiet, because unlike the card there is
+     * nothing to hide behind: a caller reaching convert or revert has gone past the
+     * missing card, and silence would read as success.
+     */
+    private static void assertPermitted() {
+        if (!permitted()) {
+            throw new AuraHandledException(
+                'Converting unpaid leave to Annual leave is a manager action. You do not '
+              + 'have permission to convert this request.');
+        }
+    }
+
     // ==================================================================== reading
 
-    /** The card's figures for one Unpaid leave request. */
+    /**
+     * The card's figures for one Unpaid leave request.
+     *
+     * Deliberately does not refuse an unpermitted caller. showsConversion comes back
+     * false and the card removes itself, which is what an employee should see: nothing.
+     * Throwing here would paint the error banner instead, which tells them at length
+     * about a correction they are not the one to make.
+     */
     public static ConversionView view(Id requestId) {
         ApplicationItem__c src = load(requestId);
         LeaveBalanceService.assertCanView(src.OwnerId);
@@ -147,6 +187,7 @@ public without sharing class LeaveConversionService {
      *         record the caller was looking at is not the record that survives.
      */
     public static ConversionView convert(Id requestId, Decimal days) {
+        assertPermitted();
         ApplicationItem__c src = load(requestId);
         LeaveBalanceService.assertCanView(src.OwnerId);
 
@@ -262,6 +303,7 @@ public without sharing class LeaveConversionService {
      *               that somebody made deliberately was taken back.
      */
     public static ConversionView revert(Id requestId, String reason) {
+        assertPermitted();
         ApplicationItem__c src = load(requestId);
         LeaveBalanceService.assertCanView(src.OwnerId);
 
@@ -375,7 +417,8 @@ public without sharing class LeaveConversionService {
          */
         Boolean isItselfConverted = src.Converted_From_Unpaid__c == true
                                     && !STATUS_REJECTED.equals(src.Status__c);
-        v.showsConversion = !ApplicationItemTriggerHandler.isOvertimeRequest(src)
+        v.showsConversion = permitted()
+                            && !ApplicationItemTriggerHandler.isOvertimeRequest(src)
                             && (TYPE_UNPAID.equals(src.Request_Type__c) || isItselfConverted);
 
         v.convertedRequests = new List<ConvertedRequest>();
@@ -449,6 +492,9 @@ public without sharing class LeaveConversionService {
      */
     private static String revertBlockedReasonFor(ApplicationItem__c src,
                                                  List<ConvertedRequest> made) {
+        if (!permitted()) {
+            return 'Reverting a conversion is a manager action.';
+        }
         if (ApplicationItemTriggerHandler.isOvertimeRequest(src)) {
             return 'An overtime claim has no conversion to revert.';
         }
@@ -470,6 +516,13 @@ public without sharing class LeaveConversionService {
      */
     private static String blockedReasonFor(ApplicationItem__c src, Leave_Balance__c annual,
                                            ConversionView v, Decimal spendable) {
+        // Before anything about the record, so canConvert can never come back true for
+        // somebody convert() would refuse. The card is already hidden from them, but a
+        // view object that contradicts the service it describes is a trap for the next
+        // screen built on it.
+        if (!permitted()) {
+            return 'Converting unpaid leave to Annual leave is a manager action.';
+        }
         if (ApplicationItemTriggerHandler.isOvertimeRequest(src)) {
             return 'An overtime claim has no unpaid days to convert.';
         }

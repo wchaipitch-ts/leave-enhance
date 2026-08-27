@@ -49,6 +49,15 @@ private class LeaveConversionTest {
         };
     }
 
+    /*
+     * Conversion is a manager action, and the running test user holds no permission
+     * sets. Every test below is somebody permitted doing the converting; the ones that
+     * are about the permission itself say so by not calling this, or by turning it off.
+     */
+    private static void asManager() {
+        LeaveConversionService.permittedOverride = true;
+    }
+
     @testSetup
     static void setup() {
         Profile p = [SELECT Id FROM Profile WHERE Name = 'Standard User' LIMIT 1];
@@ -128,6 +137,7 @@ private class LeaveConversionTest {
     @isTest
     static void theCardCountsWhatTheBalanceCanAffordRatherThanWhatWasAsked() {
         useTestPolicies();
+        asManager();
         ApplicationItem__c appl = raiseUnpaid(3, 'Approved');
 
         Test.startTest();
@@ -144,6 +154,7 @@ private class LeaveConversionTest {
     @isTest
     static void aRequestWithAnApproverOnItCannotBeConverted() {
         useTestPolicies();
+        asManager();
         ApplicationItem__c appl = raiseUnpaid(2, 'Pending');
 
         Test.startTest();
@@ -160,6 +171,7 @@ private class LeaveConversionTest {
     @isTest
     static void convertingAnApprovedRequestInFullGivesBackTheUnpaidDaysAndRaisesADraft() {
         useTestPolicies();
+        asManager();
         ApplicationItem__c appl = raiseUnpaid(2, 'Approved');
         System.assertEquals(2, balance('Unpaid leave').Used_Days__c, 'taken unpaid to begin with');
 
@@ -192,6 +204,7 @@ private class LeaveConversionTest {
     @isTest
     static void aPartialConversionLeavesTheRestUnpaidAndStillApproved() {
         useTestPolicies();
+        asManager();
         ApplicationItem__c appl = raiseUnpaid(5, 'Approved');
         List<Date> days = nWorkingDays(Date.newInstance(testYear(), 3, 2), 5);
 
@@ -225,6 +238,7 @@ private class LeaveConversionTest {
     @isTest
     static void moreDaysThanTheBalanceHoldsIsRefused() {
         useTestPolicies();
+        asManager();
         ApplicationItem__c appl = raiseUnpaid(5, 'Approved');
 
         Test.startTest();
@@ -245,6 +259,7 @@ private class LeaveConversionTest {
     @isTest
     static void aDraftConvertsInPlaceBecauseItHasSpentNothing() {
         useTestPolicies();
+        asManager();
         ApplicationItem__c appl = raiseUnpaid(2, 'Draft');
 
         Test.startTest();
@@ -263,6 +278,7 @@ private class LeaveConversionTest {
     @isTest
     static void aPartialDraftConversionShortensTheUnpaidRequestRatherThanReversingIt() {
         useTestPolicies();
+        asManager();
         ApplicationItem__c appl = raiseUnpaid(4, 'Draft');
         List<Date> days = nWorkingDays(Date.newInstance(testYear(), 3, 2), 4);
 
@@ -286,6 +302,7 @@ private class LeaveConversionTest {
     @isTest
     static void theCardReadsPartiallyConvertedOnceSomeDaysHaveMoved() {
         useTestPolicies();
+        asManager();
         ApplicationItem__c appl = raiseUnpaid(4, 'Draft');
 
         Test.startTest();
@@ -314,6 +331,7 @@ private class LeaveConversionTest {
     @isTest
     static void revertingAnApprovedConversionPutsTheDaysBackAsTheyWere() {
         useTestPolicies();
+        asManager();
         ApplicationItem__c appl = raiseUnpaid(2, 'Approved');
 
         Test.startTest();
@@ -349,6 +367,7 @@ private class LeaveConversionTest {
     @isTest
     static void revertingADraftConversionGivesTheRequestItsDaysBack() {
         useTestPolicies();
+        asManager();
         ApplicationItem__c appl = raiseUnpaid(4, 'Draft');
         List<Date> days = nWorkingDays(Date.newInstance(testYear(), 3, 2), 4);
 
@@ -374,6 +393,7 @@ private class LeaveConversionTest {
     @isTest
     static void revertingAConversionMadeInPlaceTurnsTheRequestBack() {
         useTestPolicies();
+        asManager();
         ApplicationItem__c appl = raiseUnpaid(2, 'Draft');
 
         Test.startTest();
@@ -397,6 +417,7 @@ private class LeaveConversionTest {
     @isTest
     static void thereIsNothingToRevertOnARequestNobodyConverted() {
         useTestPolicies();
+        asManager();
         ApplicationItem__c appl = raiseUnpaid(2, 'Approved');
 
         Test.startTest();
@@ -418,6 +439,7 @@ private class LeaveConversionTest {
     @isTest
     static void aRequestThatIsNotUnpaidIsNotTheCardSBusiness() {
         useTestPolicies();
+        asManager();
         ApplicationItem__c appl = new ApplicationItem__c(
             Request_Type__c = 'Annual leave', Period_Leave__c = 'All day',
             Term_From__c = nWorkingDays(Date.newInstance(testYear(), 3, 2), 1)[0],
@@ -432,5 +454,70 @@ private class LeaveConversionTest {
         System.assertEquals(false, v.canConvert, 'paid leave has nothing to convert');
         System.assertEquals(false, v.showsConversion,
             'and no conversion produced it either, so the card removes itself');
+    }
+
+    // ------------------------------------------------------------------ permission
+
+    @isTest
+    static void anEmployeeWithoutThePermissionIsShownNoCardAtAll() {
+        useTestPolicies();
+        LeaveConversionService.permittedOverride = false;
+        ApplicationItem__c appl = raiseUnpaid(3, 'Approved');
+
+        Test.startTest();
+        LeaveConversionService.ConversionView v = TimesheetController.getUnpaidConversion(appl.Id);
+        Test.stopTest();
+
+        System.assertEquals(false, v.showsConversion,
+            'the card removes itself rather than explaining a correction they cannot make');
+        System.assertEquals(false, v.canConvert,
+            'and the view never claims a button convert() would refuse');
+        System.assertEquals(0, v.convertibleDays, 'so nothing is offered');
+    }
+
+    @isTest
+    static void convertingWithoutThePermissionIsRefused() {
+        useTestPolicies();
+        LeaveConversionService.permittedOverride = false;
+        ApplicationItem__c appl = raiseUnpaid(3, 'Approved');
+
+        Test.startTest();
+        String message;
+        try {
+            TimesheetController.convertUnpaidLeave(appl.Id, 2);
+            System.assert(false, 'an unpermitted caller reached the conversion');
+        } catch (Exception e) {
+            message = e.getMessage();
+        }
+        Test.stopTest();
+
+        System.assert(message.contains('manager action'),
+            'and is told why rather than being failed silently: ' + message);
+        System.assertEquals('Unpaid leave', reload(appl.Id).Request_Type__c,
+            'the days are still unpaid');
+        System.assertEquals(0, childrenOf(appl.Id).size(), 'and nothing was raised beside them');
+    }
+
+    @isTest
+    static void revertingWithoutThePermissionIsRefused() {
+        useTestPolicies();
+        asManager();
+        ApplicationItem__c appl = raiseUnpaid(3, 'Approved');
+        TimesheetController.convertUnpaidLeave(appl.Id, 2);
+
+        // The conversion stands; it is the taking back that this caller may not do.
+        LeaveConversionService.permittedOverride = false;
+
+        Test.startTest();
+        String message;
+        try {
+            TimesheetController.revertConversion(appl.Id, 'changed my mind');
+            System.assert(false, 'an unpermitted caller revoked a conversion');
+        } catch (Exception e) {
+            message = e.getMessage();
+        }
+        Test.stopTest();
+
+        System.assert(message.contains('manager action'), 'and is told why: ' + message);
     }
 }
