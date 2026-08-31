@@ -1,16 +1,6 @@
 @isTest
 private class OvertimeRequestTest {
 
-    /*
-     * LEAVE-31 — Overtime Requests.
-     *
-     * The point of the record type split is that an overtime request moves no leave
-     * balance, produces no calendar Event and needs no Leave Type Policy, while still
-     * booking the project time it represents. Several tests below assert the absence
-     * of those things, because silently deducting leave for an overtime claim is the
-     * failure this whole split exists to prevent.
-     */
-
     private static final Date MONDAY_EPOCH = Date.newInstance(1900, 1, 1);
     private static Id cachedUserId;
 
@@ -94,12 +84,7 @@ private class OvertimeRequestTest {
 
     /** 18:00 to 21:00 - three hours. */
     private static ApplicationItem__c overtimeRequest() {
-        /*
-         * LEAVE-43. Overtime is raised by a manager on somebody else's behalf now, so saving
-         * one needs the creation permission and an Employee to attribute it to. Employee__c is
-         * the user these tests already owned the record as, and OwnerId is copied from it - so
-         * every assertion below measures exactly what it measured before.
-         */
+
         OvertimeRequestGuard.permittedOverride = true;
         return new ApplicationItem__c(
             RecordTypeId = overtimeRecordTypeId(),
@@ -367,9 +352,6 @@ private class OvertimeRequestTest {
 
     @isTest
     static void anApprovedOvertimeClaimIsLockedToo() {
-        // LEAVE-35 locks approved requests of either record type. An overtime claim
-        // whose hours could be edited after approval is a claim for whatever the
-        // claimant last typed.
         ApplicationItem__c appl = overtimeRequest();
         insert appl;
 
@@ -388,8 +370,6 @@ private class OvertimeRequestTest {
         System.assertEquals(3, reload(appl.Id).Overtime_Hours__c, 'the hours stand as approved');
         System.assertEquals(1, overtimeManHours().size(), 'and nothing is booked twice');
     }
-
-    // ------------------------------------------------------------------ summary
 
     @isTest
     static void monthlyTotalSumsApprovedOvertime() {

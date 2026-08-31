@@ -1,23 +1,6 @@
 @isTest
 private class LeaveCascadeTest {
 
-    /*
-     * LEAVE-46 — a request that outruns its pool cascades down the chain.
-     *
-     * Refresh Leave overflows into Annual leave and Annual leave into Unpaid leave, so a
-     * long Refresh Leave request can produce three records. LeaveSplitTest covers the
-     * single-hop case it was written for; this covers the walk itself, the expiring
-     * grant, and the balance that used to go negative because neither the split nor the
-     * approval check applied to Refresh Leave at all.
-     *
-     * A separate class rather than additions to LeaveSplitTest: the fixtures differ (a
-     * Refresh Leave policy and a windowed balance row) and mixing them would make both
-     * harder to read.
-     *
-     * Policies are overridden in memory, as they are in LeaveSplitTest, because the
-     * chain lives in Custom Metadata that a scratch org has no reason to carry.
-     */
-
     private static final Date MONDAY_EPOCH = Date.newInstance(1900, 1, 1);
     private static final String REFRESH = 'Refresh Leave';
     private static final String ANNUAL  = 'Annual leave';
@@ -145,12 +128,6 @@ private class LeaveCascadeTest {
                 WHERE Employee__c = :employeeId() AND Leave_Type__c = :leaveType LIMIT 1];
     }
 
-    // -------------------------------------------------------------------- the walk
-
-    /*
-     * The whole point of LEAVE-46. Ten days against three refresh and four annual comes
-     * out 3 / 4 / 3, in date order, with the unpaid remainder last.
-     */
     @isTest
     static void refreshOverflowsThroughAnnualBeforeReachingUnpaid() {
         useTestPolicies();
@@ -242,11 +219,6 @@ private class LeaveCascadeTest {
         System.assertEquals(0, continuationsOf(appl.Id).size());
     }
 
-    /*
-     * LEAVE-54. A part day at a boundary is halved between the two pools rather than
-     * passed on whole. A 2.5 day grant funds two days and a morning, and Annual picks up
-     * that same afternoon.
-     */
     @isTest
     static void aPartDayAtTheBoundaryIsHalvedBetweenThePools() {
         useTestPolicies();
@@ -382,12 +354,6 @@ private class LeaveCascadeTest {
             'unpaid grants as it is used, so it never reads negative');
     }
 
-    /*
-     * The bug LEAVE-46 opens with. Refresh Leave was splittable by nothing and refused
-     * by nothing, so ten days against three drove the balance to -7 and the page read
-     * "-7 available". Here the chain is deliberately removed, which is exactly the
-     * configuration that used to be silent — the approval must still refuse it.
-     */
     @isTest
     static void anOverdrawIsRefusedEvenWhenNothingSplitsIt() {
         ApplicationItemTriggerLogic.policyOverride = new List<Leave_Type_Policy__mdt>{

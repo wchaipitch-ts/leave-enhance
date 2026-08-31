@@ -1,14 +1,3 @@
-/*
- * LEAVE-43 — an overtime request belongs to the employee, not to the manager who typed it.
- *
- * The running test user stands in for the manager throughout: they hold the permission
- * (through permittedOverride, since FeatureManagement reads real assignments) and they are
- * the one performing the DML, so OwnerId defaults to them.
- *
- * The handover happens on APPROVAL, not at creation - the manager needs to stay able to edit
- * the draft they just saved, and ApplicationItem__c is Public Read Only. Most of the cases
- * below are therefore about when ownership moves rather than whether it does.
- */
 @isTest
 private class OvertimeRequestGuardTest {
 

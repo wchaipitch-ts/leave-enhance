@@ -207,12 +207,15 @@
 									</template>
 								</td>
 								
-								<td title={row.value.timestamp.Remark__c} class="row-CM">
+								<!-- Comment: the leave reason on a leave day, the timestamp remark otherwise -
+								     resolved in setTimestamp. The pencil keeps its own condition so it only
+								     shows where there is a timestamp remark for it to edit. -->
+								<td title={row.value.commentTitle} class="row-CM">
 									<template lwc:if={row.value.timestamp.Stamped_TimeOut}>
 										<lightning-icon data-id={row.value.date_id} icon-name="utility:edit" size="xx-small" title="Remark Edit" onclick={openRemarkModal}></lightning-icon>
 									</template>
 									&nbsp; &nbsp;
-									{row.value.timestamp.Remark}
+									{row.value.comment}
 								</td>
 							</tr>
 						</template>

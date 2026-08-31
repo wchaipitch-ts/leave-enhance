@@ -1,18 +1,3 @@
-/*
- * LEAVE-31 — approved overtime hours for a person in a month.
- *
- * Deliberately its own class rather than another method on TimesheetController: that
- * file is being reworked for the multi-day timesheet rendering, and a new class means
- * the two pieces of work never touch the same lines.
- *
- * Only Approved requests count. A Draft or Pending claim is a proposal, and a Rejected
- * one is a refusal; neither is hours anybody owes.
- *
- * Computed from the requests themselves rather than from the Man_hour__c records they
- * produce. Man_hour__c is shared with leave and with ordinary project work, so summing
- * it would mean trusting a project-name convention to tell overtime apart. The requests
- * are the record of what was approved, so they are what gets counted.
- */
 public with sharing class OvertimeSummaryService {
 
     /*
@@ -33,12 +18,6 @@ public with sharing class OvertimeSummaryService {
         if (year == null || month == null || month < 1 || month > 12) {
             throw new AuraHandledException('A four digit year and a month from 1 to 12 are required.');
         }
-        /*
-         * LEAVE-39. This class is `with sharing`, but ApplicationItem__c is Public Read
-         * Only, so sharing withheld nothing: any employee could pass any Id and read back
-         * somebody else's overtime. Gated on the same rule as the leave balances, which
-         * LeaveBalanceService owns, so the two cannot answer differently.
-         */
         Id target = LeaveBalanceService.assertCanView(employeeId);
 
         Date monthStart = Date.newInstance(year, month, 1);

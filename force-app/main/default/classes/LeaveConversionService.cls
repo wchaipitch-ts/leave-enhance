@@ -1,58 +1,3 @@
-/*
- * LEAVE-44 — turning unpaid days back into Annual leave.
- *
- * LeaveSplitService cuts a request down to what the balance can afford and raises the
- * remainder as its own Unpaid leave record. That decision is made when the request is
- * saved, against the balance as it stood that day. Annual leave accrues monthly, so by
- * the time the absence is over the employee may well have the days they were short of.
- * Nothing until now could spend them: the unpaid record was settled and the balance it
- * would have drawn on was somebody else's problem.
- *
- * This is that correction, made deliberately by a person rather than by a trigger.
- * LeaveReversalService.promoteUnpaidSiblings already handles the automatic case — an
- * unapproved tail whose paid half was refused — and says why it stops where it does:
- * "turning them into paid days after the fact is a payroll correction somebody should
- * make deliberately". This class is where that deliberate act lives.
- *
- * WHAT A CONVERSION ACTUALLY IS
- *
- * Not a field edit. The converted days become an ordinary Annual leave request in
- * Draft, which the owner submits and an approver signs, exactly as if they had asked
- * for paid leave in the first place. That is the whole point: nothing here spends
- * Annual balance. deductLeaveBalance does, on approval, as it does for every other
- * request — so a conversion cannot quietly overdraw a balance that moved between the
- * conversion and the approval.
- *
- * Partial conversions are a cut in the dates, not a pair of counters. Converting 2 of
- * 5 unpaid days leaves an Unpaid record for 3 days and an Annual record for 2, each
- * measuring its own days and deducting its own balance — the model LEAVE-40 settled
- * on when it retired the LWOP fields. The earliest days convert first, mirroring the
- * date order LeaveSplitService consumes balance in.
- *
- * WHY AN APPROVED SOURCE IS REJECTED RATHER THAN SHORTENED
- *
- * Approved_Request_Is_Locked refuses every edit to an approved request except moving
- * it to Rejected, because editing one rewrote the day count without re-deducting. So
- * an approved unpaid record cannot be trimmed in place. It is rejected instead, which
- * runs LeaveReversalService: the unpaid days come back, the entitlement granted on use
- * unwinds with them, and the calendar entries and timesheet bookings go. What was
- * genuinely still unpaid is then re-raised already Approved, so days that were signed
- * for once are not sent round for signature again — only the converted days are, and
- * those are in Draft where the owner can see them before anyone else does.
- *
- * REVERTING
- *
- * A conversion is a decision, and decisions are made in error. Reverting revokes the
- * paid request the conversion produced and puts the days back as unpaid — as they were,
- * which is the whole meaning of the word. Converted_From_Status__c is what makes "as
- * they were" knowable: once the source has been rejected and replaced, nothing else on
- * the record says whether those days had been approved. Guessing would either re-grant
- * days nobody signed for or take away days somebody did.
- *
- * Revoking the paid request is a rejection, so the reversal of whatever it had spent —
- * Annual balance, calendar entries, man hours — is LeaveReversalService's, exactly as
- * it is everywhere else. Nothing is unwound here by hand.
- */
 public without sharing class LeaveConversionService {
 
     @TestVisible private static final String TYPE_UNPAID = 'Unpaid leave';
@@ -149,11 +94,6 @@ public without sharing class LeaveConversionService {
         return FeatureManagement.checkPermission(PERMISSION);
     }
 
-    /*
-     * The writes refuse rather than going quiet, because unlike the card there is
-     * nothing to hide behind: a caller reaching convert or revert has gone past the
-     * missing card, and silence would read as success.
-     */
     private static void assertPermitted() {
         if (!permitted()) {
             throw new AuraHandledException(
@@ -162,16 +102,6 @@ public without sharing class LeaveConversionService {
         }
     }
 
-    // ==================================================================== reading
-
-    /**
-     * The card's figures for one Unpaid leave request.
-     *
-     * Deliberately does not refuse an unpermitted caller. showsConversion comes back
-     * false and the card removes itself, which is what an employee should see: nothing.
-     * Throwing here would paint the error banner instead, which tells them at length
-     * about a correction they are not the one to make.
-     */
     public static ConversionView view(Id requestId) {
         ApplicationItem__c src = load(requestId);
         /*
@@ -212,16 +142,6 @@ public without sharing class LeaveConversionService {
         return v;
     }
 
-    // ==================================================================== converting
-
-    /**
-     * Turns `days` unpaid days on `requestId` into an Annual leave request in Draft.
-     *
-     * @param days how many whole days to convert; null converts everything convertible.
-     * @return the card's figures again, read back after the conversion. Worth reading
-     *         rather than assuming: an approved source is rejected and replaced, so the
-     *         record the caller was looking at is not the record that survives.
-     */
     public static ConversionView convert(Id requestId, Decimal days) {
         assertPermitted();
         ApplicationItem__c src = load(requestId);
@@ -348,25 +268,6 @@ public without sharing class LeaveConversionService {
         insert raised;
     }
 
-    // ==================================================================== reverting
-
-    /**
-     * Revokes the paid requests a conversion produced and puts the days back as unpaid.
-     *
-     * The paid request is rejected rather than deleted, so whatever it had spent comes
-     * back the way it does everywhere else — LeaveReversalService, driven by the status
-     * transition. A converted request still in Draft has spent nothing and simply stops
-     * being asked for.
-     *
-     * The days then return as they were before the conversion, which is what
-     * Converted_From_Status__c is for. Days that were approved unpaid come back approved
-     * unpaid: they were taken, the absence happened, and asking somebody to sign for them
-     * a second time because a correction was tried and undone would be an odd thing to
-     * do to an employee.
-     *
-     * @param reason appended to the remark. It is the only record of why a conversion
-     *               that somebody made deliberately was taken back.
-     */
     public static ConversionView revert(Id requestId, String reason) {
         assertPermitted();
         ApplicationItem__c src = load(requestId);
@@ -413,37 +314,11 @@ public without sharing class LeaveConversionService {
         // Before the days are put back, so no two records claim the same dates.
         update toReject;
 
-        /*
-         * The source is still here and still rejected, which is what convertApproved
-         * leaves behind: a settled request cannot be trimmed, so it is reversed whole and
-         * replaced. Putting the absence back is then a status change on the record it
-         * always was, rather than a new record standing in for it.
-         *
-         * Worth the extra branch. Raising a replacement leaves the employee's history
-         * carrying a rejected husk and a new LR- number for days that never moved, and
-         * every convert-and-revert cycle adds another pair. Restoring the original leaves
-         * no such trail, which is what "as they were" is supposed to mean.
-         */
         if (STATUS_REJECTED.equals(src.Status__c) && TYPE_UNPAID.equals(src.Request_Type__c)) {
             revertOntoSource(src, reason);
             return;
         }
 
-        /*
-         * A Draft source was shortened rather than replaced when it was converted, so
-         * the days can simply go back onto it and the absence is one record again — the
-         * shape it had before anybody pressed anything. Anything else has to be raised
-         * beside it: the source was rejected and replaced, and an approved record cannot
-         * be widened in any case.
-         */
-        /*
-         * Only when every record involved is a whole day. Widening a PM-leave record to
-         * start on an earlier date would make a range carrying a half-day period, which
-         * Leave_Request_Period_Single_Day_Only refuses and calculateLeaveDays would
-         * miscount anyway. A half-day boundary is put back beside the record instead —
-         * more records than the absence started with, which is the cost of the boundary
-         * being two records in the first place.
-         */
         Boolean absorb = TYPE_UNPAID.equals(src.Request_Type__c)
                       && STATUS_DRAFT.equals(src.Status__c)
                       && src.Term_From__c != null
@@ -463,21 +338,6 @@ public without sharing class LeaveConversionService {
         insert restored;
     }
 
-    /*
-     * Puts a rejected source back as the absence it was, and clears away what was raised
-     * to stand in for it.
-     *
-     * The unpaid remainder goes first. A partial conversion left it covering the days
-     * that stayed unpaid, and the source is about to cover those same dates again —
-     * rejected rather than deleted, so the unpaid balance it spent comes back the way it
-     * does everywhere else, and so the record survives to be looked at.
-     *
-     * Restoring the source is then one status change, and nothing needs looking up to
-     * know which one: convertApproved is the only path that rejects a source and it only
-     * runs on an approved one. The trigger reads Rejected to Approved as a fresh
-     * approval, so it re-deducts the unpaid days, re-grants the entitlement that comes
-     * with them, and re-books the calendar entries and man hours.
-     */
     private static void revertOntoSource(ApplicationItem__c src, String reason) {
         List<ApplicationItem__c> standingIn = new List<ApplicationItem__c>();
         for (ApplicationItem__c one : [
@@ -504,18 +364,6 @@ public without sharing class LeaveConversionService {
         );
     }
 
-    /*
-     * A record converted in place: this record IS the conversion, nothing was raised
-     * beside it. A conversion now lands Approved, so it has spent Annual balance and
-     * booked its days, and only a rejection gives those back — LeaveReversalService's
-     * work, driven by the status transition as it is everywhere else.
-     *
-     * The Draft branch is for conversions made before they landed Approved. Those spent
-     * nothing, so they can simply be turned back into what they were rather than being
-     * rejected and re-raised. Nothing this class writes reaches it any more, but the
-     * records it is for are sitting in the org, and rejecting one would take back an
-     * Annual day it never spent.
-     */
     private static void revertInPlace(ApplicationItem__c src, String reason) {
         if (STATUS_DRAFT.equals(src.Status__c)) {
             update new ApplicationItem__c(
@@ -596,12 +444,7 @@ public without sharing class LeaveConversionService {
         v.remainingUnpaidDays = stillCounts ? zeroIfNull(src.Leave_Days__c) : 0;
 
         Leave_Balance__c annual = annualBalanceFor(src);
-        /*
-         * The balance as it stands, which is what the employee sees on the balance page
-         * and what a conversion spends. Nothing is held back against conversions already
-         * made from this record: they were approved as they were made, so the days they
-         * took are out of Used_Days__c and out of this figure already.
-         */
+
         v.annualAvailable = annual == null ? 0 : availableOn(annual);
 
         v.blockedReason   = blockedReasonFor(src, annual, v);
@@ -744,40 +587,20 @@ public without sharing class LeaveConversionService {
         return new ApplicationItem__c(
             RecordTypeId             = src.RecordTypeId,
             Request_Type__c          = TYPE_ANNUAL,
-            // The piece's own period, not All day. Converting the morning of a boundary
-            // day into a whole paid day would pay for an afternoon that was worked.
             Period_Leave__c          = piece.period,
             Term_From__c             = piece.startsOn,
             Term_To__c               = piece.endsOn,
             Remark__c                = remarkWith(src.Remark__c, convertedNote(src)),
-            /*
-             * Approved on insert. The manager doing the converting is the person who
-             * would have approved it, so sending it back for a signature they have just
-             * given is a round trip that buys nothing — and one the employee has to
-             * complete, which is how days a manager believed were converted end up
-             * sitting in a Draft nobody submitted while payroll pays out on them.
-             *
-             * The trigger treats an inserted Approved record as a fresh approval, as it
-             * already does for the unpaid remainder beside it: deductLeaveBalance spends the
-             * Annual balance in this same transaction and refuses an overdraw, so
-             * nothing here can quietly pay for days that do not exist.
-             */
             Status__c                = STATUS_APPROVED,
             OwnerId                  = src.OwnerId,
             Split_From__c            = src.Id,
             Converted_From_Unpaid__c = true,
-            // What the days were before this, so reverting can put them back as they were.
             Converted_From_Status__c = src.Status__c,
             Converted_On__c          = System.today(),
             Converted_By__c          = UserInfo.getUserId()
         );
     }
 
-    /*
-     * The unpaid days of one revoked conversion, back as their own request. `made` is
-     * the paid request being revoked — its dates are the days to restore, and the status
-     * it recorded at conversion is the state to restore them to.
-     */
     private static ApplicationItem__c restoredUnpaid(ApplicationItem__c src, ApplicationItem__c made) {
         return new ApplicationItem__c(
             RecordTypeId    = src.RecordTypeId,
@@ -798,23 +621,6 @@ public without sharing class LeaveConversionService {
         );
     }
 
-    // ============================================================ half-day shaping
-
-    /*
-     * A morning or an afternoon of one working day, and the records a run of them
-     * becomes.
-     *
-     * DUPLICATED FROM LeaveSplitService.halvesFor/piecesFor, which is the original and
-     * the one to read for why any of it is shaped this way. The two must agree: the
-     * split builds the tiling of an absence and a conversion re-cuts one it built, so a
-     * boundary shaped differently here than there produces a family where some records
-     * came from one rule and some from another. Change both, or extract them.
-     *
-     * Kept separate for now because this service uses only the shaping — it has no
-     * overflow chain, no pools and no expiry windows, which is most of what that class
-     * is — and pulling four private inner types out of a trigger-critical class is work
-     * of its own.
-     */
     private class Half {
         Date day;
         Boolean isMorning;
@@ -835,12 +641,6 @@ public without sharing class LeaveConversionService {
         }
     }
 
-    /*
-     * The request as half days, which is the unit a conversion is now cut in. A request
-     * that is itself already a half day is one half and cannot be divided again — the
-     * absence happened in that morning or that afternoon, and conversion is about who
-     * pays for it, not when it fell.
-     */
     private static List<Half> halvesFor(ApplicationItem__c src, List<Date> workingDays) {
         List<Half> halves = new List<Half>();
         if (workingDays.size() == 1 && isHalfDay(src.Period_Leave__c)) {
@@ -854,18 +654,6 @@ public without sharing class LeaveConversionService {
         return halves;
     }
 
-    /*
-     * The records one run of halves becomes: at most the afternoon it starts on, the
-     * whole days, and the morning it ends on.
-     *
-     * A boundary day has to be a record of its own because Period_Leave__c is the only
-     * place a half day can be expressed and it means nothing on a range — refused there
-     * by Leave_Request_Period_Single_Day_Only, and ignored by calculateLeaveDays, which
-     * counts a range in whole days.
-     *
-     * The closing morning is built early and held back so it lands after the whole-day
-     * range rather than before it, which is what keeps the records in date order.
-     */
     private static List<Piece> piecesFor(List<Half> halves, Integer first, Integer count) {
         List<Piece> pieces = new List<Piece>();
         Integer last = first + count - 1;
@@ -914,12 +702,6 @@ public without sharing class LeaveConversionService {
         ];
     }
 
-    /*
-     * Anything unrecognised restores as a Draft. A record converted before this was
-     * stamped has no recorded status, and asking for a signature on days that may not
-     * have had one is the safe way round: the alternative grants unpaid days, and the
-     * entitlement behind them, that nobody approved.
-     */
     private static String statusOrDraft(String status) {
         return STATUS_APPROVED.equals(status) ? STATUS_APPROVED : STATUS_DRAFT;
     }
@@ -981,13 +763,6 @@ public without sharing class LeaveConversionService {
         return value == null ? '0' : value.stripTrailingZeros().toPlainString();
     }
 
-    /*
-     * Floored to the half day, which is the granularity a balance is held at and now the
-     * granularity a conversion cuts at. Anything finer is rounded away because no balance
-     * can hold it.
-     *
-     * Long division would truncate, so the halves go back through Decimal to be halved.
-     */
     private static Decimal halfDays(Decimal value) {
         if (value == null || value <= 0) {
             return 0;

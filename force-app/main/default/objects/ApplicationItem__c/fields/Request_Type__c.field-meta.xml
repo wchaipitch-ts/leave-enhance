@@ -25,6 +25,11 @@
                 <label>Personal leave</label>
             </value>
             <value>
+                <fullName>Refresh Leave</fullName>
+                <default>false</default>
+                <label>Refresh Leave</label>
+            </value>
+            <value>
                 <fullName>Bereavement leave</fullName>
                 <default>false</default>
                 <label>Bereavement leave</label>
@@ -60,19 +65,15 @@
                 <label>Training or knowledge leave</label>
             </value>
             <value>
-                <fullName>Other</fullName>
-                <default>false</default>
-                <label>Other</label>
-            </value>
-            <value>
-                <fullName>Refresh Leave</fullName>
-                <default>false</default>
-                <label>Refresh Leave</label>
-            </value>
-            <value>
                 <fullName>Unpaid leave</fullName>
                 <default>false</default>
                 <label>Unpaid leave</label>
+            </value>
+            <value>
+                <fullName>Other</fullName>
+                <default>false</default>
+                <isActive>false</isActive>
+                <label>Other</label>
             </value>
         </valueSetDefinition>
     </valueSet>

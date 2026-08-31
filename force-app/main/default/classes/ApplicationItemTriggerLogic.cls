@@ -299,24 +299,6 @@ public class ApplicationItemTriggerLogic {
             // what consumed it. Set in the before context, so it costs no extra DML.
             appl.Leave_Balance__c = bal.Id;
 
-            /*
-             * The backstop. The split is calculated when the request is saved, so
-             * it reflects the balance at that moment. If two requests were raised while
-             * both looked affordable and the other one was approved first, this one is
-             * now too big and its continuation was never created.
-             *
-             * Used_Days__c is the running in-transaction figure, so this also catches
-             * two such approvals arriving in the same batch. Refusing is the point:
-             * the alternative is a balance quietly going negative.
-             *
-             * LEAVE-46: keyed on Grants_On_Use__c rather than on whether the type can be
-             * split. Those are not the same question, and Refresh Leave sat between
-             * them — split by nothing and refused by nothing, so an over-long request
-             * drove the balance to a figure like -7 and the page read "-7 available".
-             * What matters here is whether the pool is finite: a grant-on-use type
-             * raises its own entitlement as it is spent and can never be overdrawn,
-             * every other type can.
-             */
             Decimal available = zeroIfNull(bal.Accrued_To_Date__c)
                               + zeroIfNull(bal.Carry_Over_Days__c)
                               - zeroIfNull(bal.Used_Days__c);

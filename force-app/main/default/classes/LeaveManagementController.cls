@@ -1,26 +1,5 @@
 public with sharing class LeaveManagementController implements Schedulable {
 
-    /*
-     * LEAVE-27 — the grant engine now maintains Leave_Balance__c rather than the
-     * leave fields on User.
-     *
-     * Why this had to change: a missing Leave_Balance__c row blocks approval
-     * (ApplicationItemTriggerLogic raises addError), and nothing else creates rows.
-     * Before this, anyone hired after the initial backfill could never have leave
-     * approved, and every nightly run wrote to User fields that nothing reads.
-     *
-     * The idempotency guards moved with it. Annual_Leave_Granted_Year__c and
-     * Refresh_Leave_Granted_Year__c live on User, and User is a setup object —
-     * writing one of them in the same transaction as a Leave_Balance__c row throws
-     * MIXED_DML_OPERATION. Granted_On__c on the balance row replaces both.
-     *
-     * This class no longer performs any DML on User. That is what lets createLogFile
-     * be synchronous: the @future existed only to dodge the same mixed DML problem.
-     *
-     * The User leave fields are left exactly as they are — frozen fallback. They are
-     * no longer written and are retired at cutover.
-     */
-
     private static final Decimal ANNUAL_ENTITLEMENT = 12;
     private static final Decimal CARRY_OVER_CAP     = 6;
     private static final String  TYPE_ANNUAL        = 'Annual leave';
@@ -46,9 +25,6 @@ public with sharing class LeaveManagementController implements Schedulable {
      * so replaying a date that already ran changes nothing.
      */
     public static void runDaily(Date today) {
-        // Rows are accumulated by External_Key__c so that two grants landing on the
-        // same day mutate one instance rather than overwriting each other. Anything
-        // added here must be read back from the map, not re-queried.
         Map<String, Leave_Balance__c> staged = new Map<String, Leave_Balance__c>();
         List<String> logDetails = new List<String>{
             'Run Date: ' + System.now(),
@@ -57,21 +33,6 @@ public with sharing class LeaveManagementController implements Schedulable {
         };
 
         try {
-            /*
-             * LEAVE-51 — before the grants, not after.
-             *
-             * Accrued_To_Date__c and Available_Balance__c are stored figures now, so the
-             * calendar moving on its own no longer updates them; this is what does.
-             * It has to run FIRST because grantAnnualLeave reads the PRIOR year's
-             * Available as the carry-over figure. On 1 January that row's stored
-             * accrual is whatever the last save left behind — and if the job missed
-             * 31 December it is a month short. Sweeping first closes the prior year
-             * to its full entitlement, which is the figure the policy caps.
-             *
-             * On any other day of the year this writes nothing at all: only rows whose
-             * figures actually moved are saved, and outside a month or year boundary
-             * none of them do.
-             */
             Integer resettled = LeaveAccrualService.sweep(LeaveAccrualService.asOfDate());
             if (resettled > 0) {
                 logDetails.add('ACCRUAL ' + resettled + ' balance row(s) recalculated');
@@ -102,20 +63,6 @@ public with sharing class LeaveManagementController implements Schedulable {
         }
     }
 
-    // ------------------------------------------------------------------ grants
-
-    /*
-     * LEAVE-6 / LEAVE-27 — annual grant, January 1.
-     *
-     * Creates the full set of rows for the new year, not just the annual one: every
-     * active leave type needs a row or its first request of the year cannot be
-     * approved. Refreshment is the exception — it is granted on the anniversary, so
-     * its row is created with no entitlement and no Granted_On__c.
-     *
-     * Carry over is MIN(6, the prior year's Available). Available is
-     * Accrued + CarriedIn - Used, so at year end it is exactly what the employee had
-     * left, which is the figure the policy caps.
-     */
     private static void grantAnnualLeave(Date today, Map<String, Leave_Balance__c> staged,
                                          List<String> logDetails) {
         Integer yr = today.year();
@@ -153,17 +100,6 @@ public with sharing class LeaveManagementController implements Schedulable {
             }
         }
     }
-
-    /*
-     * LEAVE-7 / LEAVE-27 — new hire grant, on the joining date.
-     *
-     * Annual is 13 - joining month, i.e. one day for each month remaining in the
-     * calendar year counting the joining month. Everything else takes the policy
-     * entitlement in full; nothing in the policy pro-rates statutory leave.
-     *
-     * This is the path that gives a new employee their rows at all. Without it their
-     * first leave request cannot be approved.
-     */
     private static void grantNewHireLeave(Date today, Map<String, Leave_Balance__c> staged,
                                           List<String> logDetails) {
         Integer yr = today.year();
@@ -194,16 +130,6 @@ public with sharing class LeaveManagementController implements Schedulable {
         }
     }
 
-    /*
-     * LEAVE-8 / LEAVE-27 / LEAVE-41 — refreshment grant, at the start of the
-     * anniversary MONTH rather than on the anniversary date.
-     *
-     * Tier by completed years of service; expires one month later and is then wiped.
-     * Someone who joined on the 25th now receives the grant on the 1st, up to
-     * twenty-four days before the anniversary itself. The tier is unaffected:
-     * monthsBetween ignores the day component, so 1 March and 25 March of the fourth
-     * year both read as forty-eight months.
-     */
     private static void grantRefreshLeave(Date today, Map<String, Leave_Balance__c> staged,
                                           List<String> logDetails) {
         Integer yr = today.year();
@@ -211,15 +137,6 @@ public with sharing class LeaveManagementController implements Schedulable {
         Leave_Type_Policy__mdt refreshPolicy = anniversaryPolicy();
         if (rules.isEmpty() || refreshPolicy == null) return;
 
-        /*
-         * LEAVE-41: the anniversary MONTH, not the anniversary day. Matching the month
-         * is now the whole rule, so this query is the rule — there is no day-level check
-         * after it, and the February 29 special case it used to need has gone with it.
-         *
-         * What makes the grant land once, at the start of the month, is Granted_On__c:
-         * the first daily run in the anniversary month stamps it and every later run
-         * that month skips. A missed 1st simply grants on the next day the job runs.
-         */
         List<User> candidates = [
             SELECT Id, Name, Start_Date__c
             FROM User
@@ -262,47 +179,6 @@ public with sharing class LeaveManagementController implements Schedulable {
         }
     }
 
-    /*
-     * LEAVE-9 / LEAVE-27 — expiry sweep, daily.
-     *
-     * Only the UNUSED portion lapses, and after the sweep the carried bucket reads
-     * ZERO - which is what everybody expects of an expired allowance, and what the
-     * record has to say if it is not to be misread.
-     *
-     * Getting there takes two writes, not one. Availability is
-     * Accrued + CarriedIn - Used, and carry over is consumed before current-year
-     * entitlement, so the days already taken out of the bucket are sitting in Used
-     * with CarriedIn as their counterweight. Zeroing CarriedIn on its own would leave
-     * them charged against the current year instead: six carried, four taken, and an
-     * employee who should still have their whole year would drop from 7 available
-     * to 3.
-     *
-     * So the consumed part is removed from BOTH sides at once. CarriedIn goes to
-     * zero and Used loses exactly what the bucket paid for, which cancels the pair
-     * and leaves the current year untouched. Used then means what it says on a page:
-     * days taken out of THIS year's entitlement.
-     *
-     * Carry_Over_Expiry__c is kept rather than cleared - it is the date the days
-     * lapsed, and a zeroed bucket with no date on it tells nobody anything. What
-     * stops the row being swept again is the bucket being empty: the guard below
-     * needs carried days to work on, and after the first sweep there are none.
-     *
-     * Refreshment works the same way against Entitlement_Days__c: granted on the
-     * anniversary, and whatever is not used within the window is wiped.
-     *
-     * Expiry_Date__c is deliberately NOT cleared once the window has closed: it is the
-     * date the grant lapsed, and HR needs to see it on a zeroed row. Carry_Over_Expiry__c
-     * is still cleared, so the two branches differ.
-     *
-     * Because the window date survives, this query keeps matching the row on every
-     * later run. Nothing is staged on those runs — a row is only written when there is
-     * an unused portion left to drop, which is false the moment the first sweep has
-     * done its work. That conditional staging is what replaces the old null-out as the
-     * re-processing guard; without it every lapsed row would be re-upserted nightly and
-     * would keep writing a log file forever.
-     *
-     * Expired days are simply lost; nothing is paid out.
-     */
     private static void expireLeave(Date today, Map<String, Leave_Balance__c> staged,
                                     List<String> logDetails) {
         List<Leave_Balance__c> candidates = [
@@ -465,17 +341,6 @@ public with sharing class LeaveManagementController implements Schedulable {
         return null;
     }
 
-    /*
-     * True when today is the anniversary of startDate. A February 29 joiner has no
-     * anniversary in a non-leap year, so February 28 stands in for it.
-     */
-
-    /*
-     * The highest active tier at or below the employee's completed years of service.
-     * Refresh_Leave_Rule__mdt carries no "max tier" flag, so tenure beyond the last
-     * configured row simply keeps matching that row — 7 years lands on the 5-year
-     * tier without any configuration change.
-     */
     private static Refresh_Leave_Rule__mdt tierFor(List<Refresh_Leave_Rule__mdt> rules, Integer years) {
         Refresh_Leave_Rule__mdt best = null;
         for (Refresh_Leave_Rule__mdt r : rules) {
@@ -497,11 +362,6 @@ public with sharing class LeaveManagementController implements Schedulable {
         return value == null ? 0 : value;
     }
 
-    /*
-     * Synchronous now. This was @future only because the class used to update User,
-     * a setup object, in the same transaction as Error_Log__c and ContentVersion.
-     * It writes no User records any more, so there is no mixed DML to dodge.
-     */
     private static void createLogFile(String logDetails) {
         try {
             Error_Log__c log = new Error_Log__c();

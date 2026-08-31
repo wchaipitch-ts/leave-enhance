@@ -1,7 +1,8 @@
 :host {
     --sds-c-card-color-border: transparent;
     --sds-c-card-shadow: none;
-    --sds-c-card-color-background: transparent; 
+    /* --sds-c-card-color-background: transparent;  */
+     --sds-c-card-color-background: white; 
 }
 
 /* Date Formatting */
@@ -60,7 +61,7 @@
     min-width: 55px; 
     height: 40px; 
     padding: 0 10px;
-    border-radius: 6px; /* Gentle rounded rectangle */
+    border-radius: 10px; /* Gentle rounded rectangle */
     font-size: 1rem; /* Scaled down text */
     font-weight: bold;
     display: flex;

@@ -1,15 +1,3 @@
-/*
- * LEAVE-44 — the Unpaid Leave Conversion card, on an ApplicationItem__c record page.
- *
- * Shows what of this unpaid absence the Annual balance could pay for now, and turns
- * those days into an approved Annual leave request. Manager-only: Apex returns
- * showsConversion false to anyone else and the card removes itself.
- *
- * Every figure comes from TimesheetController.getUnpaidConversion and none of them is
- * stored on the record, so nothing is calculated here: doing the arithmetic twice, once
- * in Apex for the save and once in JavaScript for the display, is how the two come to
- * disagree. The card renders what it is given and nothing else.
- */
 import { LightningElement, api, wire, track } from 'lwc';
 import { refreshApex } from '@salesforce/apex';
 import { ShowToastEvent } from 'lightning/platformShowToastEvent';

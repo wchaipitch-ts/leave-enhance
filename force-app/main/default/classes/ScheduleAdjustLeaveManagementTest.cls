@@ -1,12 +1,6 @@
 @isTest
 private class ScheduleAdjustLeaveManagementTest {
 
-    /*
-     * Called twice on purpose. The second call finds the job the first one scheduled
-     * and aborts it before re-scheduling, which is the idempotency the production
-     * path relies on after a code change — and the only way to reach System.abortJob
-     * from a test without touching the org's live job.
-     */
     @isTest
     static void schedulingIsIdempotent() {
         Test.startTest();

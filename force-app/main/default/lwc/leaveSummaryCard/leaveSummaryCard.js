@@ -17,7 +17,8 @@ export default class LeaveSummaryCard extends NavigationMixin(LightningElement) 
     // STATE VARIABLES (UI Binding)
     // ==========================================
     @track isOnProbation = false;
-    @track annualLeave = { availableDays: 0, allocation: 0, accrued: 0, used: 0, carryOver: 0, period: '-' };
+    // @track annualLeave = { availableDays: 0, allocation: 0, accrued: 0, used: 0, carryOver: 0, period: '-' };
+    @track annualLeave = { availableDays: 0, allocation: 0, accrued: 0, used: 0, carryOver: '0 / 0', period: '-' };
     @track refreshmentLeave = { availableDays: 0, allocation: 0, used: 0, nextRefresh: '-', daysUntilRefresh: 0 };
 
     // User Info variables
@@ -86,14 +87,20 @@ export default class LeaveSummaryCard extends NavigationMixin(LightningElement) 
         const balances = backendData.balances ?? [];
 
         // Map Annual Leave data
+        // const annualData = balances.find(item => item.leaveType === 'Annual leave');
         const annualData = balances.find(item => item.leaveType === 'Annual leave');
         if (annualData) {
+            // @description Extract carryRemaining and carriedIn safely, defaulting to 0 if undefined.
+            const carryRemaining = annualData.carryRemaining !== undefined ? annualData.carryRemaining : 0;
+            const carriedIn = annualData.carriedIn !== undefined ? annualData.carriedIn : 0;
+
             this.annualLeave = {
                 availableDays: annualData.available ?? 0,
                 allocation: annualData.entitlement ?? 0,
                 accrued: annualData.accrued ?? 0,
                 used: annualData.used ?? 0,
-                carryOver: annualData.carriedIn ?? 0,
+                // carryOver: annualData.carriedIn ?? 0,
+                carryOver: `${carryRemaining} / ${carriedIn}`,
                 period: `1 Jan ${backendData.year} - 31 Dec ${backendData.year}`
             };
         }

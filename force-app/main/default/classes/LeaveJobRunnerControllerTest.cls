@@ -1,15 +1,6 @@
 @isTest
 private class LeaveJobRunnerControllerTest {
 
-    /*
-     * LEAVE-49 — the temporary year-end test harness.
-     *
-     * The behaviour worth pinning is not the arithmetic, which is
-     * LeaveManagementControllerTest's job. It is the three things that make the screen
-     * safe to hand to somebody: that it refuses outside a sandbox, that a preview really
-     * does roll back, and that a committed run really does not.
-     */
-
     private static final String ANNUAL = 'Annual leave';
 
     private static Id cachedUserId;
@@ -164,14 +155,7 @@ private class LeaveJobRunnerControllerTest {
             'and does not claim the job did nothing, which is a different situation '
             + 'with a different fix: ' + r.summary);
     }
-
-    /*
-     * LEAVE-51 — the accrual clock travels with the run.
-     *
-     * Without this the stored figures stay pinned to the real date while the grants move,
-     * and a 1 January preview computes carry over from a prior year that still looks
-     * part-accrued. Measured in dev5-ts before the fix: wrong on 11 of 20 rows.
-     */
+    
     @isTest
     static void aFutureDatedRunMeasuresTheAccrualAtThatDate() {
         LeaveJobRunnerController.sandboxOverride = true;

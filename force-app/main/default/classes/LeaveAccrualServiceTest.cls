@@ -1,19 +1,6 @@
 @isTest
 private class LeaveAccrualServiceTest {
 
-    /*
-     * LEAVE-51 — the accrual rule, exercised directly.
-     *
-     * This is the point of moving it out of the Accrued_To_Date__c formula. Every case
-     * below used to require saving a record and then waiting for the real calendar to
-     * reach the interesting date; most of them are now a function call with a date
-     * argument, and the ones that still need DML are testing the plumbing rather than
-     * the arithmetic.
-     *
-     * The dates are fixed and in the past on purpose. A test that computes its own
-     * "31st of this month" passes for the wrong reason in a 30-day month.
-     */
-
     private static final Date JOINED_2020 = Date.newInstance(2020, 1, 1);
 
     // ------------------------------------------------------------------ the rule
@@ -139,7 +126,6 @@ private class LeaveAccrualServiceTest {
 
     @isTest
     static void joinerTopsOutAtTheProRatedEntitlementAndNoSooner() {
-        // LEAVE-53, the case that started it: joined 19 March, entitlement 13 - 3 = 10.
         Date joinedMarch = Date.newInstance(2026, 3, 19);
         System.assertEquals(6, LeaveAccrualService.accruedFor(
             joinedMarch, 2026, 'Monthly', 10, Date.newInstance(2026, 8, 25)),

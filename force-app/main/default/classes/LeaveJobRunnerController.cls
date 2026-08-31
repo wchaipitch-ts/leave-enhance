@@ -1,31 +1,3 @@
-/*
- * LEAVE-49 — a TEMPORARY test harness for the nightly leave job.
- *
- * ============================ DELETE THIS BEFORE PRODUCTION ============================
- *
- * The grant engine is the half of the leave system nobody can exercise from the UI. It
- * builds next year's balance rows on 1 January, carries unused annual days forward,
- * grants refreshment in the anniversary month and sweeps up what lapses on 30 June —
- * and every one of those is reachable only by running LeaveManagementController.runDaily
- * for a chosen date, which until now meant somebody writing Apex. That put the whole
- * yearly cycle out of reach of the people who most need to sign it off.
- *
- * This lets a BA pick a date, press a button, and read what moved.
- *
- * WHAT KEEPS IT SAFE
- *
- *   Sandbox only.       Refuses outright in a production org. runDaily writes to every
- *                       employee's balances, not just the one being watched, and that is
- *                       not something a button should be able to do to live payroll data.
- *   Permission gated.   Needs the Run Leave Job custom permission, or Modify All Data.
- *   Preview by default. The default run wraps everything in a savepoint and rolls it back,
- *                       so the BA sees exactly what WOULD change without changing it.
- *                       Committing is a separate, deliberate second press.
- *
- * The preview is the point. The job is idempotent by design, but it is still a bulk write
- * across the org, and being able to look before leaping is what makes it reasonable to
- * hand to somebody who is not going to read the Apex first.
- */
 public with sharing class LeaveJobRunnerController {
 
     private static final String PERMISSION = 'Run_Leave_Job';

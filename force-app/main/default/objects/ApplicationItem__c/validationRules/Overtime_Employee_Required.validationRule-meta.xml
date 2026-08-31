@@ -2,7 +2,6 @@
 <ValidationRule xmlns="http://soap.sforce.com/2006/04/metadata">
     <fullName>Overtime_Employee_Required</fullName>
     <active>true</active>
-    <description>LEAVE-43. Without an Employee the hours land on whoever raised them, which for overtime is the manager. On the rule not the field: a required User lookup needs a delete constraint Salesforce forbids.</description>
     <errorConditionFormula>AND(
           RecordType.DeveloperName = &quot;Overtime_Request&quot;,
           ISBLANK(Employee__c)

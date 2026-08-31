@@ -530,6 +530,17 @@ export default class timesheetManagementScreen extends NavigationMixin(Lightning
 						}
 					}
 					timesheetData.date_id = timesheetData.date_id == undefined ? timesheetData.date + ':' + 'undefined' : timesheetData.date_id;
+
+					// What the Comment column shows. Resolved here rather than in the template
+					// because both inputs are only settled once the timestamp loop above has
+					// run, and because the leave and regular rows share one cell - they used
+					// to be two near-identical row branches, and the leave one was lost in a
+					// rewrite, which is how the leave reason stopped appearing at all.
+					// A leave day rarely carries a timestamp; when it does (a half day that
+					// was also stamped) the leave reason wins, and the pencil still edits the
+					// timestamp remark behind it.
+					timesheetData.comment = timesheetData.isleave ? timesheetData.leaveRequeste.remark : timesheetData.timestamp.Remark;
+					timesheetData.commentTitle = timesheetData.isleave ? timesheetData.leaveRequeste.remarkFull : timesheetData.timestamp.Remark__c;
 					return timesheetData;
 				});
 
@@ -607,9 +618,14 @@ export default class timesheetManagementScreen extends NavigationMixin(Lightning
 								timesheetData.isapprovedleave = false;
 								timesheetData.ispendingleave = true;
 							}
-							var remark = leaveRequeste.Request_Type__c + '(' + leaveRequeste.Period_Leave__c + ') : ' + leaveRequeste.Remark__c;
-							remark = remark != undefined ? (remark.length <= 35 ? remark : remark.slice(0, 32) + '...') : undefined;
-							leaveRequeste.remark = remark;
+							// The type and period always exist on a request; the reason is optional,
+							// so it is appended only when there is one - concatenating it blind put
+							// the word "undefined" on screen for every leave taken without a note.
+							var label = leaveRequeste.Request_Type__c + '(' + leaveRequeste.Period_Leave__c + ')';
+							var reason = leaveRequeste.Remark__c;
+							var remark = reason ? label + ' : ' + reason : label;
+							leaveRequeste.remarkFull = remark;
+							leaveRequeste.remark = remark.length <= 35 ? remark : remark.slice(0, 32) + '...';
 							timesheetData.isleave = true;
 							timesheetData.leaveRequeste = leaveRequeste;
 							break;

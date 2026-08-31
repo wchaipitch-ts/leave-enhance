@@ -1,17 +1,5 @@
 @isTest
 private class LeaveSplitTest {
-
-    /*
-     * LEAVE-33 — splitting a request that runs past the balance.
-     *
-     * Policies are overridden in memory rather than read from the org, because the
-     * split turns on Unpaid leave having Deducts_Balance__c set and that is a manual
-     * Custom Metadata edit. Overriding keeps these tests honest about the code they
-     * exercise instead of failing on a checkbox nobody has ticked yet.
-     *
-     * Balances use Upfront accrual so Accrued_To_Date__c does not move with the calendar.
-     */
-
     private static final Date MONDAY_EPOCH = Date.newInstance(1900, 1, 1);
     private static Id cachedUserId;
 
@@ -104,11 +92,6 @@ private class LeaveSplitTest {
                 FROM ApplicationItem__c WHERE Id = :applId];
     }
 
-    /*
-     * Earliest first, and within a date the morning before the afternoon: since
-     * LEAVE-54 a boundary day is two records sharing one Term_From__c, so ordering on
-     * the date alone no longer settles it. 'AM leave' sorts before 'PM leave'.
-     */
     private static List<ApplicationItem__c> continuationOf(Id parentId) {
         return [SELECT Request_Type__c, Leave_Days__c, Term_From__c, Term_To__c, Status__c,
                        Split_From__c, Period_Leave__c
@@ -179,11 +162,6 @@ private class LeaveSplitTest {
         System.assertEquals(days[7], unpaid.Term_To__c, 'and runs to the original end date');
     }
 
-    /*
-     * LEAVE-54. Three and a half days left against a five day request. The balance is
-     * held to the half day, so the boundary day is halved rather than the .5 being left
-     * in the pool to lapse at the year end.
-     */
     @isTest
     static void aPartDayAtTheBoundaryIsHalvedBetweenTheTwoTypes() {
         useTestPolicies();
@@ -375,13 +353,6 @@ private class LeaveSplitTest {
         System.assertEquals(3, balance('Annual leave').Used_Days__c, 'only the first was taken');
     }
 
-    // -------------------------------------------------------- LEAVE-37, split on edit
-
-    /*
-     * The reported bug. Saving a request and setting its end date afterwards - which is
-     * what filling the form in two passes gives you - left a request longer than the
-     * balance with no unpaid half, and it could then never be approved.
-     */
     @isTest
     static void wideningASavedRequestSplitsIt() {
         useTestPolicies();

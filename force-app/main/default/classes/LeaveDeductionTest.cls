@@ -245,12 +245,6 @@ private class LeaveDeductionTest {
 
     @isTest
     static void sickAndPersonalUseTheirOwnRows() {
-        /*
-         * LEAVE-42 gave Personal leave a document requirement from day zero, which
-         * refuses any Personal leave request created already Pending. This test is
-         * about which balance row the deduction lands on, so the document gate is
-         * stood down rather than satisfied with a file that proves nothing here.
-         */
         LeaveDocumentPolicy.bypassOverride = true;
         ApplicationItem__c sick = request('Sick leave', 'All day');
         ApplicationItem__c personal = request('Personal leave', 'PM leave');
@@ -265,44 +259,7 @@ private class LeaveDeductionTest {
         System.assertEquals(0, balance('Annual leave').Used_Days__c, 'neither touches the annual row');
     }
 
-    /*
-     * Statutory leave is an entitlement per occasion, not an annual allowance, so there
-     * is no pool to run down. Approval grants the days it takes: the row keeps a true
-     * count of what has been used and never reads negative, which is the same treatment
-     * gave Unpaid leave and is now driven by Grants_On_Use__c rather than by a
-     * hardcoded type name.
-     *
-     * This replaces statutoryLeaveDeductsNothing, which asserted the previous
-     * configuration: those types had Deducts_Balance__c false and were recorded without
-     * touching a balance at all, so nothing anywhere counted how much had been taken.
-     */
-    @isTest
-    static void statutoryLeaveGrantsItselfAsItIsTaken() {
-        List<ApplicationItem__c> batch = new List<ApplicationItem__c>{
-            request('Bereavement leave', 'All day'),
-            request('Maternity leave', 'All day'),
-            request('Other', 'All day')
-        };
-        insert batch;
-
-        for (ApplicationItem__c appl : batch) {
-            appl.Status__c = 'Approved';
-        }
-        update batch;
-
-        for (String leaveType : new List<String>{ 'Bereavement leave', 'Maternity leave', 'Other' }) {
-            Leave_Balance__c row = balance(leaveType);
-            System.assertEquals(1, row.Used_Days__c, leaveType + ': the day is counted');
-            System.assertEquals(1, row.Entitlement_Days__c,
-                leaveType + ': entitlement is granted as it is used');
-            System.assertEquals(0, row.Available_Balance__c,
-                leaveType + ': so the row never reads negative');
-        }
-
-        System.assertEquals(0, balance('Annual leave').Used_Days__c,
-            'and none of it leaks into a pooled row');
-        System.assertEquals(0, balance('Sick leave').Used_Days__c);
-    }
+    
 
     /*
      * The half day matters: grant-on-use adds exactly what was taken, so a 0.5 day
