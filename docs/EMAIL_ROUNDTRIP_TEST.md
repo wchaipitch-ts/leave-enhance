@@ -68,6 +68,57 @@ sf data query --target-org dev5-ts -r human -q "
 - `Body_Plain__c` contains the reply text plus Gmail's quoted history. Stripping
   that history is `ReplyCleaner`'s job, later.
 
+## Result: passed 2026-09-16
+
+`IEL-00000`. Reply captured about 55 seconds after sending.
+
+| Field | Value |
+|---|---|
+| `From_Address__c` | `chaipitch6@gmail.com` |
+| `Subject__c` | `Re: Sandbox: Booking POC round-trip test [Ref:AR-00001]` |
+| `Reference_Code__c` | `AR-00001` |
+| `Processing_Status__c` | `Received` — would have entered the Gemini queue |
+| `Is_Auto_Reply__c`, `Body_Truncated__c` | false, false |
+| `In_Reply_To__c` | the outbound Salesforce `@sfdc.net` Message-ID |
+
+Q2 of the spec is proven. Three things the round trip exposed that change later work:
+
+### 1. The contact does not see the rep's address
+
+The reply quotes the sender as
+`TerraSky admin2Thailand <email@00dfc000001jveheaq.sfcustomeremail.com>`,
+not `wchaipitch@terrasky.co.th`. Salesforce rewrote the From address because
+the sending domain has no DKIM/SPF alignment set up in the org — the display
+name survived, the address did not.
+
+This breaks "send as rep" as written in `FULL_FLOW.md` F4. The proposal is
+supposed to look like a person wrote it. Fixing it needs either DKIM keys for
+the sending domain (Setup → Email → DKIM Keys) or a verified Org-Wide Email
+Address, and that decision also settles spec open question 3. It is not an
+Apex change.
+
+### 2. Sandboxes prepend `Sandbox: ` to outbound subjects
+
+The subject went out as `Sandbox: Booking POC round-trip test [Ref:AR-00001]`
+and came back with `Re: ` on top of that. The token survived only because
+`BookingReference.extract()` searches anywhere in the string rather than
+anchoring to either end. Keep it that way — never anchor that pattern.
+
+### 3. Gmail's attribution line wraps
+
+The quoted history begins:
+
+```
+On Wed, 16 Sept 2026 at 14:38, TerraSky admin2Thailand <
+email@00dfc000001jveheaq.sfcustomeremail.com> wrote:
+```
+
+`On` and `wrote:` are on **different lines**. `ReplyCleaner` cannot cut on a
+single-line `On .* wrote:` match — it needs `DOTALL`, or it will leave the
+entire quoted proposal in the body and hand Gemini the three original slot
+times as if the contact had written them. That is a wrong-booking risk, not a
+cosmetic one. Use this reply as the first `ReplyCleaner` fixture.
+
 ## If no record appears
 
 - Check the Email Service is active and its address is active.
