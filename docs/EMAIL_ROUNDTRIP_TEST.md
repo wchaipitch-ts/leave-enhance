@@ -84,10 +84,17 @@ The real feature books a *specific rep's* Google Calendar from a reply that
 *Gemini* classifies. Both of those constrain the capture layer, so step 1 was
 built to their shape rather than to the demo's.
 
-**One inbound address for the whole org.** Reps do not get an address each.
-Every proposal goes out with the same Reply-To, and rep identity travels in the
-subject token — `BookingReference`. So adding reps costs nothing, and the
-address never has to be reconfigured. `BookingReference.tag()` writes the token,
+**Per-rep From, one shared Reply-To.** Each rep does have their own address, and
+the proposal is sent *from* it — the contact must see a person, and `GCalService`
+books that rep's calendar via domain-wide delegation with `sub` = that same
+address. What reps do *not* get is an inbound address each: every proposal
+carries the same Reply-To, the one Email Service address, because that is what
+routes the answer into Apex.
+
+So the reply's envelope cannot say which rep it belongs to. Rep identity travels
+in the subject token — `BookingReference` — and is resolved through
+`Appointment_Request__c.Rep__c`. Adding a rep therefore costs no email
+configuration at all. `BookingReference.tag()` writes the token,
 `BookingReference.extract()` reads it, and both halves of the round trip call
 the same class so the format cannot drift. `extract()` is tested against `Re:`,
 `RE: RE: Fwd:`, `転送:`, `Automatic reply:` and lower-case tokens.
