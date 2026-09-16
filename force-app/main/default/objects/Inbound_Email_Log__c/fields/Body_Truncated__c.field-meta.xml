@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Body_Truncated__c</fullName>
+    <defaultValue>false</defaultValue>
+    <description>A body exceeded the Long Text limit and was cut. Gemini would be classifying an incomplete reply, so these must go to Rep Review rather than auto-book.</description>
+    <label>Body Truncated</label>
+    <trackTrending>false</trackTrending>
+    <type>Checkbox</type>
+</CustomField>

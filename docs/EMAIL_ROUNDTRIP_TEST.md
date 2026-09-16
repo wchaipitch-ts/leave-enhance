@@ -77,3 +77,64 @@ sf data query --target-org dev5-ts -r human -q "
   at ERROR level rather than throwing.
 - Confirm the reply really went to the service address, not to the sender's
   address: Gmail replies to `Reply-To` only if the header was set.
+
+## How this carries into the real flow
+
+The real feature books a *specific rep's* Google Calendar from a reply that
+*Gemini* classifies. Both of those constrain the capture layer, so step 1 was
+built to their shape rather than to the demo's.
+
+**One inbound address for the whole org.** Reps do not get an address each.
+Every proposal goes out with the same Reply-To, and rep identity travels in the
+subject token — `BookingReference`. So adding reps costs nothing, and the
+address never has to be reconfigured. `BookingReference.tag()` writes the token,
+`BookingReference.extract()` reads it, and both halves of the round trip call
+the same class so the format cannot drift. `extract()` is tested against `Re:`,
+`RE: RE: Fwd:`, `転送:`, `Automatic reply:` and lower-case tokens.
+
+**Capture and classification are separate transactions.** Apex cannot call out
+after uncommitted DML, and classification is a Vertex AI callout — so the split
+is forced, not stylistic. `BookingInboundEmailHandler` does no matching, no
+cleaning and no callout. It writes the message with
+`Processing_Status__c = Received`, which is the work queue the classification
+job drains. Nothing in the handler changes when Gemini arrives.
+
+**Redelivery cannot double-book.** `Message_Id__c` is unique and an external ID,
+and the handler checks for an existing capture before inserting. Salesforce can
+deliver the same message twice; capturing it twice would classify it twice and
+book the slot twice. A duplicate becomes a debug line, never a bounce.
+
+**Automation never reaches Gemini.** Header-flagged auto-replies and empty
+bodies are captured with `Processing_Status__c = Ignored`. Per spec section 9
+these are Logged Only, so filtering them at capture keeps them out of the queue
+instead of paying for a classification that cannot be acted on. Note this is the
+*header* test only — an out-of-office written as ordinary prose still goes to
+Gemini, which is case 14 of the evaluation set.
+
+**A reply is never silently lost.** If the insert fails, the handler writes a
+skeleton row with `Processing_Status__c = Failed` and the stack trace in
+`Processing_Error__c`. `Failed` rows are safe to retry. The handler still
+reports success either way, because an exception escaping an Email Service
+bounces a real customer's mail back at them.
+
+**Truncated bodies are visible.** A body past the Long Text ceiling sets
+`Body_Truncated__c`. Gemini would be reading an incomplete reply, so these must
+route to Rep Review rather than auto-book.
+
+**Addresses are normalized on the way in.** `From_Address__c` and
+`To_Address__c` are lower-cased and trimmed, so the spec's fallback match —
+sender address equals the Contact email of exactly one open request — is a plain
+equality test rather than a scan.
+
+### What still has to be built
+
+`Inbound_Email_Log__c` stays a raw capture log. The business-level record is
+`Booking_Reply__c`, and the classification job is what creates it: drain
+`Processing_Status__c = Received`, resolve `Reference_Code__c` to an
+`Appointment_Request__c` (falling back to sender address), clean the body,
+call Gemini behind `IGeminiService`, then validate and route. Which rep's
+calendar to touch comes from the request, never from the inbound address.
+
+**Limit to watch:** inbound email is capped at 1,000 messages per user license
+per day across the whole org, shared with the existing `CreateContactByInbound`
+service. Fine for a POC; size it before a pilot.

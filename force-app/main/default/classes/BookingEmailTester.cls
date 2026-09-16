@@ -5,6 +5,10 @@
  *
  * Run from Anonymous Apex, not from a trigger or Flow. This is scaffolding for
  * proving the round trip, not part of the real send path (EmailSender).
+ *
+ * The Reply-To is the one Email Service address for the whole org, the same for
+ * every rep. Rep identity travels in the subject token, not in the address, so
+ * this does not need one inbound address per rep.
  */
 public with sharing class BookingEmailTester {
 
@@ -28,7 +32,8 @@ public with sharing class BookingEmailTester {
 
         Messaging.SingleEmailMessage msg = new Messaging.SingleEmailMessage();
         msg.setToAddresses(new List<String>{ toAddress });
-        msg.setSubject('Booking POC round-trip test [Ref:' + TEST_REFERENCE + ']');
+        // Same builder the handler parses with, so the two halves cannot drift.
+        msg.setSubject('Booking POC round-trip test ' + BookingReference.tag(TEST_REFERENCE));
         msg.setPlainTextBody(buildBody(me.Name));
         msg.setReplyTo(replyToAddress);
         msg.setSenderDisplayName(me.Name);
