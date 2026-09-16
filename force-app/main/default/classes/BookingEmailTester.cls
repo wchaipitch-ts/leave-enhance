@@ -21,6 +21,26 @@ public with sharing class BookingEmailTester {
      * @return a one-line summary for the debug log
      */
     public static String sendTestEmail(String toAddress, String replyToAddress) {
+        return sendTestEmail(toAddress, replyToAddress, null);
+    }
+
+    /**
+     * Same, but sent through a verified Org-Wide Email Address.
+     *
+     * Measured 2026-09-16: this does NOT change the From address a contact
+     * sees. With or without an OWEA the header reads
+     * email@<orgid>.sfcustomeremail.com, because the org has no DKIM key for
+     * the sending domain and Salesforce aligns From to whatever it can sign
+     * as. Only the display name differs -- and an OWEA forces its own, which
+     * is why the real proposal email should send as the rep instead.
+     *
+     * Kept so the experiment can be repeated after DKIM is published.
+     * See docs/EMAIL_ROUNDTRIP_TEST.md, "Sender identity".
+     *
+     * @param orgWideEmailAddressId a verified OrgWideEmailAddress, or null to
+     *                              send as the running user
+     */
+    public static String sendTestEmail(String toAddress, String replyToAddress, Id orgWideEmailAddressId) {
         if (String.isBlank(toAddress)) {
             throw new IllegalArgumentException('toAddress is required');
         }
@@ -36,7 +56,14 @@ public with sharing class BookingEmailTester {
         msg.setSubject('Booking POC round-trip test ' + BookingReference.tag(TEST_REFERENCE));
         msg.setPlainTextBody(buildBody(me.Name));
         msg.setReplyTo(replyToAddress);
-        msg.setSenderDisplayName(me.Name);
+
+        if (orgWideEmailAddressId == null) {
+            msg.setSenderDisplayName(me.Name);
+        } else {
+            // setOrgWideEmailAddressId and setSenderDisplayName are mutually
+            // exclusive; the OWEA carries its own display name.
+            msg.setOrgWideEmailAddressId(orgWideEmailAddressId);
+        }
         msg.setSaveAsActivity(false);
         msg.setUseSignature(false);
 
@@ -47,7 +74,10 @@ public with sharing class BookingEmailTester {
 
         Messaging.SendEmailResult r = results[0];
         if (r.isSuccess()) {
-            return 'Sent to ' + toAddress + ' from ' + me.Email + ', Reply-To ' + replyToAddress;
+            String sender = orgWideEmailAddressId == null
+                ? 'running user ' + me.Email
+                : 'OWEA ' + orgWideEmailAddressId;
+            return 'Sent to ' + toAddress + ' as ' + sender + ', Reply-To ' + replyToAddress;
         }
 
         List<String> problems = new List<String>();
@@ -62,6 +92,7 @@ public with sharing class BookingEmailTester {
             'Hi,',
             '',
             'This is an automated test from the appointment booking POC.',
+            'Sent at ' + System.now().format('yyyy-MM-dd HH:mm:ss', 'Asia/Bangkok') + ' (Bangkok).',
             'Please reply to this message with any text, for example "Option 2 works for me".',
             '',
             'Keep the subject line as is so the reference code survives the round trip.',

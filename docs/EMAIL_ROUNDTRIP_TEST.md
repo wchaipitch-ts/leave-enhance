@@ -87,15 +87,9 @@ Q2 of the spec is proven. Three things the round trip exposed that change later 
 
 The reply quotes the sender as
 `TerraSky admin2Thailand <email@00dfc000001jveheaq.sfcustomeremail.com>`,
-not `wchaipitch@terrasky.co.th`. Salesforce rewrote the From address because
-the sending domain has no DKIM/SPF alignment set up in the org — the display
-name survived, the address did not.
-
-This breaks "send as rep" as written in `FULL_FLOW.md` F4. The proposal is
-supposed to look like a person wrote it. Fixing it needs either DKIM keys for
-the sending domain (Setup → Email → DKIM Keys) or a verified Org-Wide Email
-Address, and that decision also settles spec open question 3. It is not an
-Apex change.
+not `wchaipitch@terrasky.co.th`. Salesforce rewrote the From address. See the
+sender identity section below — this was measured, and an Org-Wide Email
+Address does **not** fix it.
 
 ### 2. Sandboxes prepend `Sandbox: ` to outbound subjects
 
@@ -196,3 +190,72 @@ calendar to touch comes from the request, never from the inbound address.
 **Limit to watch:** inbound email is capped at 1,000 messages per user license
 per day across the whole org, shared with the existing `CreateContactByInbound`
 service. Fine for a POC; size it before a pilot.
+
+## Sender identity (measured 2026-09-16)
+
+Spec open question 3. Settled by experiment rather than by reading docs: the
+same message was sent twice to the Email Service address itself, so the handler
+captured the exact `From:` header a contact would see.
+
+| Variant | `From:` header the recipient sees |
+|---|---|
+| A — running user, `setSenderDisplayName('TerraSky admin2Thailand')` | `TerraSky admin2Thailand <email@00dfc000001jveheaq.sfcustomeremail.com>` |
+| B — verified OWEA `no-reply@terrasky.co.th` | `"no-reply@terrasky.co.th" <email@00dfc000001jveheaq.sfcustomeremail.com>` |
+
+Captured as `IEL-00002` and `IEL-00001`.
+
+**The address is identical in both.** Only the display name changed. An
+Org-Wide Email Address being *verified* is not the same as the org being
+authorized to sign mail as that domain, and the headers say exactly why:
+
+```
+DKIM-Signature: ... d=sfcustomeremail.com; s=a.jpn178s.core1.sfdc-p1i6qd
+Authentication-Results: dkim=pass header.d=sfcustomeremail.com
+Sender: noreply@salesforce.com
+```
+
+Salesforce is signing as `sfcustomeremail.com` because it has no DKIM key for
+`terrasky.co.th`, and the From header is aligned to whatever it can sign as.
+`Reply-To` came through untouched in both variants, so reply routing is
+unaffected either way.
+
+### What this means for the build
+
+- **Proposal email: send as the rep, no OWEA.** The rep is the running user in
+  the Screen Flow, so `setSenderDisplayName(rep.Name)` puts the rep's name in
+  the inbox list, which is the part a contact actually reads. Passing an OWEA
+  would *replace* that with one fixed org-wide name and lose per-rep identity.
+- **`setOrgWideEmailAddressId` and `setSenderDisplayName` are mutually
+  exclusive.** Setting both is rejected: *"When an org-wide Email Address ID is
+  specified, a sender display name may not be specified."* Probed directly, not
+  inferred.
+- **Thank-you and other background sends must use an OWEA**, because there is no
+  rep running user in a Queueable — the running user is the Email Service
+  run-as user. This matches spec section 8 ("sent from the Org-Wide Email
+  Address with rep in CC") and the display name is then fixed org-wide. If
+  per-rep identity is needed there too, it costs one verified OWEA per rep.
+- **An OWEA is profile-gated, and being verified is not enough.** Sending
+  through one the running profile may not use fails with
+  `INSUFFICIENT_ACCESS_OR_READONLY: Not profiled to access this Org-wide Email
+  Address`. Of this org's four OWEAs, only `no-reply@terrasky.co.th` has
+  `IsAllowAllProfiles = true`. The Email Service run-as user has to clear that
+  same gate before the thank-you email can send, so check it when picking the
+  address for spec open question 3.
+- **The `@…sfcustomeremail.com` domain is a trust and deliverability problem,
+  not a flow blocker.** Everything works; it just does not look like the rep
+  wrote it, and recipient spam filters treat an unfamiliar domain less kindly.
+
+### The actual fix, and it is not Apex
+
+Create a DKIM key for the sending domain: Setup → Email → DKIM Keys → Create
+Key, then publish the generated CNAME records in `terrasky.co.th` DNS and
+activate the key. Once Salesforce can sign as the domain, the From header stops
+being rewritten and the rep's real address appears.
+
+This needs a DNS administrator, so it has lead time — start it before the
+pilot rather than at it. Note this sandbox signs for the sandbox domain;
+production needs its own key.
+
+**Until DKIM is in place**, the POC is fine to demo as is: rep display name,
+Salesforce-owned address, Reply-To routing proven. Say so in the demo rather
+than letting someone notice it.
