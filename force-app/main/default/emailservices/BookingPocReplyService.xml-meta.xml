@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- runAsUser below is the dev5-ts sandbox admin and must be changed per org.
+     Email Service metadata requires a real username, so this is the one place
+     the POC cannot avoid an org-specific value. -->
+<EmailServicesFunction xmlns="http://soap.sforce.com/2006/04/metadata">
+    <apexClass>BookingInboundEmailHandler</apexClass>
+    <attachmentOption>None</attachmentOption>
+    <authenticationFailureAction>Discard</authenticationFailureAction>
+    <authorizationFailureAction>Discard</authorizationFailureAction>
+    <authorizedSenders></authorizedSenders>
+    <emailServicesAddresses>
+        <authorizedSenders></authorizedSenders>
+        <isActive>true</isActive>
+        <localPart>bookingpoc</localPart>
+        <runAsUser>wchaipitch@terrasky.co.th.dev5</runAsUser>
+    </emailServicesAddresses>
+    <errorRoutingAddress></errorRoutingAddress>
+    <functionInactiveAction>Discard</functionInactiveAction>
+    <functionName>BookingPocReplyService</functionName>
+    <isActive>true</isActive>
+    <isAuthenticationRequired>false</isAuthenticationRequired>
+    <isErrorRoutingEnabled>false</isErrorRoutingEnabled>
+    <isTextAttachmentsAsBinary>false</isTextAttachmentsAsBinary>
+    <isTlsRequired>false</isTlsRequired>
+    <overLimitAction>Discard</overLimitAction>
+</EmailServicesFunction>
