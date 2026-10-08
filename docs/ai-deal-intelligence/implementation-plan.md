@@ -42,11 +42,11 @@ The service takes plain text plus the Opportunity Id. Event is just today's sour
 
 | Metadata | Purpose |
 |----------|---------|
-| Static resource `DealIntelligencePrompt` (text) | The BA prompt, Sections 1–4, without Section 5 (FR-9, D2). It is versioned in git, and the BA can update it without code changes. |
+| Static resource `DealIntelligencePrompt` (text) ✅ | The BA prompt, Sections 1–4, without Section 5 (FR-9, D2). It is versioned in git, and the BA can update it without code changes. |
 | `Program_Constant__mdt` records | `GeminiMODEL` (Flash), `AI_MOM_Types`, `AI_MOM_Subjects` (semicolon lists, FR-10/11), `AI_MOM_Min_Length` = `100`. ✅ The three `AI_MOM_*` records are done. |
-| Named Credential + External Credential `Gemini` | **AI Studio** (D5). URL `https://generativelanguage.googleapis.com`, custom header `x-goog-api-key` = `{!$Credential.Gemini.ApiKey}`. The key is entered in Setup in each org, never in git. Moving to Vertex later only changes this credential and the URL path. |
-| `AI_Analysis_Log__c` object | `Opportunity__c`, `Event_Id__c`, `Model__c`, `Status__c` (Success / Failed / Parse Error / Partial), `Input_Tokens__c`, `Output_Tokens__c`, `Raw_Response__c` (Long Text 131k), `Error__c`, `Fields_Changed__c`. Also gives a score history for the future dashboard. |
-| Permission set `AI_Deal_Intelligence` | See §1. |
+| Named Credential + External Credential `Gemini_AI_Studio` ✅ | **AI Studio** (D5). URL `https://generativelanguage.googleapis.com`; the External Credential (Custom protocol) adds header `x-goog-api-key` = `{!$Credential.Gemini_AI_Studio.ApiKey}`. **Manual step per org:** Setup → External Credentials → Gemini AI Studio → principal `Gemini_AI_Studio_Principal` → add authentication parameter `ApiKey`. Never in git. (The OAuth `Gemini_OAuth_NC` / `Gemini_OAuth_EC` someone created for Vertex is left untouched.) |
+| `AI_Analysis_Log__c` object ✅ | `Opportunity__c`, `Event_Id__c`, `Model__c`, `Status__c` (Success / Partial / Failed / Parse Error / Save Failed), `Input_Tokens__c`, `Output_Tokens__c`, `Response__c` (Long Text 131k), `Changes__c`, `Details__c` (errors + warnings). Also gives a score history for the future dashboard. |
+| Permission set `AI_Deal_Intelligence` ✅ | Access to the `Gemini_AI_Studio` principal + read on the log. **Real-time runs as the rep who logs the meeting, so every such rep needs this permission set** — without it the callout fails. |
 
 Merge rules don't need their own config. They follow the field: #1–17 → A, #18–30 → B, #31–33 → C. That is a fixed list in `DealIntelligenceRules`.
 
@@ -55,7 +55,7 @@ Merge rules don't need their own config. They follow the field: #1–17 → A, #
 | Class | Responsibility |
 |-------|----------------|
 | `DealIntelligenceRules` ✅ | **Filter:** `isMom(Event)` / `qualifying(List<Event>)`: Type **and** Subject in the config lists (D3), trimmed Description ≥ 100, `AI_Processed__c = false`, related to an Opportunity. Missing config → nothing qualifies (it must never block a rep's save). `momTypes()` / `momSubjects()` for the backfill SOQL. **Merge:** `mergeAnswer(Opportunity, Map<String,Object>)` strips the `N_` key prefix (FR-8), then applies Rule A / B / C per field. Rule B: "no data" only fills a blank; real data overwrites; multi-picklists accumulate (D4); an invalid picklist value counts as no data; text is cut to the field length. Rule C: Score clamped to 1–100; a non-numeric Score or an empty Reason keeps the old value (D8). It applies changes to the record it's given and returns `changes` + `warnings`. **No SOQL / DML.** (`merge` is a reserved word in Apex, hence `mergeAnswer`.) |
-| `DealIntelligenceService` | `analyse(List<Event>)`: (1) build the prompt from the static resource and call Gemini for each Event (`responseMimeType: "application/json"`, model from config, `callout:Gemini`, timeout 60 s); (2) query the Opportunities once with `DealIntelligenceRules.fields()`; (3) `mergeAnswer` oldest → newest; (4) `Database.update(opps, false)`; (5) set `AI_Processed__c = true` **only** on Events whose result was saved; (6) insert logs. All callouts happen before any DML. |
+| `DealIntelligenceService` ✅ | `Summary analyse(List<Id> eventIds)`: re-reads the Events and re-checks the filter, then (1) builds the prompt from the static resource and calls Gemini for each Event (`responseMimeType: "application/json"`, no temperature — Google advises the default for Gemini 3, model from `GeminiMODEL`, `callout:Gemini_AI_Studio`, timeout 60 s); (2) query the Opportunities once with `DealIntelligenceRules.fields()`; (3) `mergeAnswer` oldest → newest; (4) `Database.update(opps, false)`; (5) set `AI_Processed__c = true` **only** on Events whose result was saved; (6) insert logs. All callouts happen before any DML. Without sharing and in system mode (from API 67.0 SOQL/DML respect field access by default), because the rep may not own the deal or see the AI fields. Returns counts + tokens for the backfill email. |
 | `DealIntelligenceJob` | One class for both modes. **Backfill:** `Database.Batchable<SObject>, Database.AllowsCallouts, Database.Stateful`. Query: `Event WHERE ActivityDate = LAST_N_DAYS:365 AND What.Type = 'Opportunity' AND Type IN :types AND Subject IN :subjects AND AI_Processed__c = false ORDER BY WhatId, ActivityDateTime, CreatedDate`; the length check runs in Apex; **scope 3–5**; `finish` emails a summary. **Real-time:** `Queueable, Database.AllowsCallouts`. Takes Event Ids, processes a few, chains the rest. |
 | `EventTriggerHandler` (existing, extended) | After insert only (FR-2): `DealIntelligenceRules.qualifying`, then enqueue `DealIntelligenceJob`. Our own update that sets `AI_Processed__c` is an *update*, so it can't re-trigger. |
 
@@ -88,11 +88,11 @@ Endpoint (AI Studio, D5): `https://generativelanguage.googleapis.com/v1beta/mode
 | # | Task | h |
 |---|------|---|
 | 1 | Rename field; retrieve fields; permission set | 2 |
-| 2 | Credentials: Named/External Credential for AI Studio | 2 |
-| 3 | Static resource prompt, constants, `AI_Analysis_Log__c` | 2 |
+| 2 | ✅ Credentials: Named/External Credential for AI Studio (key still to be entered) | 2 |
+| 3 | ✅ Static resource prompt, constants, `AI_Analysis_Log__c` | 2 |
 | 4 | ✅ `DealIntelligenceRules`: filter | 3 |
 | 5 | ✅ `DealIntelligenceRules`: merge (Rules A/B/C, multi-picklist, coercion) | 5 |
-| 6 | `DealIntelligenceService`: prompt, Gemini call, save, log | 3 |
+| 6 | ✅ `DealIntelligenceService`: prompt, Gemini call, save, log | 3 |
 | 7 | Prompt check: run 5–10 real MOMs (Thai + English), confirm the JSON keys and values parse | 3 |
 | 8 | `DealIntelligenceJob` (backfill) + dry run | 3 |
 | 9 | Event trigger + `DealIntelligenceJob` (real-time) | 2 |

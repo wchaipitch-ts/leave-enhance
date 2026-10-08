@@ -12,7 +12,8 @@ Test data: one test Account + Opportunity `AIDI Test Opp` (any stage). Use it fo
 - [ ] 1.2 `Event.AI_Processed__c` exists, default false.
 - [ ] 1.3 The user running the batch has edit access to the 33 fields and `AI_Processed__c`.
 - [ ] 1.4 The Event Type values used by the filter exist (sandbox has only On-site / Visit and Web Meeting of the list — see requirements §3.4 note).
-- [ ] 1.5 Named Credential `Gemini` has the AI Studio API key set in this org.
+- [ ] 1.5 External Credential `Gemini AI Studio` → principal `Gemini_AI_Studio_Principal` has the `ApiKey` parameter set in this org.
+- [ ] 1.6 Permission set `AI_Deal_Intelligence` is assigned to the test users (and to every rep who logs MOMs).
 
 ## 2. Apex unit tests
 
@@ -75,7 +76,7 @@ Use a fresh Opportunity. Create MOMs one after another and check the fields afte
 
 ## 5. JSON output
 
-- [ ] 5.1 A Success log's `Raw_Response__c` is one JSON object with 33 keys, and no Markdown table.
+- [ ] 5.1 A Success log's `Response__c` is one JSON object with 33 keys, and no Markdown table.
 - [ ] 5.2 Exactly **one** callout per MOM (one log per MOM).
 - [ ] 5.3 The request body (debug log) contains `"responseMimeType":"application/json"`.
 
