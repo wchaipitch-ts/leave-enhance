@@ -24,6 +24,7 @@ Branch: `feature/ai-deal-intelligence`
 | [implementation-plan.md](implementation-plan.md) | Design, classes, metadata, failure handling, stress-test results |
 | [testing-steps.md](testing-steps.md) | Checklists: unit tests, manual tests, backfill, retries, stress test |
 | [test-data.md](test-data.md) | The sandbox test records and ready-to-paste meeting notes |
+| [snippets.md](snippets.md) | Reset, backfill and check snippets to run from any machine (Developer Console or CLI) |
 | `scripts/apex/ai-deal-intelligence-reset.apex` | Clears the AI fields on the test deals and makes their meetings wait again (`DRY_RUN` first) |
 | `scripts/apex/ai-deal-intelligence-stress-data.apex` | Creates the stress-test deals and meetings |
 | `scripts/apex/ai-deal-intelligence-stress-check.apex` | Read-only report on a stress run |

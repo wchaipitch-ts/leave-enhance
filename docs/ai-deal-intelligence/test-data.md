@@ -97,6 +97,6 @@ Created by `scripts/apex/ai-deal-intelligence-stress-data.apex`. Each deal's **D
 sf apex run --file scripts/apex/ai-deal-intelligence-reset.apex --target-org dev5-ts
 ```
 
-Edit the switches at the top first: `DRY_RUN` (true = only print, roll back), `DELETE_LOGS`, `DELETE_HAND_LOGGED_MEETINGS`, `DELETE_STRESS_DEALS` (true = remove the stress deals completely). Scope: `AIDI Test%`, `AIDI Stress%`, `Gemini MOM%`.
+No checkout at hand? Paste the browser version from [snippets.md](snippets.md) into the Developer Console. Edit the switches at the top first: `DRY_RUN` (true = only print, roll back), `DELETE_LOGS`, `DELETE_HAND_LOGGED_MEETINGS`, `DELETE_STRESS_DEALS` (true = remove the stress deals completely). Scope: `AIDI Test%`, `AIDI Stress%`, `Gemini MOM%`.
 
 To remove the AIDI Test deals for good, delete the four Opportunities; their meetings go with them, log rows stay with the Opportunity link blank.
