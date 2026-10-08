@@ -9,5 +9,9 @@ public class EventTriggerHandler {
     public void onBeforeDelete (List<Event> oldList) {
         logic.checkApplicationItemPreventEditCalendar(oldList, 'delete');
     }
+
+    public void onAfterInsert (List<Event> newList) {
+        DealIntelligenceJob.enqueueFor(newList);
+    }
     
 }

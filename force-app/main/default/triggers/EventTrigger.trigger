@@ -7,4 +7,7 @@ trigger EventTrigger on Event (before insert, before update, before delete, afte
             handler.onBeforeDelete(Trigger.Old);
         }
     }
+    if (Trigger.isAfter && Trigger.isInsert) {
+        handler.onAfterInsert(Trigger.new);
+    }
 }

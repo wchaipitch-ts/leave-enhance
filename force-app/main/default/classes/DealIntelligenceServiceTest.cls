@@ -85,6 +85,7 @@ private class DealIntelligenceServiceTest {
 
     @TestSetup
     static void makeData() {
+        DealIntelligenceJob.realTimeOn = false;
         Opportunity template = new Opportunity(
             StageName = firstValue(Opportunity.StageName.getDescribe()),
             Your_Win_Confidence__c = firstValue(Opportunity.Your_Win_Confidence__c.getDescribe()),

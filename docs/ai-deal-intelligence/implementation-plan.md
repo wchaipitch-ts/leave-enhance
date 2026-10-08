@@ -32,7 +32,8 @@ Kept to **three Apex classes** (plus their tests):
 ```
  EventTrigger (after insert) ─┐
                               ├─► DealIntelligenceJob ──► DealIntelligenceService ──► DealIntelligenceRules
- Backfill (run once) ─────────┘   (Batchable + Queueable)  (prompt, Gemini call,       (filter + merge rules,
+ Backfill (run once) ─────────┘   (Batchable + inner       (prompt, Gemini call,       (filter + merge rules,
+                                   Queueable RealTime)
                                                             save, log)                  no SOQL / DML)
 ```
 
@@ -56,8 +57,8 @@ Merge rules don't need their own config. They follow the field: #1–17 → A, #
 |-------|----------------|
 | `DealIntelligenceRules` ✅ | **Filter:** `isMom(Event)` / `qualifying(List<Event>)`: Type **and** Subject in the config lists (D3), trimmed Description ≥ 100, `AI_Processed__c = false`, related to an Opportunity. Missing config → nothing qualifies (it must never block a rep's save). `momTypes()` / `momSubjects()` for the backfill SOQL. **Merge:** `mergeAnswer(Opportunity, Map<String,Object>)` strips the `N_` key prefix (FR-8), then applies Rule A / B / C per field. Rule B: "no data" only fills a blank; real data overwrites; multi-picklists accumulate (D4); an invalid picklist value counts as no data; text is cut to the field length. Rule C: Score clamped to 1–100; a non-numeric Score or an empty Reason keeps the old value (D8). It applies changes to the record it's given and returns `changes` + `warnings`. **No SOQL / DML.** (`merge` is a reserved word in Apex, hence `mergeAnswer`.) |
 | `DealIntelligenceService` ✅ | `Summary analyse(List<Id> eventIds)`: re-reads the Events and re-checks the filter, then (1) builds the prompt from the static resource and calls Gemini for each Event (`responseMimeType: "application/json"`, no temperature — Google advises the default for Gemini 3, model from `GeminiMODEL`, `callout:Gemini_AI_Studio`, timeout 60 s); (2) query the Opportunities once with `DealIntelligenceRules.fields()`; (3) `mergeAnswer` oldest → newest; (4) `Database.update(opps, false)`; (5) set `AI_Processed__c = true` **only** on Events whose result was saved; (6) insert logs. All callouts happen before any DML. Without sharing and in system mode (from API 67.0 SOQL/DML respect field access by default), because the rep may not own the deal or see the AI fields. Returns counts + tokens for the backfill email. |
-| `DealIntelligenceJob` | One class for both modes. **Backfill:** `Database.Batchable<SObject>, Database.AllowsCallouts, Database.Stateful`. Query: `Event WHERE ActivityDate = LAST_N_DAYS:365 AND What.Type = 'Opportunity' AND Type IN :types AND Subject IN :subjects AND AI_Processed__c = false ORDER BY WhatId, ActivityDateTime, CreatedDate`; the length check runs in Apex; **scope 3–5**; `finish` emails a summary. **Real-time:** `Queueable, Database.AllowsCallouts`. Takes Event Ids, processes a few, chains the rest. |
-| `EventTriggerHandler` (existing, extended) | After insert only (FR-2): `DealIntelligenceRules.qualifying`, then enqueue `DealIntelligenceJob`. Our own update that sets `AI_Processed__c` is an *update*, so it can't re-trigger. |
+| `DealIntelligenceJob` ✅ | One file for both modes. **Backfill** (the class itself): `Database.Batchable<SObject>, Database.AllowsCallouts, Database.Stateful`; start with `DealIntelligenceJob.runBackfill()` (scope **3**). Query: `Event WHERE ActivityDate = LAST_N_DAYS:365 AND What.Type = 'Opportunity' AND Type IN :types AND Subject IN :subjects AND AI_Processed__c = false ORDER BY WhatId, StartDateTime, CreatedDate`; the service checks the length. `finish` emails the runner a summary (analysed / failed / skipped / tokens); if email is off in the sandbox it only goes to the debug log. **Real-time** (inner class `DealIntelligenceJob.RealTime`, `Queueable, Database.AllowsCallouts`): 3 meetings per job, chains the rest. It's an inner class because Salesforce refuses a class that is both Queueable and Batchable. `enqueueFor(List<Event>)` never throws, so a rep's save is never blocked; a meeting that can't be queued stays unticked for the next backfill. |
+| `EventTriggerHandler` (existing, extended) ✅ | After insert only (FR-2): `DealIntelligenceJob.enqueueFor(Trigger.new)`. Our own update that sets `AI_Processed__c` is an *update*, so it can't re-trigger. |
 
 Processing order: Batch Apex runs chunks one after another in query order. `ORDER BY WhatId, ActivityDateTime` therefore keeps each Opportunity's MOMs oldest → newest (FR-20). If one Opportunity's MOMs fall into two chunks, the second chunk re-reads the Opportunity and sees the first chunk's result.
 
@@ -94,8 +95,8 @@ Endpoint (AI Studio, D5): `https://generativelanguage.googleapis.com/v1beta/mode
 | 5 | ✅ `DealIntelligenceRules`: merge (Rules A/B/C, multi-picklist, coercion) | 5 |
 | 6 | ✅ `DealIntelligenceService`: prompt, Gemini call, save, log | 3 |
 | 7 | Prompt check: run 5–10 real MOMs (Thai + English), confirm the JSON keys and values parse | 3 |
-| 8 | `DealIntelligenceJob` (backfill) + dry run | 3 |
-| 9 | Event trigger + `DealIntelligenceJob` (real-time) | 2 |
+| 8 | ✅ `DealIntelligenceJob` (backfill); dry run still to do | 3 |
+| 9 | ✅ Event trigger + `DealIntelligenceJob.RealTime` | 2 |
 | 10 | Unit tests (mocks), realistic test Events, run testing-steps.md, run backfill | 5 |
 | | **Total** | **30** |
 
@@ -112,7 +113,7 @@ Into the sandbox `dev5-ts` only (D7):
 5. Event trigger change
 6. Backfill from Anonymous Apex:
    ```apex
-   Database.executeBatch(new DealIntelligenceJob(), 5);
+   DealIntelligenceJob.runBackfill();
    ```
 
 > Team baseline: the full sandbox test run has ~63 pre-existing failures. Deploy with `--test-level RunSpecifiedTests` and name the new test classes.
