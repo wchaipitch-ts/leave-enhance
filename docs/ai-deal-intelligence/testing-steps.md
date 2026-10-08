@@ -98,6 +98,7 @@ Do a small dry run first.
 - [ ] 7.1 Temporarily set a wrong model name → log Failed, Opportunity unchanged, `AI_Processed__c` false, no unhandled exception email.
 - [ ] 7.2 An Opportunity that fails a validation rule doesn't stop the other Opportunities in the same chunk from updating.
 - [ ] 7.3 `grep -rn "AQ\.\|AIza" force-app` finds **no** API key in source.
+- [ ] 7.4 Gemini busy (503) or rate-limited (429): the log shows `Failed` / `HTTP 503`, and about 2 minutes later a new `DealIntelligenceJob` appears in Apex Jobs and the meeting is analysed. After 3 calls in all it stops retrying; the next backfill picks it up.
 
 ## 8. Demo readiness
 

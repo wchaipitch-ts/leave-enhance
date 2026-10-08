@@ -80,7 +80,8 @@ Endpoint (AI Studio, D5): `https://generativelanguage.googleapis.com/v1beta/mode
 
 | Case | Behaviour |
 |------|-----------|
-| HTTP ≠ 200 / timeout / 429 | Log `Failed`. Opportunity untouched, `AI_Processed__c` stays false, so the next run retries it. |
+| 503 (Gemini busy) / 429 (rate limit) | Log `Failed`, Opportunity untouched, meeting unticked — and **retried automatically**: `DealIntelligenceJob` queues it again after 2 minutes, up to 3 calls in all (real-time and backfill alike). After the last attempt it waits for the next backfill run. |
+| Other HTTP errors / timeout | Log `Failed`. Opportunity untouched, `AI_Processed__c` stays false, so the next backfill run retries it. |
 | Invalid JSON | Log `Parse Error` with the raw response. No update. |
 | One field bad (picklist / number) | Skip that field only, log `Partial` with a warning. |
 | Opportunity update fails (validation rule, lock) | `Database.update(…, false)`. The Event stays unprocessed and the error is logged. |

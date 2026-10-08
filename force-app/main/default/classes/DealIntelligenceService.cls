@@ -21,6 +21,9 @@ public without sharing class DealIntelligenceService {
     private static final String MODEL_KEY = 'GeminiMODEL';
     private static final Integer TIMEOUT_MS = 60000;
 
+    /** Gemini is busy (503) or we hit the rate limit (429): worth trying again later. */
+    @TestVisible private static final Set<Integer> BUSY_CODES = new Set<Integer>{ 429, 503 };
+
     @TestVisible private static final String SUCCESS     = 'Success';
     @TestVisible private static final String PARTIAL     = 'Partial';
     @TestVisible private static final String FAILED      = 'Failed';
@@ -34,6 +37,8 @@ public without sharing class DealIntelligenceService {
         public Integer skipped = 0;
         public Integer inputTokens = 0;
         public Integer outputTokens = 0;
+        /** Meetings that failed only because Gemini was busy; the caller may retry them. */
+        public List<Id> busy = new List<Id>();
     }
 
     /** One meeting's trip to Gemini and back. */
@@ -44,6 +49,7 @@ public without sharing class DealIntelligenceService {
         Map<String, Object> answer;
         Integer inputTokens;
         Integer outputTokens;
+        Boolean busy = false;
         DealIntelligenceRules.MergeResult merged;
         List<String> details = new List<String>();
 
@@ -128,6 +134,7 @@ public without sharing class DealIntelligenceService {
         }
         if (res.getStatusCode() != 200) {
             c.response = res.getBody();
+            c.busy = BUSY_CODES.contains(res.getStatusCode());
             c.fail(FAILED, 'HTTP ' + res.getStatusCode() + ' ' + res.getStatus());
             return;
         }
@@ -262,6 +269,9 @@ public without sharing class DealIntelligenceService {
                 summary.analysed++;
             } else {
                 summary.failed++;
+            }
+            if (c.busy) {
+                summary.busy.add(c.mom.Id);
             }
             summary.inputTokens += c.inputTokens == null ? 0 : c.inputTokens;
             summary.outputTokens += c.outputTokens == null ? 0 : c.outputTokens;

@@ -9,6 +9,10 @@
  *
  * Both hand Event Ids to DealIntelligenceService, a few at a time: each meeting is one
  * Gemini call, and Salesforce allows 120 seconds of callouts per transaction.
+ *
+ * When Gemini is busy (503) or rate-limited (429), the meeting is queued again a few
+ * minutes later, up to MAX_ATTEMPTS calls in all. Apex can't wait inside a
+ * transaction, so a delayed job is the only way to give Gemini time to recover.
  */
 public without sharing class DealIntelligenceJob
         implements Database.Batchable<SObject>, Database.AllowsCallouts, Database.Stateful {
@@ -16,10 +20,19 @@ public without sharing class DealIntelligenceJob
     /** Meetings per transaction. A call usually takes 5–20 s; three keeps clear of 120 s. */
     @TestVisible private static final Integer PER_TRANSACTION = 3;
 
+    /** Calls per meeting in all, the first one included. */
+    @TestVisible private static final Integer MAX_ATTEMPTS = 3;
+    @TestVisible private static final Integer RETRY_DELAY_MINUTES = 2;
+
     /** Off in test setup, so inserting test meetings doesn't start real-time jobs. */
     @TestVisible private static Boolean realTimeOn = true;
 
+    /** In tests, the follow-up job that would have been queued, instead of queuing it. */
+    @TestVisible private static RealTime queuedInTest;
+    @TestVisible private static Integer queuedDelayInTest;
+
     private DealIntelligenceService.Summary total = new DealIntelligenceService.Summary();
+    private Integer retriesQueued = 0;
 
     public static Id runBackfill() {
         return Database.executeBatch(new DealIntelligenceJob(), PER_TRANSACTION);
@@ -47,10 +60,17 @@ public without sharing class DealIntelligenceJob
     }
 
     public class RealTime implements Queueable, Database.AllowsCallouts {
-        private List<Id> pending;
+        @TestVisible private List<Id> pending;
+        /** Calls already made per meeting, for meetings that are being retried. */
+        @TestVisible private Map<Id, Integer> attempts;
 
         public RealTime(List<Id> eventIds) {
+            this(eventIds, new Map<Id, Integer>());
+        }
+
+        @TestVisible private RealTime(List<Id> eventIds, Map<Id, Integer> attempts) {
             this.pending = eventIds;
+            this.attempts = attempts;
         }
 
         public void execute(QueueableContext context) {
@@ -64,13 +84,39 @@ public without sharing class DealIntelligenceJob
                 }
             }
 
-            DealIntelligenceService.analyse(now);
+            DealIntelligenceService.Summary summary = DealIntelligenceService.analyse(now);
 
-            // Apex tests can't chain queueables; outside tests the rest runs in the next job.
-            if (!later.isEmpty() && !Test.isRunningTest()) {
-                System.enqueueJob(new RealTime(later));
+            // A job may queue only one follow-up, so the rest and the retries share it.
+            // With nothing else waiting, the retries wait a little for Gemini to recover.
+            List<Id> next = new List<Id>(later);
+            next.addAll(retryable(summary.busy, attempts));
+            if (!next.isEmpty()) {
+                queue(new RealTime(next, attempts), later.isEmpty() ? RETRY_DELAY_MINUTES : 0);
             }
         }
+    }
+
+    /** The busy meetings that still have attempts left, each counted one more attempt. */
+    private static List<Id> retryable(List<Id> busy, Map<Id, Integer> attempts) {
+        List<Id> result = new List<Id>();
+        for (Id eventId : busy) {
+            Integer made = attempts.containsKey(eventId) ? attempts.get(eventId) : 1;
+            if (made < MAX_ATTEMPTS) {
+                attempts.put(eventId, made + 1);
+                result.add(eventId);
+            }
+        }
+        return result;
+    }
+
+    private static void queue(RealTime job, Integer delayMinutes) {
+        // Apex tests can't chain queueables, so a test reads the job here instead.
+        if (Test.isRunningTest()) {
+            queuedInTest = job;
+            queuedDelayInTest = delayMinutes;
+            return;
+        }
+        System.enqueueJob(job, delayMinutes);
     }
 
     // ---- Backfill -----------------------------------------------------------
@@ -102,6 +148,13 @@ public without sharing class DealIntelligenceJob
         total.skipped += part.skipped;
         total.inputTokens += part.inputTokens;
         total.outputTokens += part.outputTokens;
+
+        Map<Id, Integer> attempts = new Map<Id, Integer>();
+        List<Id> retries = retryable(part.busy, attempts);
+        if (!retries.isEmpty()) {
+            queue(new RealTime(retries, attempts), RETRY_DELAY_MINUTES);
+            retriesQueued += retries.size();
+        }
     }
 
     public void finish(Database.BatchableContext context) {
@@ -116,6 +169,7 @@ public without sharing class DealIntelligenceJob
             '',
             'Analysed: ' + total.analysed,
             'Failed: ' + total.failed + '  (left unticked — run the backfill again to retry)',
+            'Gemini busy, retrying automatically: ' + retriesQueued,
             'Skipped: ' + total.skipped + '  (e.g. Description under the minimum length)',
             'Chunks with an unhandled error: ' + job.NumberOfErrors + ' of ' + job.TotalJobItems,
             'Tokens: ' + total.inputTokens + ' in, ' + total.outputTokens + ' out',

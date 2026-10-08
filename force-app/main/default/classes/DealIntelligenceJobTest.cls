@@ -5,12 +5,26 @@ private class DealIntelligenceJobTest {
     private static final String LONG_TEXT =
         'Customer confirmed a budget for next year and asked how data migration from their legacy system would work.';
 
-    /** Every call gets the same small answer: score 60. */
+    /** Every call gets the same small answer (score 60), or the given error status. */
     private class GeminiMock implements HttpCalloutMock {
         Integer calls = 0;
+        Integer status = 200;
+
+        GeminiMock() {}
+
+        GeminiMock(Integer status) {
+            this.status = status;
+        }
 
         public HttpResponse respond(HttpRequest req) {
             calls++;
+            if (status != 200) {
+                HttpResponse busy = new HttpResponse();
+                busy.setStatusCode(status);
+                busy.setStatus(status == 503 ? 'Service Unavailable' : 'Error');
+                busy.setBody('{"error":{"code":' + status + ',"message":"This model is currently experiencing high demand."}}');
+                return busy;
+            }
             String text = JSON.serialize(new Map<String, Object>{
                 '31_Customer_Seriousness_Score__c' => 60,
                 '32_Reason_for_Seriousness_Score__c' => 'Budget confirmed.'
@@ -34,12 +48,27 @@ private class DealIntelligenceJobTest {
     @TestSetup
     static void makeData() {
         DealIntelligenceJob.realTimeOn = false;
-        insert new Opportunity(
-            Name = 'AIDI Job',
-            StageName = firstValue(Opportunity.StageName.getDescribe()),
-            Your_Win_Confidence__c = firstValue(Opportunity.Your_Win_Confidence__c.getDescribe()),
-            CloseDate = Date.today().addMonths(3)
-        );
+        List<Opportunity> opps = new List<Opportunity>();
+        for (String name : new List<String>{ 'AIDI Job', 'AIDI Retry' }) {
+            opps.add(new Opportunity(
+                Name = name,
+                StageName = firstValue(Opportunity.StageName.getDescribe()),
+                Your_Win_Confidence__c = firstValue(Opportunity.Your_Win_Confidence__c.getDescribe()),
+                CloseDate = Date.today().addMonths(3)
+            ));
+        }
+        insert opps;
+        // Retry tests run the job directly, and a callout can't follow DML in the same
+        // test, so their meeting is made here.
+        Event retry = mom(LONG_TEXT, 1);
+        retry.WhatId = opps[1].Id;
+        insert retry;
+    }
+
+    private static List<Id> retryMeeting() {
+        return new List<Id>(new Map<Id, Event>([
+            SELECT Id FROM Event WHERE What.Name = 'AIDI Retry' WITH SYSTEM_MODE
+        ]).keySet());
     }
 
     private static String firstValue(Schema.DescribeFieldResult describe) {
@@ -53,7 +82,7 @@ private class DealIntelligenceJobTest {
 
     private static Opportunity theOpp() {
         return (Opportunity) Database.query(
-            'SELECT Id, Customer_Seriousness_Score__c FROM Opportunity WHERE Name = \'AIDI Job\'',
+            'SELECT Id, Customer_Seriousness_Score__c FROM Opportunity WHERE Name = \'AIDI Job\' LIMIT 1',
             AccessLevel.SYSTEM_MODE
         );
     }
@@ -125,6 +154,8 @@ private class DealIntelligenceJobTest {
         GeminiMock mock = new GeminiMock();
         Test.setMock(HttpCalloutMock.class, mock);
         DealIntelligenceJob.realTimeOn = false;
+        // Out of the way: a test batch runs one chunk only.
+        update new Event(Id = retryMeeting()[0], AI_Processed__c = true);
         insert new List<Event>{
             mom(LONG_TEXT, 30),
             mom(LONG_TEXT, 200),
@@ -136,9 +167,66 @@ private class DealIntelligenceJobTest {
         DealIntelligenceJob.runBackfill();
         Test.stopTest();
 
-        System.assertEquals(2, mock.calls);
         System.assertEquals(2, ticked());
         System.assertEquals(60, theOpp().Customer_Seriousness_Score__c);
-        System.assertEquals(2, [SELECT COUNT() FROM AI_Analysis_Log__c WITH SYSTEM_MODE]);
+        System.assertEquals(2, [SELECT COUNT() FROM AI_Analysis_Log__c WHERE Opportunity__r.Name = 'AIDI Job' WITH SYSTEM_MODE]);
+    }
+
+    // ---- Retry when Gemini is busy
+
+    @isTest
+    static void busyMeetingIsQueuedAgainAfterADelay() {
+        Test.setMock(HttpCalloutMock.class, new GeminiMock(503));
+        List<Id> ids = retryMeeting();
+
+        Test.startTest();
+        new DealIntelligenceJob.RealTime(ids).execute(null);
+        Test.stopTest();
+
+        DealIntelligenceJob.RealTime next = DealIntelligenceJob.queuedInTest;
+        System.assertNotEquals(null, next, 'a retry is queued');
+        System.assertEquals(ids, next.pending);
+        System.assertEquals(2, next.attempts.get(ids[0]), 'the retry is the second attempt');
+        System.assertEquals(DealIntelligenceJob.RETRY_DELAY_MINUTES, DealIntelligenceJob.queuedDelayInTest);
+
+        System.assertEquals(false, [SELECT AI_Processed__c FROM Event WHERE Id = :ids[0] WITH SYSTEM_MODE].AI_Processed__c);
+        AI_Analysis_Log__c log = [SELECT Status__c, Details__c FROM AI_Analysis_Log__c WHERE Opportunity__r.Name = 'AIDI Retry' WITH SYSTEM_MODE];
+        System.assertEquals('Failed', log.Status__c);
+        System.assert(log.Details__c.contains('HTTP 503'), log.Details__c);
+    }
+
+    @isTest
+    static void rateLimitIsRetriedToo() {
+        Test.setMock(HttpCalloutMock.class, new GeminiMock(429));
+
+        Test.startTest();
+        new DealIntelligenceJob.RealTime(retryMeeting()).execute(null);
+        Test.stopTest();
+
+        System.assertNotEquals(null, DealIntelligenceJob.queuedInTest);
+    }
+
+    @isTest
+    static void givesUpAfterTheLastAttempt() {
+        Test.setMock(HttpCalloutMock.class, new GeminiMock(503));
+        List<Id> ids = retryMeeting();
+        Map<Id, Integer> attempts = new Map<Id, Integer>{ ids[0] => DealIntelligenceJob.MAX_ATTEMPTS };
+
+        Test.startTest();
+        new DealIntelligenceJob.RealTime(ids, attempts).execute(null);
+        Test.stopTest();
+
+        System.assertEquals(null, DealIntelligenceJob.queuedInTest, 'no more retries; the backfill can still pick it up');
+    }
+
+    @isTest
+    static void otherErrorsAreNotRetried() {
+        Test.setMock(HttpCalloutMock.class, new GeminiMock(500));
+
+        Test.startTest();
+        new DealIntelligenceJob.RealTime(retryMeeting()).execute(null);
+        Test.stopTest();
+
+        System.assertEquals(null, DealIntelligenceJob.queuedInTest);
     }
 }
