@@ -10,33 +10,51 @@
  * Both hand Event Ids to DealIntelligenceService, a few at a time: each meeting is one
  * Gemini call, and Salesforce allows 120 seconds of callouts per transaction.
  *
- * When Gemini is busy (503) or rate-limited (429), the meeting is queued again a few
- * minutes later, up to MAX_ATTEMPTS calls in all, and nothing more is sent until then.
- * Apex can't wait inside a transaction, so a delayed job is the only way to give
- * Gemini time to recover. When Gemini says the quota is used up for longer than a
- * short wait (the free tier's daily limit, say), nothing is retried: the meetings stay
- * unticked for the next backfill run.
+ * When Gemini refuses a call, nothing more is sent in that run, and:
+ *   503 (busy for a moment)  the meetings are queued again RETRY_DELAY_MINUTES later,
+ *                            up to MAX_ATTEMPTS calls each;
+ *   429 (rate limit, quota)  everything waits for one scheduled retry an hour later
+ *                            (this class, Schedulable). It runs the backfill with the
+ *                            deals that hit the limit first, then everything else still
+ *                            unticked, and pauses again for an hour if Gemini is still
+ *                            refusing. A queued job can wait at most 10 minutes, hence
+ *                            a scheduled job for the hour.
  */
 public without sharing class DealIntelligenceJob
-        implements Database.Batchable<SObject>, Database.AllowsCallouts, Database.Stateful {
+        implements Database.Batchable<SObject>, Database.AllowsCallouts, Database.Stateful, Schedulable {
 
     /** Meetings per transaction. A call usually takes 5–20 s; three keeps clear of 120 s. */
     @TestVisible private static final Integer PER_TRANSACTION = 3;
 
-    /** Calls per meeting in all, the first one included. */
+    /** Calls per meeting in all for a busy Gemini (503), the first one included. */
     @TestVisible private static final Integer MAX_ATTEMPTS = 3;
     @TestVisible private static final Integer RETRY_DELAY_MINUTES = 2;
+
+    /** How long to leave Gemini alone after a 429. */
+    @TestVisible private static final Integer RATE_LIMIT_WAIT_MINUTES = 60;
+    @TestVisible private static final String RATE_LIMIT_RETRY_NAME = 'AI Deal Intelligence - retry after Gemini rate limit';
 
     /** Off in test setup, so inserting test meetings doesn't start real-time jobs. */
     @TestVisible private static Boolean realTimeOn = true;
 
-    /** In tests, the follow-up job that would have been queued, instead of queuing it. */
+    /** In tests, the follow-up job and the hourly retry that would have been started. */
     @TestVisible private static RealTime queuedInTest;
     @TestVisible private static Integer queuedDelayInTest;
+    @TestVisible private static Boolean rateLimitRetryInTest = false;
+    /** Lets a test schedule the hourly retry for real, to check it. */
+    @TestVisible private static Boolean scheduleForRealInTest = false;
 
+    private Boolean startedBySchedule = false;
     private DealIntelligenceService.Summary total = new DealIntelligenceService.Summary();
     private Integer retriesQueued = 0;
-    private Boolean quotaExhausted = false;
+    private Boolean rateLimited = false;
+    private Integer leftForLater = 0;
+
+    public DealIntelligenceJob() {}
+
+    private DealIntelligenceJob(Boolean startedBySchedule) {
+        this.startedBySchedule = startedBySchedule;
+    }
 
     public static Id runBackfill() {
         return Database.executeBatch(new DealIntelligenceJob(), PER_TRANSACTION);
@@ -89,8 +107,9 @@ public without sharing class DealIntelligenceJob
             }
 
             DealIntelligenceService.Summary summary = DealIntelligenceService.analyse(now);
-            if (summary.quotaExhausted) {
-                // Everything left would be refused too; the backfill picks them up later.
+            if (summary.rateLimited) {
+                // The rest stays unticked; the hourly retry's backfill picks it all up.
+                scheduleRateLimitRetry();
                 return;
             }
 
@@ -128,16 +147,51 @@ public without sharing class DealIntelligenceJob
         System.enqueueJob(job, delayMinutes);
     }
 
+    // ---- Hourly retry after a rate limit --------------------------------------
+
+    /**
+     * Schedules one backfill run RATE_LIMIT_WAIT_MINUTES from now, unless one is
+     * already waiting: however many jobs hit the limit, Gemini gets one retry an hour.
+     */
+    public static void scheduleRateLimitRetry() {
+        if (Test.isRunningTest() && !scheduleForRealInTest) {
+            rateLimitRetryInTest = true;
+            return;
+        }
+        for (CronTrigger t : [
+            SELECT Id, NextFireTime FROM CronTrigger
+            WHERE CronJobDetail.Name = :RATE_LIMIT_RETRY_NAME
+            WITH SYSTEM_MODE
+        ]) {
+            if (t.NextFireTime != null) {
+                return;
+            }
+            System.abortJob(t.Id); // a finished one still holds the name
+        }
+        Datetime at = Datetime.now().addMinutes(RATE_LIMIT_WAIT_MINUTES);
+        String cron = at.second() + ' ' + at.minute() + ' ' + at.hour() + ' '
+            + at.day() + ' ' + at.month() + ' ? ' + at.year();
+        System.schedule(RATE_LIMIT_RETRY_NAME, cron, new DealIntelligenceJob());
+    }
+
+    /** The hourly retry: a backfill that puts the deals that hit the limit first. */
+    public void execute(SchedulableContext context) {
+        if (context != null) {
+            System.abortJob(context.getTriggerId()); // one-off: free the name for the next pause
+        }
+        Database.executeBatch(new DealIntelligenceJob(true), PER_TRANSACTION);
+    }
+
     // ---- Backfill -----------------------------------------------------------
 
-    public Database.QueryLocator start(Database.BatchableContext context) {
+    public Iterable<SObject> start(Database.BatchableContext context) {
         List<String> types = DealIntelligenceRules.momTypes();
         List<String> subjects = DealIntelligenceRules.momSubjects();
         // Sorted by deal, then meeting date, so each Opportunity sees its meetings
         // oldest first — also across chunks, which run one after another. The
         // Description length can't be filtered in SOQL; the service checks it.
-        return Database.getQueryLocator([
-            SELECT Id
+        List<Event> pending = [
+            SELECT Id, WhatId
             FROM Event
             WHERE ActivityDate = LAST_N_DAYS:365
               AND What.Type = 'Opportunity'
@@ -146,28 +200,63 @@ public without sharing class DealIntelligenceJob
               AND AI_Processed__c = false
             WITH SYSTEM_MODE
             ORDER BY WhatId, StartDateTime, CreatedDate
-        ]);
+            LIMIT 50000
+        ];
+
+        // Deals that were held back by a rate limit go first, as whole deals, so their
+        // meetings still merge oldest first.
+        Set<Id> heldBack = dealsHeldBackByRateLimit(pending);
+        List<Event> first = new List<Event>();
+        List<Event> rest = new List<Event>();
+        for (Event e : pending) {
+            if (heldBack.contains(e.WhatId)) {
+                first.add(e);
+            } else {
+                rest.add(e);
+            }
+        }
+        first.addAll(rest);
+        return first;
+    }
+
+    /** Deals with a pending meeting whose last week of logs shows a 429. */
+    @TestVisible private static Set<Id> dealsHeldBackByRateLimit(List<Event> pending) {
+        Set<String> limitedMeetings = new Set<String>();
+        for (AI_Analysis_Log__c log : [
+            SELECT Event_Id__c, Details__c FROM AI_Analysis_Log__c
+            WHERE Status__c = 'Failed' AND CreatedDate = LAST_N_DAYS:7
+            WITH SYSTEM_MODE
+        ]) {
+            if (log.Details__c != null && log.Details__c.startsWith(DealIntelligenceService.RATE_LIMITED_DETAIL)) {
+                limitedMeetings.add(log.Event_Id__c);
+            }
+        }
+        Set<Id> deals = new Set<Id>();
+        for (Event e : pending) {
+            if (limitedMeetings.contains(e.Id)) {
+                deals.add(e.WhatId);
+            }
+        }
+        return deals;
     }
 
     public void execute(Database.BatchableContext context, List<SObject> scope) {
         List<Id> ids = new List<Id>(new Map<Id, SObject>(scope).keySet());
-        if (quotaExhausted) {
-            // Gemini's quota ran out earlier in this run; calling now only fails again.
-            total.skipped += ids.size();
+        if (rateLimited) {
+            // Gemini is refusing; the rest waits for the hourly retry.
+            leftForLater += ids.size();
             return;
         }
         DealIntelligenceService.Summary part = DealIntelligenceService.analyse(ids);
-        if (part.quotaExhausted) {
-            quotaExhausted = true;
-            total.skipped += part.deferred.size();
-        }
         total.analysed += part.analysed;
         total.failed += part.failed;
         total.skipped += part.skipped;
         total.inputTokens += part.inputTokens;
         total.outputTokens += part.outputTokens;
 
-        if (quotaExhausted) {
+        if (part.rateLimited) {
+            rateLimited = true;
+            leftForLater += part.deferred.size();
             return;
         }
         Map<Id, Integer> attempts = new Map<Id, Integer>();
@@ -180,6 +269,13 @@ public without sharing class DealIntelligenceJob
     }
 
     public void finish(Database.BatchableContext context) {
+        if (rateLimited) {
+            scheduleRateLimitRetry();
+        }
+        // The hourly retries run quietly; only a backfill someone started emails them.
+        if (startedBySchedule) {
+            return;
+        }
         AsyncApexJob job = [
             SELECT Status, NumberOfErrors, TotalJobItems
             FROM AsyncApexJob
@@ -188,13 +284,14 @@ public without sharing class DealIntelligenceJob
         ];
         String body = String.join(new List<String>{
             'AI Deal Intelligence backfill finished: ' + job.Status + '.',
-            quotaExhausted
-                ? 'STOPPED EARLY: Gemini quota used up (free tier: 20 calls per day per model). Run again after it resets.'
+            rateLimited
+                ? 'PAUSED by Gemini rate limit (429): ' + leftForLater + ' meeting(s) wait. '
+                    + 'It continues automatically in ' + RATE_LIMIT_WAIT_MINUTES + ' minutes (Setup > Scheduled Jobs).'
                 : '',
             '',
             'Analysed: ' + total.analysed,
-            'Failed: ' + total.failed + '  (left unticked — run the backfill again to retry)',
-            'Gemini busy, retrying automatically: ' + retriesQueued,
+            'Failed: ' + total.failed + '  (left unticked for the next run)',
+            'Gemini busy, retrying in ' + RETRY_DELAY_MINUTES + ' minutes: ' + retriesQueued,
             'Skipped: ' + total.skipped + '  (e.g. Description under the minimum length)',
             'Chunks with an unhandled error: ' + job.NumberOfErrors + ' of ' + job.TotalJobItems,
             'Tokens: ' + total.inputTokens + ' in, ' + total.outputTokens + ' out',
@@ -205,7 +302,8 @@ public without sharing class DealIntelligenceJob
         Messaging.SingleEmailMessage mail = new Messaging.SingleEmailMessage();
         mail.setTargetObjectId(UserInfo.getUserId());
         mail.setSaveAsActivity(false);
-        mail.setSubject('AI Deal Intelligence backfill: ' + total.analysed + ' analysed, ' + total.failed + ' failed');
+        mail.setSubject('AI Deal Intelligence backfill: ' + total.analysed + ' analysed, ' + total.failed + ' failed'
+            + (rateLimited ? ', paused for rate limit' : ''));
         mail.setPlainTextBody(body);
         try {
             Messaging.sendEmail(new List<Messaging.SingleEmailMessage>{ mail });

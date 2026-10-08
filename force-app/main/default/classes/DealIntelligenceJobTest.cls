@@ -199,27 +199,77 @@ private class DealIntelligenceJobTest {
     }
 
     @isTest
-    static void rateLimitIsRetriedToo() {
+    static void rateLimitWaitsForTheHourlyRetry() {
         Test.setMock(HttpCalloutMock.class, new GeminiMock(429));
 
         Test.startTest();
         new DealIntelligenceJob.RealTime(retryMeeting()).execute(null);
         Test.stopTest();
 
-        System.assertNotEquals(null, DealIntelligenceJob.queuedInTest);
+        System.assertEquals(null, DealIntelligenceJob.queuedInTest, 'no quick retry for a 429');
+        System.assert(DealIntelligenceJob.rateLimitRetryInTest, 'the hourly retry is scheduled');
+        System.assertEquals(false, [SELECT AI_Processed__c FROM Event WHERE Id = :retryMeeting()[0] WITH SYSTEM_MODE].AI_Processed__c);
     }
 
     @isTest
-    static void usedUpQuotaIsNotRetried() {
+    static void hourlyRetryIsScheduledOnlyOnce() {
+        DealIntelligenceJob.scheduleForRealInTest = true;
+        // No startTest/stopTest: the scheduled job must not actually run here.
+        DealIntelligenceJob.scheduleRateLimitRetry();
+        DealIntelligenceJob.scheduleRateLimitRetry();
+
+        List<CronTrigger> retries = [
+            SELECT NextFireTime FROM CronTrigger
+            WHERE CronJobDetail.Name = :DealIntelligenceJob.RATE_LIMIT_RETRY_NAME
+        ];
+        System.assertEquals(1, retries.size(), 'one retry an hour, however many jobs hit the limit');
+        Long minutes = (retries[0].NextFireTime.getTime() - Datetime.now().getTime()) / 60000;
+        System.assert(minutes >= DealIntelligenceJob.RATE_LIMIT_WAIT_MINUTES - 2 && minutes <= DealIntelligenceJob.RATE_LIMIT_WAIT_MINUTES,
+            'fires in about an hour: ' + minutes + ' minutes');
+    }
+
+    @isTest
+    static void dealsHeldBackByRateLimitGoFirst() {
+        DealIntelligenceJob.realTimeOn = false;
+        insert new List<Event>{ mom(LONG_TEXT, 20), mom(LONG_TEXT, 10) };
+        Id retryId = retryMeeting()[0];
+        insert new AI_Analysis_Log__c(
+            Event_Id__c = retryId,
+            Status__c = 'Failed',
+            Details__c = 'HTTP 429 Too Many Requests (Gemini asks to wait 14 s)'
+        );
+
+        List<SObject> order = (List<SObject>) new DealIntelligenceJob().start(null);
+
+        System.assertEquals(retryId, order[0].Id, 'the deal that hit the limit comes first');
+        System.assertEquals(3, order.size(), 'then everything else still pending');
+    }
+
+    @isTest
+    static void backfillStopsCallingAtTheFirstRateLimit() {
         GeminiMock mock = new GeminiMock(429);
-        mock.retryDelay = '49995s';
         Test.setMock(HttpCalloutMock.class, mock);
+        DealIntelligenceJob.realTimeOn = false;
+        insert new List<Event>{ mom(LONG_TEXT, 20), mom(LONG_TEXT, 10) };
 
         Test.startTest();
-        new DealIntelligenceJob.RealTime(retryMeeting()).execute(null);
+        DealIntelligenceJob.runBackfill();
         Test.stopTest();
 
-        System.assertEquals(null, DealIntelligenceJob.queuedInTest, 'a daily quota is not worth retrying in minutes');
+        System.assertEquals(1, [SELECT COUNT() FROM AI_Analysis_Log__c WITH SYSTEM_MODE], 'one refused call, the rest held back');
+        System.assertEquals(0, [SELECT COUNT() FROM Event WHERE AI_Processed__c = true WITH SYSTEM_MODE]);
+    }
+
+    @isTest
+    static void hourlyRetryRunsTheBackfill() {
+        Test.setMock(HttpCalloutMock.class, new GeminiMock());
+
+        Test.startTest();
+        new DealIntelligenceJob().execute((SchedulableContext) null);
+        Test.stopTest();
+
+        System.assertEquals(1, [SELECT COUNT() FROM AsyncApexJob WHERE JobType = 'BatchApex' AND ApexClass.Name = 'DealIntelligenceJob' WITH SYSTEM_MODE]);
+        System.assertEquals(true, [SELECT AI_Processed__c FROM Event WHERE Id = :retryMeeting()[0] WITH SYSTEM_MODE].AI_Processed__c);
     }
 
     @isTest

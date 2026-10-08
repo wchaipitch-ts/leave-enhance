@@ -80,13 +80,13 @@ Endpoint (AI Studio, D5): `https://generativelanguage.googleapis.com/v1beta/mode
 
 | Case | Behaviour |
 |------|-----------|
-| 503 (Gemini busy) / 429 (rate limit) | Log `Failed`, Opportunity untouched, meeting unticked — and **retried automatically**: `DealIntelligenceJob` queues it again after 2 minutes, up to 3 calls in all (real-time and backfill alike). After the last attempt it waits for the next backfill run. |
+| 503 (Gemini busy for a moment) | Log `Failed`; the rest of that run is held back; queued again 2 minutes later, up to 3 calls per meeting. After that it waits for the next backfill. |
+| 429 (rate limit or quota) | Log `Failed`; nothing more is sent. **One scheduled retry an hour later** (`AI Deal Intelligence - retry after Gemini rate limit`, Setup → Scheduled Jobs — a queued job can wait at most 10 minutes). It runs the backfill with the deals that hit the limit first (whole deals, oldest meeting first), then everything else still unticked, and pauses for another hour if Gemini still refuses. Only one such retry is ever waiting. |
 | Other HTTP errors / timeout | Log `Failed`. Opportunity untouched, `AI_Processed__c` stays false, so the next backfill run retries it. |
 | Invalid JSON | Log `Parse Error` with the raw response. No update. |
 | One field bad (picklist / number) | Skip that field only, log `Partial` with a warning. |
 | Opportunity update fails (validation rule, lock) | `Database.update(…, false)`. The Event stays unprocessed and the error is logged. |
 | Two jobs on the same deal at once (a retry next to a backfill chunk) | The deal is read `FOR UPDATE`, so the second job waits for the first to save and merges onto its result. Without it the stress test lost competitors (last save won). Still locked after Salesforce's wait → `Save Failed`, retried like a busy answer. |
-| Gemini quota used up (429 asking to wait > 10 min, e.g. free tier 20 calls/day/model) | Nothing more is sent in that run; no retries; the batch stops calling and its email says so. Meetings stay unticked for a later backfill. |
 
 ## 3. Work breakdown (~30 h)
 

@@ -368,13 +368,13 @@ private class DealIntelligenceServiceTest {
         System.assertEquals(1, mock.requests.size(), 'nothing is sent after a busy answer');
         System.assertEquals(1, summary.busy.size());
         System.assertEquals(1, summary.deferred.size());
-        System.assert(!summary.quotaExhausted);
+        System.assert(!summary.rateLimited, 'a 503 is busy, not rate-limited');
         System.assertEquals(1, logsOf('AIDI Busy').size(), 'the held-back meeting has no log');
         System.assertEquals(0, [SELECT COUNT() FROM Event WHERE What.Name = 'AIDI Busy' AND AI_Processed__c = true WITH SYSTEM_MODE]);
     }
 
     @isTest
-    static void usedUpQuotaIsReported() {
+    static void rateLimitIsReported() {
         GeminiMock mock = new GeminiMock();
         mock.quotaUsedUp.add('MOM-QUOTA');
         Test.setMock(HttpCalloutMock.class, mock);
@@ -383,7 +383,7 @@ private class DealIntelligenceServiceTest {
         DealIntelligenceService.Summary summary = DealIntelligenceService.analyse(eventsOf('AIDI Quota'));
         Test.stopTest();
 
-        System.assert(summary.quotaExhausted);
+        System.assert(summary.rateLimited);
         System.assert(logsOf('AIDI Quota')[0].Details__c.contains('wait 49995 s'), logsOf('AIDI Quota')[0].Details__c);
     }
 

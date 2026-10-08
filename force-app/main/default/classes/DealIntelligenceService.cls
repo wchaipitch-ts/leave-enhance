@@ -21,14 +21,15 @@ public without sharing class DealIntelligenceService {
     private static final String MODEL_KEY = 'GeminiMODEL';
     private static final Integer TIMEOUT_MS = 60000;
 
-    /** Gemini is busy (503) or we hit the rate limit (429): worth trying again later. */
-    @TestVisible private static final Set<Integer> BUSY_CODES = new Set<Integer>{ 429, 503 };
-
+    /** Gemini is busy for a moment: worth another try in a couple of minutes. */
+    @TestVisible private static final Integer BUSY = 503;
     /**
-     * A 429 whose RetryInfo asks for a longer wait than this is a used-up quota (the
-     * free tier's daily limit, for one), not a burst: retrying soon only fails again.
+     * We are over Gemini's rate limit or quota: everything waits for the hourly retry
+     * (see DealIntelligenceJob). Its log Details start with this, which is how the
+     * retry finds the meetings to put first.
      */
-    @TestVisible private static final Integer LONGEST_WAIT_SECONDS = 600;
+    @TestVisible private static final Integer RATE_LIMITED = 429;
+    public static final String RATE_LIMITED_DETAIL = 'HTTP 429';
 
     @TestVisible private static final String SUCCESS     = 'Success';
     @TestVisible private static final String PARTIAL     = 'Partial';
@@ -43,12 +44,12 @@ public without sharing class DealIntelligenceService {
         public Integer skipped = 0;
         public Integer inputTokens = 0;
         public Integer outputTokens = 0;
-        /** Meetings that failed only because Gemini was busy; the caller may retry them. */
+        /** Meetings that failed only because Gemini was busy (503); retry them soon. */
         public List<Id> busy = new List<Id>();
-        /** Meetings not sent at all, because Gemini was already busy in this run. */
+        /** Meetings not sent at all, because Gemini had already refused one in this run. */
         public List<Id> deferred = new List<Id>();
-        /** Gemini asked for a wait longer than LONGEST_WAIT_SECONDS: stop calling for now. */
-        public Boolean quotaExhausted = false;
+        /** Gemini answered 429: stop calling until the hourly retry. */
+        public Boolean rateLimited = false;
     }
 
     /** One meeting's trip to Gemini and back. */
@@ -60,6 +61,7 @@ public without sharing class DealIntelligenceService {
         Integer inputTokens;
         Integer outputTokens;
         Boolean busy = false;
+        Boolean rateLimited = false;
         Integer retryAfterSeconds;
         DealIntelligenceRules.MergeResult merged;
         List<String> details = new List<String>();
@@ -102,9 +104,9 @@ public without sharing class DealIntelligenceService {
         String prompt = prompt();
         List<Call> sent = new List<Call>();
         for (Call c : calls) {
-            // Once Gemini says it is busy, the rest of this run would only be refused
+            // Once Gemini refuses one call, the rest of this run would only be refused
             // too, and each refusal still counts against the quota. They wait instead.
-            if (!summary.busy.isEmpty()) {
+            if (!summary.busy.isEmpty() || summary.rateLimited) {
                 summary.deferred.add(c.mom.Id);
                 continue;
             }
@@ -117,9 +119,9 @@ public without sharing class DealIntelligenceService {
             }
             if (c.busy) {
                 summary.busy.add(c.mom.Id);
-                if (c.retryAfterSeconds != null && c.retryAfterSeconds > LONGEST_WAIT_SECONDS) {
-                    summary.quotaExhausted = true;
-                }
+            }
+            if (c.rateLimited) {
+                summary.rateLimited = true;
             }
             sent.add(c);
         }
@@ -164,7 +166,8 @@ public without sharing class DealIntelligenceService {
         }
         if (res.getStatusCode() != 200) {
             c.response = res.getBody();
-            c.busy = BUSY_CODES.contains(res.getStatusCode());
+            c.busy = res.getStatusCode() == BUSY;
+            c.rateLimited = res.getStatusCode() == RATE_LIMITED;
             c.retryAfterSeconds = retryAfterSeconds(res.getBody());
             c.fail(FAILED, 'HTTP ' + res.getStatusCode() + ' ' + res.getStatus()
                 + (c.retryAfterSeconds == null ? '' : ' (Gemini asks to wait ' + c.retryAfterSeconds + ' s)'));
