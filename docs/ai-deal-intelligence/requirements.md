@@ -5,7 +5,7 @@ Sources:
 - BA sheet **"Gemini Opp"** — tabs *Obj&Fields*, *Requirements*, *Gemini Prompt* ([Google Sheet](https://docs.google.com/spreadsheets/d/17Pd_wTmj5Zwxr9l2YMQUynawdlLy66LKJwErmsUvz2E/edit))
 
 Branch: `feature/ai-deal-intelligence`
-Status: Ready to build. BA and manager decisions recorded 8 Oct 2026 (§7). No open questions.
+Status: **Built and tested in the sandbox** (8 Oct 2026). Decisions in §7; open items in §8.
 
 **Target org for now: sandbox `dev5-ts`.** MOMs are Events under the Opportunity. Production is out of scope for now (D7).
 
@@ -64,7 +64,7 @@ Status: Ready to build. BA and manager decisions recorded 8 Oct 2026 (§7). No o
 | 17 | `CustomerSpecifiedConditionsOrConstraints__c` | Checkbox | | A |
 | 18 | `Mentioned_Product_Competitors__c` | Multi-picklist | Microsoft, Oracle, SAP, Odoo, kintone, Zoho, HubSpot, Zendesk, Bitrix, Cloudee, Others, No Data | B |
 | 19 | `Mentioned_SI_Competitors__c` | Multi-picklist | Beryl 8, IIG(i&I), M Intelligence, NTTD, NEC, Ignite Idea, SmartOSC, Softsquare, Others, No Data | B |
-| 20 | `Proposed_Products__c` ⚠️ | Multi-picklist | Sales Cloud, Service Cloud, Marketing Cloud, Salesforce Platform, Experience Cloud, mitoco, UPWARD, mitoco buddy, Lingo, Sky Visual Editor, mitoco AI, Others, No Data | B |
+| 20 | `Proposed_Products__c` | Multi-picklist | Sales Cloud, Service Cloud, Marketing Cloud, Salesforce Platform, Experience Cloud, mitoco, UPWARD, mitoco buddy, Lingo, Sky Visual Editor, mitoco AI, Others, No Data | B |
 | 21 | `Current_Management_Method__c` | Picklist | Excel & Paper, Legacy System, Other SaaS, No Data | B |
 | 22 | `Next_Action_Owner__c` | Picklist | Our Sales, Customer, Both, No Next Action, No Data | B |
 | 23 | `Opportunity_Stage__c` | Picklist | 02. Early Stage, 03. Final Proposal, 05. Negotiation, 06. Closed Won, 06. Closed Lost, Cannot Determine | B |
@@ -81,7 +81,9 @@ Status: Ready to build. BA and manager decisions recorded 8 Oct 2026 (§7). No o
 
 Numbering follows the Gemini prompt (1–33). The sheet's *Obj&Fields* tab numbers the same fields 2–34 because `AI_Processed__c` is its #1.
 
-> ⚠️ **#20 was created in the sandbox as `Proposed_Products_c__c`** (extra `_c`). **Decision (BA): rename it to `Proposed_Products__c`** before any build. All other 32 fields match the sheet exactly (name, type, length, picklist values).
+> #20 was first created as `Proposed_Products_c__c` (extra `_c`) and has been **renamed to `Proposed_Products__c`** (D1). All 33 fields match the sheet (name, type, length, picklist values).
+>
+> ⚠️ The 33 fields and `Event.AI_Processed__c` exist **only in the sandbox**, not in this repo. Retrieve them before deploying anywhere else.
 
 `Opportunity_Stage__c` is a separate AI field. The standard `StageName` is **not** touched.
 
@@ -91,10 +93,11 @@ Numbering follows the Gemini prompt (1–33). The sheet's *Obj&Fields* tab numbe
 
 - **FR-1 Backfill (Task 1).** One-time batch over qualifying MOMs from the **past 1 year**: send each one to Gemini, parse the JSON, merge into the Opportunity, set `AI_Processed__c = true`. Must be Batch Apex (async) because of callout limits. The sheet also flags the Gemini **per-day request limit** as a concern (§4).
 - **FR-2 Real-time (Task 2).** When a MOM is **created**, do the same steps asynchronously. (Edits to an existing MOM do not trigger analysis.)
+- **FR-2a Process exactly once (sheet Rule D, added later).** A MOM is analysed only once; editing it afterwards never re-runs the analysis or updates the Opportunity again. Met by the after-insert trigger plus `AI_Processed__c`. A MOM that was never analysed successfully (failed, or saved too short and lengthened later) can still get its first analysis from the backfill.
 
 ### 3.2 Model
 
-- **FR-3** Build with **Gemini 3.8 Flash** (or the latest Flash model).
+- **FR-3** Build with **Gemini 3.8 Flash** (or the latest Flash model). *Sandbox testing currently uses `gemini-3.5-flash-lite` (D11): the free tier allows only 20 calls a day on 3.8 Flash.*
 - **FR-4** The model name is configuration (`Program_Constant__mdt.GeminiMODEL`). Moving to Pro / Thinking later must be a config change only.
 - **FR-5** Record which model produced each result, for the quality review.
 
@@ -115,7 +118,7 @@ An Event is analysed only if **all** of these are true:
 - **FR-13** `AI_Processed__c = false`.
 - **FR-14** `WhatId` is an Opportunity. (Not written in the sheet, but there is nothing to update otherwise. In the org, Events are also related to `ApplicationItem__c`.)
 
-Types and subjects live in configuration, not code, so the BA can change them.
+Types and subjects live in configuration (`Program_Constant__mdt`), not code, so the BA can change them. Each value holds at most 255 characters, so the Subject list spans `AI_MOM_Subjects` and `AI_MOM_Subjects_2` (a longer value is cut off silently — this once hid every "Web Meeting - 2/3" meeting).
 
 > Note: `Meeting`, `Meeting Customer for Prospecting` and `Meeting Customer for Current Opportunity` are not Type values in the sandbox. Events with those Types can't be created there, so in the sandbox only On-site / Visit and Web Meeting can be tested.
 
@@ -142,14 +145,16 @@ What this means in practice:
 ### 3.6 Reliability
 
 - **FR-21** A failed call or bad JSON for one MOM must not stop the others or roll back other Opportunities. A failed MOM keeps `AI_Processed__c = false`, so it is retried on the next run.
-- **FR-22** Log every call: Opportunity, Event, model, status, token counts, error, raw response.
+- **FR-22** Log every call: Opportunity, Event, model, status, token counts, error, raw response — in both `AI_Analysis_Log__c` and the team's `Gemini_Opty_Log__c` (D9, D10). One row per call, so a retried meeting has several rows; the last one is the outcome.
 - **FR-23** Updating the Opportunity or the Event must not re-trigger analysis.
 - **FR-24** No API key or credentials in Apex or in git.
+- **FR-25** When Gemini refuses a call, nothing more is sent in that run. **503 (busy):** try the meeting again 2 minutes later, up to 3 calls in all. **429 (rate limit / quota):** pause everything; one scheduled retry an hour later runs the backfill with the deals that were held back first (whole deals, oldest meeting first), then the rest still pending, and pauses again if Gemini still refuses (D12).
+- **FR-26** Two jobs working on the same deal at once must not lose each other's changes (the deal is locked while merging).
 
 ## 4. Non-functional
 
 - **NFR-1** Salesforce limits: max 100 callouts and 120 s total callout time per transaction. Batch scope stays small (3–5).
-- **NFR-2** Gemini limits: requests per minute and per day depend on the Google project tier. The backfill must be throttleable (scope size, pause between chunks) and resumable, because `AI_Processed__c` makes re-runs safe.
+- **NFR-2** Gemini limits depend on the Google project tier. On the **free tier** we saw 20 calls per day per model on `gemini-3.8-flash` and frequent per-minute 429s on `gemini-3.5-flash-lite`. A year of real meetings needs **billing on**. The backfill is resumable (`AI_Processed__c`) and pauses itself on a 429 (FR-25).
 - **NFR-3** Apex test coverage ≥ 75 % for new classes, using `HttpCalloutMock`.
 - **NFR-4** Handles Thai and English MOM text.
 
@@ -164,7 +169,7 @@ What this means in practice:
 Event `Type` values in the org: Web Meeting, On-site / Visit, Dinner / Event, Discovery Meeting, Proposal Review, Demo Session, Management Meeting, Renewal Discussion.
 **`Meeting`, `Meeting Customer for Prospecting` and `Meeting Customer for Current Opportunity` do not exist** as Type values. Subjects follow the pattern `<Type> - <purpose>` (for example `Web Meeting - 1. Initial Meeting / Hearing`).
 
-→ In this sandbox the backfill would analyse **nothing**. For sandbox testing we create realistic test Events ourselves.
+→ The sandbox had no real MOMs, so test data was created: `AIDI Test 1–4` (manual tests), `AIDI Stress …` (29 deals, 131 meetings) and the BA's `Gemini MOM …` (15 deals). See [test-data.md](test-data.md).
 
 ## 6. Future-proofing (design for it, don't build it)
 
@@ -182,3 +187,16 @@ Event `Type` values in the org: Web Meeting, On-site / Visit, Dinner / Event, Di
 | D6 | MOM source | Events under the Opportunity | Manager |
 | D7 | Org | Build and test in the sandbox `dev5-ts` only. **Ignore Production for now.** | Manager |
 | D8 | Rule C exceptions | Empty Reason → don't overwrite. Score not a number → keep the old score. | BA |
+| D9 | Logging | Also write every call to the team's `Gemini_Opty_Log__c` (Success / Fail, tokens, JSON) | Team |
+| D10 | Gemini Opty Log fields | Add Event Id, Model, Error Message, Input Token, Output Token | BA / team |
+| D11 | Model while testing | `gemini-3.5-flash-lite` (higher free quota); back to Flash for the demo, once billing is on | Team |
+| D12 | 429 handling | Retry after an hour; held-back deals first, then the rest still pending | Team |
+
+## 8. Open items
+
+| # | Item | For |
+|---|------|-----|
+| O1 | **Ordering after a late retry:** a meeting analysed after newer meetings of the same deal is merged last, so Rule C (and newer Rule B text) can take its older view. Fix needs one more Opportunity field (date of the latest meeting merged) so an older meeting only adds facts. Agree to the extra field? | BA / Manager |
+| O2 | Turn on Google billing before the demo; then set `GeminiMODEL` back to a Flash model. | Manager |
+| O3 | Before Production: retrieve the 33 fields + `Event.AI_Processed__c` into the repo, enter the API key, assign the permission set to all reps. | Team |
+| O4 | The sheet's new **Query** section differs from the build: (a) `CreatedDate = LAST_N_MONTHS:12` — that leaves out the current month, and uses the entry date, not the meeting date (build: meeting date, last 365 days); (b) two more Types, *Meeting Partner for Current Opportunity / Prospecting* (not in the Condition section, not in the sandbox; a settings change if wanted); (c) no Subject / length / Opportunity / not-processed filter — keep the Condition section's rules? (d) it reads StartDateTime and Subject — send the meeting date and Subject to Gemini too, so "next Friday" or "20 October" can be placed? | BA |

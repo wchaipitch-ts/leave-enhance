@@ -2,12 +2,16 @@
 
 Created 8 Oct 2026. Use with [testing-steps.md](testing-steps.md).
 
+**State (8 Oct 2026, after the stress run):** the meetings on Test 3 / Test 4 and the BA's records have been analysed. To run them again, use the reset script (§5) first — it clears the AI fields, deletes their log rows, deletes meetings you logged by hand on Test 1 / 2, and unticks the rest so they wait for the backfill.
+
 | Opportunity | Id | Use for |
 |---|---|---|
 | AIDI Test 1 - Filter | `006fc0000069zf8AAA` | §1: you log meetings by hand |
 | AIDI Test 2 - Merge Rules | `006fc0000069zf9AAA` | §2: you log meetings A–C by hand |
-| AIDI Test 3 - Backfill (Bangkok Retail) | `006fc0000069zfAAAQ` | Backfill — 5 meetings already waiting |
-| AIDI Test 4 - Thai MOM (Chiang Mai Hospital) | `006fc0000069zfBAAQ` | Backfill — 1 Thai meeting already waiting |
+| AIDI Test 3 - Backfill (Bangkok Retail) | `006fc0000069zfAAAQ` | Backfill — 5 meetings (3 should be analysed) |
+| AIDI Test 4 - Thai MOM (Chiang Mai Hospital) | `006fc0000069zfBAAQ` | Backfill — 1 Thai meeting |
+| AIDI Stress 001–025, AIDI Stress Edge - … (29 deals) | — | Stress test (§4) |
+| Gemini MOM, Gemini MOM 01–14 (BA's records) | — | 15 On-site / Visit meetings; covered by the reset script |
 
 ---
 
@@ -61,7 +65,7 @@ Expect: Running Budget changes from No Data to the quote, Initial Budget still 3
 
 ## 3. Backfill — *AIDI Test 3* and *AIDI Test 4*
 
-Six meetings are already waiting (inserted as processed, then reset, so the real-time trigger left them alone):
+Six meetings, created as processed and then unticked (an update), so saving them didn't start the instant process. After a reset they wait for the backfill again:
 
 | Opportunity | Meeting date | Subject | Expected |
 |---|---|---|---|
@@ -83,6 +87,16 @@ Then check:
 - **Test 4**: Reason recognises the polite deferral (Kreng-jai) and the score is low (no budget, no next meeting, no questions). Review the Thai wording for the manager.
 - Run the backfill **again** → no new log rows.
 
-## Clean up afterwards
+## 4. Stress test records
 
-Delete the four `AIDI Test …` Opportunities; their meetings go with them. Log rows stay, with the Opportunity link blank.
+Created by `scripts/apex/ai-deal-intelligence-stress-data.apex`. Each deal's **Description** states what the backfill should leave on it (e.g. `EXPECT competitors=SAP;Odoo;kintone;Zoho | budgetFrom=meeting 1 | scoreFrom=meeting 4`); `…-stress-check.apex` compares. Every regular deal has 4 meetings (≈300, 200, 100, 10 days ago) plus 1 the filter must skip (short note, dinner, older than a year, or a custom subject). Edge cases: a ~8,000-character note, three meetings on one day, products not in the picklists, a Thai polite deferral.
+
+## 5. Reset and clean up
+
+```bash
+sf apex run --file scripts/apex/ai-deal-intelligence-reset.apex --target-org dev5-ts
+```
+
+Edit the switches at the top first: `DRY_RUN` (true = only print, roll back), `DELETE_LOGS`, `DELETE_HAND_LOGGED_MEETINGS`, `DELETE_STRESS_DEALS` (true = remove the stress deals completely). Scope: `AIDI Test%`, `AIDI Stress%`, `Gemini MOM%`.
+
+To remove the AIDI Test deals for good, delete the four Opportunities; their meetings go with them, log rows stay with the Opportunity link blank.

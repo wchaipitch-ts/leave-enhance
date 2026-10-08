@@ -1,107 +1,128 @@
 # AI Deal Intelligence — Testing Steps
 
-Run in the sandbox `dev5-ts`. Tick each box. For a failure, note the Opportunity Id, the Event Id and the `AI_Analysis_Log__c` record.
+Run in the sandbox `dev5-ts`. Tick each box. For a failure, note the Opportunity, the Event Id and the log rows (AI Analysis Log and Gemini Opty Log).
 
-Test data: one test Account + Opportunity `AIDI Test Opp` (any stage). Use it for §3–§5 unless a step says otherwise. MOM texts must be **real-looking** (≥ 100 characters, budget/competitor/schedule details). The sandbox has none today (requirements.md §5).
+**Test data:** the records and ready-to-paste meeting notes are in [test-data.md](test-data.md). To start a round again, run the reset script — first as it is (`DRY_RUN = true`, it only prints), then with `DRY_RUN = false`:
+
+```bash
+sf apex run --file scripts/apex/ai-deal-intelligence-reset.apex --target-org dev5-ts
+```
+
+**Gemini quota:** every analysed meeting is one call. On the free tier the limits are low (see requirements NFR-2); check [ai.dev/rate-limit](https://ai.dev/rate-limit) before a big run.
 
 ---
 
 ## 1. Before testing
 
-- [ ] 1.1 All 33 Opportunity fields exist with the API names in requirements.md §2.2, including the renamed `Proposed_Products__c` (D1).
+- [ ] 1.1 All 33 Opportunity fields exist with the API names in requirements.md §2.2 (including `Proposed_Products__c`).
 - [ ] 1.2 `Event.AI_Processed__c` exists, default false.
-- [ ] 1.3 The user running the batch has edit access to the 33 fields and `AI_Processed__c`.
-- [ ] 1.4 The Event Type values used by the filter exist (sandbox has only On-site / Visit and Web Meeting of the list — see requirements §3.4 note).
-- [ ] 1.5 External Credential `Gemini AI Studio` → principal `Gemini_AI_Studio_Principal` has the `ApiKey` parameter set in this org.
-- [ ] 1.6 Permission set `AI_Deal_Intelligence` is assigned to the test users (and to every rep who logs MOMs).
+- [ ] 1.3 External Credential **Gemini AI Studio** → principal `Gemini_AI_Studio_Principal` has the `ApiKey` parameter.
+- [ ] 1.4 Named Credential **Gemini AI Studio** has *Allow Formulas in HTTP Header* ticked (without it every call fails with `API_KEY_INVALID`).
+- [ ] 1.5 Permission set **AI Deal Intelligence** is assigned to the testers (and to every rep who logs MOMs).
+- [ ] 1.6 `GeminiMODEL` holds the model you mean to test (`SELECT Value__c FROM Program_Constant__mdt WHERE DeveloperName = 'GeminiMODEL'`).
+- [ ] 1.7 In the sandbox only On-site / Visit and Web Meeting exist among the BA's Types (requirements §3.4 note).
 
 ## 2. Apex unit tests
 
-- [ ] 2.1 Run only the new test classes:
+- [ ] 2.1 Run the feature's tests:
   ```bash
-  sf apex run test --class-names DealIntelligenceRulesTest --class-names DealIntelligenceServiceTest --class-names DealIntelligenceJobTest --code-coverage --result-format human --wait 20
+  sf apex run test --class-names DealIntelligenceRulesTest --class-names DealIntelligenceServiceTest --class-names DealIntelligenceJobTest --class-names EventTriggerTest --code-coverage --result-format human --wait 20
   ```
-- [ ] 2.2 All pass, and each new class has ≥ 75 % coverage. (Team baseline: the full org run has pre-existing failures, so don't use it as the gate.)
+- [ ] 2.2 All pass (53 as of 8 Oct 2026) and each `DealIntelligence*` class has ≥ 75 % coverage. (The full org run has pre-existing failures — don't use it as the gate.)
 
-Unit tests must cover at least:
+What they cover:
 
-| Area | Case |
-|------|------|
-| Filter | Web Meeting + 100 chars → yes; 99 chars → no; 99 chars padded with spaces → no; Type `Dinner / Event` → no; right Type but Subject not in list → no; right Subject but wrong Type → no (D3); WhatId = Account / ApplicationItem → no; `AI_Processed__c = true` → no |
-| Keys | `"1_Competitor_Topic_Mentioned__c"` → `Competitor_Topic_Mentioned__c`; `"20_Proposed_Products__c"` → `Proposed_Products__c` |
-| Rule A | old true + AI false → true; old false + AI true → true; old false + AI false → false |
-| Rule B — text | old blank + AI "No Data" → "No Data"; old "300k" + AI "No Data" → "300k"; old "No Data" + AI "300k" → "300k"; old "300k" + AI "500k" → "500k"; AI null → same as "No Data" |
-| Rule B — picklist | old blank + AI "Cannot Determine" → "Cannot Determine"; old "02. Early Stage" + AI "Cannot Determine" → unchanged; AI "Bogus" → treated as No Data, warning logged |
-| Rule B — multi-picklist | AI `["No Data"]` on blank → "No Data"; AI `["SAP","No Data"]` → "SAP"; old "SAP" + AI `["Odoo"]` → "SAP;Odoo"; old "SAP" + AI `["SAP"]` → "SAP" (no duplicate); old "No Data" + AI `["SAP"]` → "SAP"; AI `["No Data"]` on "SAP" → "SAP" |
-| Rule C | old score 80 + AI 40 → 40; AI 150 → 100; AI 0 → 1; AI `"high"` / null → stays 80 (D8); new Reason replaces old; AI Reason `""` / null → old Reason kept (D8); Risk always replaced |
-| Text | 300-char verbatim budget → cut to 255, warning logged |
-| Service | HTTP 500 → no Opp change, log Failed, `AI_Processed__c` still false; invalid JSON → Parse Error; 2 MOMs on the same Opp → merged oldest → newest; success → `AI_Processed__c = true` |
-| Prompt | `{{INSERT_MINUTES_OF_MEETING_HERE}}` replaced; Section 5 (Markdown table) not in the request |
+| Area | Cases |
+|------|-------|
+| Filter | 100 chars → yes, 99 → no, padded 99 → no; Type and Subject must both match; case and spaces ignored; not on an Opportunity → no; already ticked → no; missing config → nothing; **all 8 BA Subjects are read from the deployed config** (catches a value cut at 255) |
+| Keys | `"1_Competitor_Topic_Mentioned__c"` → `Competitor_Topic_Mentioned__c`; unnumbered keys work too |
+| Rule A | true stays true; false → true when mentioned; `"true"` string counts |
+| Rule B | No Data fills a blank (Stage gets `Cannot Determine`); never replaces real data; real data replaces No Data and older data; picklist matched ignoring case, unknown values dropped with a warning; text cut to 255; multi-picklists accumulate, no duplicates, No Data dropped once a real value exists |
+| Rule C | latest score / reason / risks win; score bounded 1–100 and rounded; non-numeric or missing score keeps the old one; empty reason keeps the old one |
+| Service | one call per meeting in JSON mode with the BA prompt (no Section 5); success saves, ticks, writes both logs (Event Id, model, tokens); later meetings merge onto earlier ones; HTTP 500 → nothing changed, unticked; not JSON → Parse Error; short note → no call; **after a 503 the rest of the run is held back**; 429 reported as rate-limited |
+| Job | saving a MOM starts the background job; a short note doesn't; 3 per job; backfill takes the past year only; **503 → queued again in 2 min, gives up after 3 calls; 429 → no quick retry, one hourly retry scheduled (only once); held-back deals go first; backfill stops at the first 429; the hourly retry runs the backfill**; other errors not retried |
 
-## 3. Filter (real-time, manual)
+## 3. Filter (instant process, manual)
 
-For each row, create an Event on `AIDI Test Opp`, wait about 1 minute, then check **Setup → Apex Jobs**, the AI log, and `AI_Processed__c` on the Event.
+On **AIDI Test 1 - Filter**, create each Event from test-data.md §1, wait about 1 minute, then check **Setup → Apex Jobs**, the logs, and **AI Processed** on the Event.
 
 | # | Type | Subject | Description | Expected |
 |---|------|---------|-------------|----------|
-| 3.1 | Web Meeting | Web Meeting - 1. Initial Meeting / Hearing | 150 chars | ✅ analysed, Opp updated, `AI_Processed__c` = true |
-| 3.2 | On-site / Visit | On-site / Visit - 3. Proposal / Quote Submission | 150 chars | ✅ analysed |
-| 3.3 | Dinner / Event | Dinner / Event - 1. Initial Meeting / Hearing | 500 chars | ❌ no job, no log |
-| 3.4 | Web Meeting | Web Meeting - 1. Initial Meeting / Hearing | 99 chars | ❌ no job |
-| 3.5 | Web Meeting | Web Meeting - 1. Initial Meeting / Hearing | exactly 100 chars | ✅ analysed (boundary) |
-| 3.6 | Web Meeting | Web Meeting - 1. Initial Meeting / Hearing | 150 chars, related to an **Account** | ❌ no job |
-| 3.7 | Edit 3.4 to 150 chars | | | ❌ no job (only create triggers, FR-2) |
-| 3.8 | Insert 10 qualifying Events at once (anonymous Apex) | | | ✅ all 10 analysed, no limit errors |
+| 3.1 | Web Meeting | Web Meeting - 1. Initial Meeting / Hearing | long note | ✅ analysed, deal updated, Event ticked |
+| 3.2 | On-site / Visit | On-site / Visit - 3. Proposal / Quote Submission | long note | ✅ analysed |
+| 3.3 | Web Meeting | Web Meeting - 3. Proposal / Quote Submission | long note | ✅ analysed (this Subject was once cut from the config) |
+| 3.4 | Dinner / Event | Dinner / Event - 1. Initial Meeting / Hearing | long note | ❌ no job, no log |
+| 3.5 | Web Meeting | Catch-up | long note | ❌ nothing |
+| 3.6 | Web Meeting | Web Meeting - 1. Initial Meeting / Hearing | `called, no answer` | ❌ nothing |
+| 3.7 | Web Meeting | Web Meeting - 1. Initial Meeting / Hearing | long note, Related To an **Account** | ❌ nothing |
+| 3.8 | Edit 3.6 → paste the long note | | | ❌ nothing (only new meetings) |
 
-## 4. Merge rules (real-time, manual)
+## 4. Merge rules (instant process, manual)
 
-Use a fresh Opportunity. Create MOMs one after another and check the fields after each one.
+On **AIDI Test 2 - Merge Rules**, log meetings A, B, C from test-data.md §2 one at a time, checking the deal after each.
 
-1. **MOM 1**: budget "Implementation cost 3M THB", competitor SAP, CEO must approve, go-live "around October", next meeting date set.
-   - [ ] Budget flag, decision-maker flag and schedule flag are true. `Explicit_Initial_Budget__c` = the verbatim text. `Mentioned_Product_Competitors__c` = SAP. `Expected_Release_Date__c` filled.
-   - [ ] Fields with no information show **"No Data"** / **"Cannot Determine"**, not blank (Rule B: blank gets filled).
-   - [ ] Score, Reason and Risk are filled. Score is 1–100.
-2. **MOM 2**: only a technical demo. No budget, no competitor, no decision maker, no next meeting.
-   - [ ] **Rule B:** budget, competitor and release date are **unchanged** from MOM 1.
-   - [ ] **Rule A:** budget, decision-maker and schedule flags are **still true**.
-   - [ ] **Rule C:** Score, Reason and Risk **changed**. The score should drop (no next meeting = −20 in the BA logic).
-3. **MOM 3**: "running cost 50k per month", competitor Odoo, customer says "I'll check with my boss" with no deadline.
-   - [ ] `Explicit_Running_Budget__c` changes from "No Data" to the verbatim text. `Explicit_Initial_Budget__c` stays at 3M.
-   - [ ] Competitors = **"SAP;Odoo"** (accumulated, D4).
+1. **Meeting A**
+   - [ ] Budget, Decision Maker and Schedule flags ✅; Initial Budget = the words in the note; Product Competitors = SAP; Release Date filled.
+   - [ ] Fields with nothing to say show **No Data** (AI stage **Cannot Determine**), not blank.
+   - [ ] Score, Reason, Risks filled; Score 1–100.
+2. **Meeting B** (demo only)
+   - [ ] **Rule A:** flags from A still ✅.
+   - [ ] **Rule B:** budget, competitors, release date unchanged.
+   - [ ] **Rule C:** Score, Reason, Risks replaced; score lower (no next meeting).
+3. **Meeting C** (running cost, Odoo, "check with my boss")
+   - [ ] Running Budget changes from No Data to the note's words; Initial Budget unchanged.
+   - [ ] Competitors = **SAP;Odoo**.
    - [ ] Reason mentions the polite non-commitment (Kreng-jai).
-4. [ ] Edit Score by hand, then create MOM 4 → Score is overwritten (Rule C).
-5. [ ] Standard `StageName` is untouched. Only `Opportunity_Stage__c` changes.
-6. [ ] Updating the Opportunity / Event did **not** start another AI job.
-7. [ ] Each log has the model name, input/output tokens and the list of changed fields.
+4. - [ ] Edit Score by hand, log another meeting → Score overwritten.
+5. - [ ] Standard **Stage** untouched; only **Opportunity Stage** (AI) changes.
+6. - [ ] Saving the deal or the Event did not start another job.
 
-## 5. JSON output
+## 5. Logs
 
-- [ ] 5.1 A Success log's `Response__c` is one JSON object with 33 keys, and no Markdown table.
-- [ ] 5.2 Exactly **one** callout per MOM (one log per MOM).
-- [ ] 5.3 The request body (debug log) contains `"responseMimeType":"application/json"`.
+For any analysed meeting:
 
-## 6. Backfill batch
+- [ ] 5.1 **AI Analysis Log**: Status Success (or Partial, with Details saying why), model, input / output tokens, Changes listing each field, Response = one JSON with 33 keys and no Markdown table.
+- [ ] 5.2 **Gemini Opty Log**: one row per call, with Event Id, Model, Status Success / Fail, Input / Output / Total tokens, JSON Log; Error Message filled on failures.
+- [ ] 5.3 A retried meeting has one row per attempt; the last one is the outcome.
 
-Do a small dry run first.
+## 6. Batch (backfill)
 
-- [ ] 6.1 Count the expected MOMs: Events in the last 365 days, linked to an Opportunity, matching Type (and Subject), `AI_Processed__c = false`, Description ≥ 100 characters. That count is the expected number of calls.
-- [ ] 6.2 Run `DealIntelligenceJob.runBackfill();`
-- [ ] 6.3 Setup → Apex Jobs: the job completes with 0 failed batches.
-- [ ] 6.4 Finish email: processed + skipped + failed = expected. Any failures are few and explained.
-- [ ] 6.5 Pick 3 Opportunities with several MOMs: Score, Reason and Risk match the **latest** MOM.
-- [ ] 6.6 Events older than 365 days were **not** analysed.
-- [ ] 6.7 Run the batch **again** → 0 new calls (all processed Events have `AI_Processed__c = true`).
-- [ ] 6.8 A failed Event still has `AI_Processed__c = false`. Re-run → it succeeds.
+1. Run the reset script (`DRY_RUN = false`) so the AIDI Test 3 / 4 and Gemini MOM meetings wait again.
+2. Run in Anonymous Apex:
+   ```apex
+   DealIntelligenceJob.runBackfill();
+   ```
+3. Check:
+   - [ ] 6.1 Setup → Apex Jobs: batch **Completed**, 0 failed chunks.
+   - [ ] 6.2 Summary email arrives (if sandbox email is on): analysed + failed + skipped add up.
+   - [ ] 6.3 AIDI Test 3: only the 3 meetings in the past year with real notes are analysed (not the 400-day-old one, not "Sent follow-up email."); Competitors **SAP;Odoo**; Initial Budget from March, Running Budget from September; Score / Reason / Risks describe the September meeting.
+   - [ ] 6.4 Run the backfill **again** → no new log rows.
 
-## 7. Errors and safety
+## 7. Errors, retries and safety
 
-- [ ] 7.1 Temporarily set a wrong model name → log Failed, Opportunity unchanged, `AI_Processed__c` false, no unhandled exception email.
-- [ ] 7.2 An Opportunity that fails a validation rule doesn't stop the other Opportunities in the same chunk from updating.
-- [ ] 7.3 `grep -rn "AQ\.\|AIza" force-app` finds **no** API key in source.
-- [ ] 7.4 Gemini busy (503) or rate-limited (429): the log shows `Failed` / `HTTP 503`, and about 2 minutes later a new `DealIntelligenceJob` appears in Apex Jobs and the meeting is analysed. After 3 calls in all it stops retrying; the next backfill picks it up.
+- [ ] 7.1 Set `GeminiMODEL` to a made-up name, log a meeting → both logs `Failed` / `Fail`, deal unchanged, Event unticked. Set it back.
+- [ ] 7.2 **503 (busy):** when it happens, the log says `HTTP 503`; about 2 minutes later a new `DealIntelligenceJob` appears in Apex Jobs and the meeting is analysed; after 3 calls in all it stops (next backfill picks it up).
+- [ ] 7.3 **429 (rate limit):** the log says `HTTP 429`; no more calls in that run; **Setup → Scheduled Jobs** shows one *AI Deal Intelligence - retry after Gemini rate limit*, about an hour ahead (never two). When it runs, the held-back deals are analysed first, then the rest; if Gemini still refuses, a new one appears an hour later.
+- [ ] 7.4 A deal failing a validation rule doesn't stop other deals in the same chunk.
+- [ ] 7.5 `grep -rn "AQ\.\|AIza" force-app` finds **no** API key in tracked source (`GeminiCalloutService.cls` is untracked and still has one — see implementation-plan §0).
 
 ## 8. Demo readiness
 
-- [ ] 8.1 Open 3 demo Opportunities: real data is shown where the MOMs had it, and "No Data" elsewhere.
-- [ ] 8.2 Thai-language MOM: Reason and Risk make sense in a Thai business context. The manager reviews the quality and decides on a model upgrade.
-- [ ] 8.3 Total tokens / cost for the backfill recorded for the manager.
+- [ ] 8.1 Three demo deals: real data where the meetings had it, "No Data" elsewhere.
+- [ ] 8.2 Thai meeting (AIDI Test 4, or the Thai stress deal): Reason and Risks make sense in a Thai business context. **Judge this on a Flash model**, not Lite — it decides the manager's model choice.
+- [ ] 8.3 Tokens for the backfill noted for the manager (sum of Gemini Opty Log `Token_Used__c`).
+
+## 9. Stress test (optional, ~150 Gemini calls)
+
+1. Create the data (25 regular + 4 edge-case deals; `DEAL_COUNT` at the top):
+   ```bash
+   sf apex run --file scripts/apex/ai-deal-intelligence-stress-data.apex --target-org dev5-ts
+   ```
+2. `DealIntelligenceJob.runBackfill();` and wait for the batch, any retry jobs and any hourly retry to finish.
+3. Report:
+   ```bash
+   sf apex run --file scripts/apex/ai-deal-intelligence-stress-check.apex --target-org dev5-ts 2>&1 | grep CHECK
+   ```
+   - [ ] Regular deals complete (competitors = the expected four, score set); the incomplete ones are explained by the log.
+   - [ ] Edge cases: long note analysed; same-day score from the 16:00 meeting; unknown products as "Others"; Thai score low.
+4. Remove: reset script with `DELETE_STRESS_DEALS = true`.
