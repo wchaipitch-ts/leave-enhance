@@ -155,6 +155,15 @@ private class DealIntelligenceServiceTest {
         ];
     }
 
+    private static Gemini_Opty_Log__c optyLogOf(String oppName) {
+        return [
+            SELECT Status__c, Token_Used__c, JSON_Log__c
+            FROM Gemini_Opty_Log__c
+            WHERE Opportunity__r.Name = :oppName
+            WITH SYSTEM_MODE
+        ];
+    }
+
     @isTest
     static void analysesAMeetingSavesItAndTicksIt() {
         GeminiMock mock = new GeminiMock();
@@ -193,6 +202,11 @@ private class DealIntelligenceServiceTest {
         System.assertEquals(1, summary.analysed);
         System.assertEquals(0, summary.failed);
         System.assertEquals(2500, summary.inputTokens);
+
+        Gemini_Opty_Log__c optyLog = optyLogOf('AIDI Single');
+        System.assertEquals('Success', optyLog.Status__c);
+        System.assertEquals(2900, optyLog.Token_Used__c, 'input + output tokens');
+        System.assert(optyLog.JSON_Log__c.contains('Implementation cost 3M THB'), optyLog.JSON_Log__c);
     }
 
     @isTest
@@ -275,6 +289,10 @@ private class DealIntelligenceServiceTest {
         System.assert(log.Details__c.contains('HTTP 500'), log.Details__c);
         System.assert(log.Response__c.contains('backend error'), log.Response__c);
         System.assertEquals(1, summary.failed);
+
+        Gemini_Opty_Log__c optyLog = optyLogOf('AIDI Http Error');
+        System.assertEquals('Fail', optyLog.Status__c);
+        System.assert(optyLog.JSON_Log__c.contains('backend error'), optyLog.JSON_Log__c);
     }
 
     @isTest
@@ -306,6 +324,7 @@ private class DealIntelligenceServiceTest {
         System.assertEquals(0, mock.requests.size());
         System.assertEquals(1, summary.skipped);
         System.assertEquals(0, logsOf('AIDI Short Note').size());
+        System.assertEquals(0, [SELECT COUNT() FROM Gemini_Opty_Log__c WHERE Opportunity__r.Name = 'AIDI Short Note' WITH SYSTEM_MODE]);
     }
 
     @isTest
