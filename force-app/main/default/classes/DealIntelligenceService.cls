@@ -24,6 +24,12 @@ public without sharing class DealIntelligenceService {
     /** Gemini is busy (503) or we hit the rate limit (429): worth trying again later. */
     @TestVisible private static final Set<Integer> BUSY_CODES = new Set<Integer>{ 429, 503 };
 
+    /**
+     * A 429 whose RetryInfo asks for a longer wait than this is a used-up quota (the
+     * free tier's daily limit, for one), not a burst: retrying soon only fails again.
+     */
+    @TestVisible private static final Integer LONGEST_WAIT_SECONDS = 600;
+
     @TestVisible private static final String SUCCESS     = 'Success';
     @TestVisible private static final String PARTIAL     = 'Partial';
     @TestVisible private static final String FAILED      = 'Failed';
@@ -39,6 +45,10 @@ public without sharing class DealIntelligenceService {
         public Integer outputTokens = 0;
         /** Meetings that failed only because Gemini was busy; the caller may retry them. */
         public List<Id> busy = new List<Id>();
+        /** Meetings not sent at all, because Gemini was already busy in this run. */
+        public List<Id> deferred = new List<Id>();
+        /** Gemini asked for a wait longer than LONGEST_WAIT_SECONDS: stop calling for now. */
+        public Boolean quotaExhausted = false;
     }
 
     /** One meeting's trip to Gemini and back. */
@@ -50,6 +60,7 @@ public without sharing class DealIntelligenceService {
         Integer inputTokens;
         Integer outputTokens;
         Boolean busy = false;
+        Integer retryAfterSeconds;
         DealIntelligenceRules.MergeResult merged;
         List<String> details = new List<String>();
 
@@ -89,7 +100,14 @@ public without sharing class DealIntelligenceService {
 
         String model = model();
         String prompt = prompt();
+        List<Call> sent = new List<Call>();
         for (Call c : calls) {
+            // Once Gemini says it is busy, the rest of this run would only be refused
+            // too, and each refusal still counts against the quota. They wait instead.
+            if (!summary.busy.isEmpty()) {
+                summary.deferred.add(c.mom.Id);
+                continue;
+            }
             if (String.isBlank(model) || prompt == null) {
                 c.fail(FAILED, String.isBlank(model)
                     ? 'No model set in Program_Constant__mdt.' + MODEL_KEY
@@ -97,10 +115,22 @@ public without sharing class DealIntelligenceService {
             } else {
                 ask(c, prompt, model);
             }
+            if (c.busy) {
+                summary.busy.add(c.mom.Id);
+                if (c.retryAfterSeconds != null && c.retryAfterSeconds > LONGEST_WAIT_SECONDS) {
+                    summary.quotaExhausted = true;
+                }
+            }
+            sent.add(c);
         }
 
-        Map<Id, String> saveErrors = mergeAndSave(calls);
-        tickAndLog(calls, saveErrors, model, summary);
+        Map<Id, String> saveErrors = mergeAndSave(sent);
+        for (Call c : sent) {
+            if (c.busy && !summary.busy.contains(c.mom.Id)) {
+                summary.busy.add(c.mom.Id);
+            }
+        }
+        tickAndLog(sent, saveErrors, model, summary);
         return summary;
     }
 
@@ -135,7 +165,9 @@ public without sharing class DealIntelligenceService {
         if (res.getStatusCode() != 200) {
             c.response = res.getBody();
             c.busy = BUSY_CODES.contains(res.getStatusCode());
-            c.fail(FAILED, 'HTTP ' + res.getStatusCode() + ' ' + res.getStatus());
+            c.retryAfterSeconds = retryAfterSeconds(res.getBody());
+            c.fail(FAILED, 'HTTP ' + res.getStatusCode() + ' ' + res.getStatus()
+                + (c.retryAfterSeconds == null ? '' : ' (Gemini asks to wait ' + c.retryAfterSeconds + ' s)'));
             return;
         }
 
@@ -154,6 +186,22 @@ public without sharing class DealIntelligenceService {
             }
             c.fail(PARSE_ERROR, e.getTypeName() + ': ' + e.getMessage());
         }
+    }
+
+    /** The wait Gemini asks for in an error's RetryInfo ("49995s"), or null. */
+    @TestVisible private static Integer retryAfterSeconds(String errorBody) {
+        try {
+            Map<String, Object> error = (Map<String, Object>) ((Map<String, Object>) JSON.deserializeUntyped(errorBody)).get('error');
+            for (Object o : (List<Object>) error.get('details')) {
+                Object delay = ((Map<String, Object>) o).get('retryDelay');
+                if (delay != null) {
+                    return Decimal.valueOf(((String) delay).removeEnd('s')).intValue();
+                }
+            }
+        } catch (Exception e) {
+            // No RetryInfo, or not JSON: nothing to go on.
+        }
+        return null;
     }
 
     /** The text of the first candidate, leaving out any thinking parts. */
@@ -185,10 +233,26 @@ public without sharing class DealIntelligenceService {
             return saveErrors;
         }
 
-        Map<Id, Opportunity> opps = new Map<Id, Opportunity>((List<Opportunity>) Database.query(
-            'SELECT Id, ' + String.join(existingFields(), ', ') + ' FROM Opportunity WHERE Id IN :oppIds',
-            AccessLevel.SYSTEM_MODE
-        ));
+        // FOR UPDATE: two jobs on the same deal (a retry next to a backfill chunk, say)
+        // would otherwise each read it, merge their own meeting and save, and the second
+        // save would wipe the first's competitors. Locked, the second waits and reads the
+        // first's result. The callouts are already done, so the lock is held only briefly.
+        Map<Id, Opportunity> opps;
+        try {
+            opps = new Map<Id, Opportunity>((List<Opportunity>) Database.query(
+                'SELECT Id, ' + String.join(existingFields(), ', ') + ' FROM Opportunity WHERE Id IN :oppIds FOR UPDATE',
+                AccessLevel.SYSTEM_MODE
+            ));
+        } catch (QueryException e) {
+            // Still locked after Salesforce's wait: hand the meetings back to be retried.
+            for (Call c : calls) {
+                if (c.answer != null) {
+                    c.busy = true;
+                    c.fail(SAVE_FAILED, 'Opportunity locked by another AI job: ' + e.getMessage());
+                }
+            }
+            return saveErrors;
+        }
 
         // Calls are already in WhatId, StartDateTime order, so each Opportunity sees its
         // meetings oldest first, and each merge builds on the one before.
@@ -264,14 +328,11 @@ public without sharing class DealIntelligenceService {
         List<Gemini_Opty_Log__c> optyLogs = new List<Gemini_Opty_Log__c>();
         for (Call c : calls) {
             logs.add(toLog(c, model));
-            optyLogs.add(toOptyLog(c));
+            optyLogs.add(toOptyLog(c, model));
             if (c.status == SUCCESS || c.status == PARTIAL) {
                 summary.analysed++;
             } else {
                 summary.failed++;
-            }
-            if (c.busy) {
-                summary.busy.add(c.mom.Id);
             }
             summary.inputTokens += c.inputTokens == null ? 0 : c.inputTokens;
             summary.outputTokens += c.outputTokens == null ? 0 : c.outputTokens;
@@ -301,13 +362,18 @@ public without sharing class DealIntelligenceService {
     }
 
     /** Gemini_Opty_Log__c only knows Success and Fail; Partial still saved, so it's a Success. */
-    private static Gemini_Opty_Log__c toOptyLog(Call c) {
+    private static Gemini_Opty_Log__c toOptyLog(Call c, String model) {
         Boolean saved = c.status == SUCCESS || c.status == PARTIAL;
         Integer tokens = (c.inputTokens == null ? 0 : c.inputTokens) + (c.outputTokens == null ? 0 : c.outputTokens);
         return new Gemini_Opty_Log__c(
             Opportunity__c = c.mom.WhatId,
+            Event_Id__c = c.mom.Id,
+            Model__c = model == null ? null : model.left(80),
             Status__c = saved ? 'Success' : 'Fail',
             Token_Used__c = tokens,
+            Input_Token__c = c.inputTokens,
+            Output_Token__c = c.outputTokens,
+            Error_Message__c = c.details.isEmpty() ? null : String.join(c.details, '\n').left(32768),
             JSON_Log__c = c.response == null ? String.join(c.details, '\n').left(131072) : c.response.left(131072)
         );
     }

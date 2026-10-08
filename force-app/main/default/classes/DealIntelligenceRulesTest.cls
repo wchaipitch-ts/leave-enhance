@@ -98,7 +98,19 @@ private class DealIntelligenceRulesTest {
     @isTest
     static void readsTheDeployedConfig() {
         System.assert(DealIntelligenceRules.momTypes().contains('Web Meeting'), DealIntelligenceRules.momTypes());
-        System.assert(DealIntelligenceRules.momSubjects().contains(MOM_SUBJECT), DealIntelligenceRules.momSubjects());
+        // All eight of the BA's Subjects, so a record cut at 255 characters shows up here.
+        List<String> subjects = DealIntelligenceRules.momSubjects();
+        for (String expected : new List<String>{
+                'Meeting',
+                'On-site / Visit - 1. Initial Meeting / Hearing',
+                'On-site / Visit - 2. Detailed Hearing / Requirement Check',
+                'On-site / Visit - 3. Proposal / Quote Submission',
+                'On-site / Visit - 6. Other',
+                'Web Meeting - 1. Initial Meeting / Hearing',
+                'Web Meeting - 2. Detailed Hearing / Requirement Check',
+                'Web Meeting - 3. Proposal / Quote Submission' }) {
+            System.assert(subjects.contains(expected), expected + ' missing from ' + subjects);
+        }
         System.assert(DealIntelligenceRules.isMom(mom('x'.repeat(100))), 'qualifies with the deployed config');
     }
 

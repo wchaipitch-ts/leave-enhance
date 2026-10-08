@@ -13,6 +13,8 @@ private class DealIntelligenceServiceTest {
     private class GeminiMock implements HttpCalloutMock {
         Map<String, Map<String, Object>> answers = new Map<String, Map<String, Object>>();
         Set<String> httpErrors = new Set<String>();
+        Set<String> busy = new Set<String>();
+        Set<String> quotaUsedUp = new Set<String>();
         Set<String> notJson = new Set<String>();
         List<HttpRequest> requests = new List<HttpRequest>();
 
@@ -20,6 +22,23 @@ private class DealIntelligenceServiceTest {
             requests.add(req);
             HttpResponse res = new HttpResponse();
             res.setHeader('Content-Type', 'application/json');
+            for (String marker : busy) {
+                if (req.getBody().contains(marker)) {
+                    res.setStatusCode(503);
+                    res.setStatus('Service Unavailable');
+                    res.setBody('{"error":{"code":503,"message":"This model is currently experiencing high demand."}}');
+                    return res;
+                }
+            }
+            for (String marker : quotaUsedUp) {
+                if (req.getBody().contains(marker)) {
+                    res.setStatusCode(429);
+                    res.setStatus('Too Many Requests');
+                    res.setBody('{"error":{"code":429,"message":"Quota exceeded","details":['
+                        + '{"@type":"type.googleapis.com/google.rpc.RetryInfo","retryDelay":"49995s"}]}}');
+                    return res;
+                }
+            }
             for (String marker : httpErrors) {
                 if (req.getBody().contains(marker)) {
                     res.setStatusCode(500);
@@ -92,7 +111,7 @@ private class DealIntelligenceServiceTest {
             CloseDate = Date.today().addMonths(3)
         );
         List<Opportunity> opps = new List<Opportunity>();
-        for (String name : new List<String>{ 'AIDI Single', 'AIDI Two Meetings', 'AIDI Http Error', 'AIDI Not Json', 'AIDI Short Note' }) {
+        for (String name : new List<String>{ 'AIDI Single', 'AIDI Two Meetings', 'AIDI Http Error', 'AIDI Not Json', 'AIDI Short Note', 'AIDI Busy', 'AIDI Quota' }) {
             Opportunity opp = template.clone();
             opp.Name = name;
             opps.add(opp);
@@ -107,7 +126,10 @@ private class DealIntelligenceServiceTest {
             mom(opps[1].Id, 'MOM-OLDER' + FILLER, -10),
             mom(opps[2].Id, 'MOM-HTTP-ERROR' + FILLER, -2),
             mom(opps[3].Id, 'MOM-NOT-JSON' + FILLER, -2),
-            mom(opps[4].Id, 'called, no answer', -2)
+            mom(opps[4].Id, 'called, no answer', -2),
+            mom(opps[5].Id, 'MOM-BUSY' + FILLER, -5),
+            mom(opps[5].Id, 'MOM-WAITING' + FILLER, -1),
+            mom(opps[6].Id, 'MOM-QUOTA' + FILLER, -1)
         };
     }
 
@@ -157,7 +179,7 @@ private class DealIntelligenceServiceTest {
 
     private static Gemini_Opty_Log__c optyLogOf(String oppName) {
         return [
-            SELECT Status__c, Token_Used__c, JSON_Log__c
+            SELECT Status__c, Token_Used__c, JSON_Log__c, Event_Id__c, Model__c, Input_Token__c, Output_Token__c, Error_Message__c
             FROM Gemini_Opty_Log__c
             WHERE Opportunity__r.Name = :oppName
             WITH SYSTEM_MODE
@@ -206,6 +228,10 @@ private class DealIntelligenceServiceTest {
         Gemini_Opty_Log__c optyLog = optyLogOf('AIDI Single');
         System.assertEquals('Success', optyLog.Status__c);
         System.assertEquals(2900, optyLog.Token_Used__c, 'input + output tokens');
+        System.assertEquals(2500, optyLog.Input_Token__c);
+        System.assertEquals(400, optyLog.Output_Token__c);
+        System.assertEquals(ids[0], optyLog.Event_Id__c);
+        System.assert(String.isNotBlank(optyLog.Model__c));
         System.assert(optyLog.JSON_Log__c.contains('Implementation cost 3M THB'), optyLog.JSON_Log__c);
     }
 
@@ -292,6 +318,7 @@ private class DealIntelligenceServiceTest {
 
         Gemini_Opty_Log__c optyLog = optyLogOf('AIDI Http Error');
         System.assertEquals('Fail', optyLog.Status__c);
+        System.assert(optyLog.Error_Message__c.contains('HTTP 500'), optyLog.Error_Message__c);
         System.assert(optyLog.JSON_Log__c.contains('backend error'), optyLog.JSON_Log__c);
     }
 
@@ -325,6 +352,39 @@ private class DealIntelligenceServiceTest {
         System.assertEquals(1, summary.skipped);
         System.assertEquals(0, logsOf('AIDI Short Note').size());
         System.assertEquals(0, [SELECT COUNT() FROM Gemini_Opty_Log__c WHERE Opportunity__r.Name = 'AIDI Short Note' WITH SYSTEM_MODE]);
+    }
+
+    @isTest
+    static void busyAnswerHoldsBackTheRestOfTheRun() {
+        GeminiMock mock = new GeminiMock();
+        mock.busy.add('MOM-BUSY');
+        Test.setMock(HttpCalloutMock.class, mock);
+        List<Id> ids = eventsOf('AIDI Busy');
+
+        Test.startTest();
+        DealIntelligenceService.Summary summary = DealIntelligenceService.analyse(ids);
+        Test.stopTest();
+
+        System.assertEquals(1, mock.requests.size(), 'nothing is sent after a busy answer');
+        System.assertEquals(1, summary.busy.size());
+        System.assertEquals(1, summary.deferred.size());
+        System.assert(!summary.quotaExhausted);
+        System.assertEquals(1, logsOf('AIDI Busy').size(), 'the held-back meeting has no log');
+        System.assertEquals(0, [SELECT COUNT() FROM Event WHERE What.Name = 'AIDI Busy' AND AI_Processed__c = true WITH SYSTEM_MODE]);
+    }
+
+    @isTest
+    static void usedUpQuotaIsReported() {
+        GeminiMock mock = new GeminiMock();
+        mock.quotaUsedUp.add('MOM-QUOTA');
+        Test.setMock(HttpCalloutMock.class, mock);
+
+        Test.startTest();
+        DealIntelligenceService.Summary summary = DealIntelligenceService.analyse(eventsOf('AIDI Quota'));
+        Test.stopTest();
+
+        System.assert(summary.quotaExhausted);
+        System.assert(logsOf('AIDI Quota')[0].Details__c.contains('wait 49995 s'), logsOf('AIDI Quota')[0].Details__c);
     }
 
     @isTest

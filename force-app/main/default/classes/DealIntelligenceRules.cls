@@ -66,7 +66,7 @@ public with sharing class DealIntelligenceRules {
 
     /** The configured Subjects, as written in the config — for the backfill's SOQL filter. */
     public static List<String> momSubjects() {
-        return splitList(value(SUBJECTS_KEY), false);
+        return splitList(valuesStartingWith(SUBJECTS_KEY), false);
     }
 
     private static void loadFilterConfig() {
@@ -74,7 +74,7 @@ public with sharing class DealIntelligenceRules {
             types = new Set<String>(splitList(value(TYPES_KEY), true));
         }
         if (subjects == null) {
-            subjects = new Set<String>(splitList(value(SUBJECTS_KEY), true));
+            subjects = new Set<String>(splitList(valuesStartingWith(SUBJECTS_KEY), true));
         }
         if (minLength == null) {
             String raw = value(MIN_LENGTH_KEY);
@@ -85,6 +85,23 @@ public with sharing class DealIntelligenceRules {
     private static String value(String key) {
         Program_Constant__mdt row = Program_Constant__mdt.getInstance(key);
         return row == null ? null : row.Value__c;
+    }
+
+    /**
+     * Value__c holds 255 characters, and the Subject list is longer, so it is spread
+     * over AI_MOM_Subjects, AI_MOM_Subjects_2, ... — every record whose name starts
+     * with the key. A longer value is cut silently on deploy, so add a record instead.
+     */
+    private static String valuesStartingWith(String key) {
+        List<String> parts = new List<String>();
+        List<String> names = new List<String>(Program_Constant__mdt.getAll().keySet());
+        names.sort();
+        for (String name : names) {
+            if (name.startsWithIgnoreCase(key)) {
+                parts.add(Program_Constant__mdt.getInstance(name).Value__c);
+            }
+        }
+        return parts.isEmpty() ? null : String.join(parts, ';');
     }
 
     // Semicolon separated, because the Subjects themselves contain '-', '/' and '.'.

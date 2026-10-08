@@ -44,10 +44,10 @@ The service takes plain text plus the Opportunity Id. Event is just today's sour
 | Metadata | Purpose |
 |----------|---------|
 | Static resource `DealIntelligencePrompt` (text) ✅ | The BA prompt, Sections 1–4, without Section 5 (FR-9, D2). It is versioned in git, and the BA can update it without code changes. |
-| `Program_Constant__mdt` records | `GeminiMODEL` (Flash), `AI_MOM_Types`, `AI_MOM_Subjects` (semicolon lists, FR-10/11), `AI_MOM_Min_Length` = `100`. ✅ The three `AI_MOM_*` records are done. |
+| `Program_Constant__mdt` records ✅ | `GeminiMODEL`, `AI_MOM_Types`, `AI_MOM_Subjects` + `AI_MOM_Subjects_2` (semicolon lists, FR-10/11), `AI_MOM_Min_Length` = `100`. **`Value__c` holds only 255 characters and a longer value is cut silently on deploy**, so the Subject list is spread over every record whose name starts with `AI_MOM_Subjects`; add `AI_MOM_Subjects_3` etc. rather than lengthening one. |
 | Named Credential + External Credential `Gemini_AI_Studio` ✅ | **AI Studio** (D5). URL `https://generativelanguage.googleapis.com`; the External Credential (Custom protocol) adds header `x-goog-api-key` = `{!$Credential.Gemini_AI_Studio.ApiKey}`. **Manual step per org:** Setup → External Credentials → Gemini AI Studio → principal `Gemini_AI_Studio_Principal` → add authentication parameter `ApiKey`. Never in git. The Named Credential **must** have *Allow Formulas in HTTP Header* on (`allowMergeFieldsInHeader`), otherwise the key formula is never filled in and Google answers `API_KEY_INVALID`. `AQ.`-style keys work with this header on the AI Studio endpoint (checked 8 Oct 2026). (The OAuth `Gemini_OAuth_NC` / `Gemini_OAuth_EC` someone created for Vertex is left untouched.) |
 | `AI_Analysis_Log__c` object ✅ | `Opportunity__c`, `Event_Id__c`, `Model__c`, `Status__c` (Success / Partial / Failed / Parse Error / Save Failed), `Input_Tokens__c`, `Output_Tokens__c`, `Response__c` (Long Text 131k), `Changes__c`, `Details__c` (errors + warnings). Also gives a score history for the future dashboard. |
-| `Gemini_Opty_Log__c` (existing team object, now in the repo) ✅ | One row per call **as well as** `AI_Analysis_Log__c`: `Opportunity__c`, `JSON_Log__c` (Gemini's JSON, or the error when there is none), `Status__c` (`Success` for our Success/Partial, `Fail` for Failed/Parse Error/Save Failed), `Token_Used__c` (input + output). |
+| `Gemini_Opty_Log__c` (existing team object, now in the repo) ✅ | One row per call (so one per meeting, plus one per retry) **as well as** `AI_Analysis_Log__c`: `Opportunity__c`, `Event_Id__c`, `Model__c`, `JSON_Log__c` (Gemini's JSON, or the error when there is none), `Status__c` (`Success` for our Success/Partial, `Fail` for Failed/Parse Error/Save Failed), `Error_Message__c`, `Token_Used__c` (input + output), `Input_Token__c`, `Output_Token__c`. |
 | Permission set `AI_Deal_Intelligence` ✅ | Access to the `Gemini_AI_Studio` principal + read on the log. **Real-time runs as the rep who logs the meeting, so every such rep needs this permission set** — without it the callout fails. |
 
 Merge rules don't need their own config. They follow the field: #1–17 → A, #18–30 → B, #31–33 → C. That is a fixed list in `DealIntelligenceRules`.
@@ -85,6 +85,8 @@ Endpoint (AI Studio, D5): `https://generativelanguage.googleapis.com/v1beta/mode
 | Invalid JSON | Log `Parse Error` with the raw response. No update. |
 | One field bad (picklist / number) | Skip that field only, log `Partial` with a warning. |
 | Opportunity update fails (validation rule, lock) | `Database.update(…, false)`. The Event stays unprocessed and the error is logged. |
+| Two jobs on the same deal at once (a retry next to a backfill chunk) | The deal is read `FOR UPDATE`, so the second job waits for the first to save and merges onto its result. Without it the stress test lost competitors (last save won). Still locked after Salesforce's wait → `Save Failed`, retried like a busy answer. |
+| Gemini quota used up (429 asking to wait > 10 min, e.g. free tier 20 calls/day/model) | Nothing more is sent in that run; no retries; the batch stops calling and its email says so. Meetings stay unticked for a later backfill. |
 
 ## 3. Work breakdown (~30 h)
 
@@ -125,3 +127,14 @@ Into the sandbox `dev5-ts` only (D7):
 ## 5. Switching model later
 
 Change `Program_Constant__mdt.GeminiMODEL` (e.g. to `gemini-3.1-pro`). No code change. The log records the model. To compare models on the same MOMs, set `AI_Processed__c = false` on a sample and re-run.
+
+## 6. Stress test (8 Oct 2026, sandbox, `gemini-3.5-flash-lite`)
+
+29 deals / 131 meetings from `scripts/apex/ai-deal-intelligence-stress-data.apex`, checked with `…-stress-check.apex`.
+
+- Batch: 47 chunks in ~4 min, 0 chunk errors. 144 Gemini calls: 100 Success, 4 Partial, 40 × 429 (per-minute limit); 45 retry jobs.
+- 19 of 25 regular deals exactly as expected. Of the 6 others: 2 had one meeting give up after 3 × 429 (picked up by the next backfill), 2 had Gemini put a product (Cloudee) in the SI list (dropped with a warning — model quality), 2 lost a competitor to two jobs saving the same deal at once → **fixed with `FOR UPDATE`**.
+- Edge cases: ~8,000-character note fine; same-day meetings merged in time order (score from the 16:00 "paused" meeting = 15); unknown products stored as "Others", never as invalid values; Thai polite deferral scored 5–10.
+- Found and fixed: the Subject list was cut at 255 characters, so every "Web Meeting - 2/3" meeting was skipped (also in real time).
+
+**Known limitation:** a meeting that fails for good and is picked up by a *later* backfill is merged after newer meetings, so Rule C (score/reason/risks) and Rule B (newer text values) can take the older meeting's view. Fix would need a "latest meeting applied" date on the Opportunity (one more field) so an older meeting only adds facts (flags, competitors, blanks) and never overwrites — to be decided.

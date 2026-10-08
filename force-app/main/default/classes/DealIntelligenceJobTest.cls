@@ -9,6 +9,7 @@ private class DealIntelligenceJobTest {
     private class GeminiMock implements HttpCalloutMock {
         Integer calls = 0;
         Integer status = 200;
+        String retryDelay;
 
         GeminiMock() {}
 
@@ -22,7 +23,9 @@ private class DealIntelligenceJobTest {
                 HttpResponse busy = new HttpResponse();
                 busy.setStatusCode(status);
                 busy.setStatus(status == 503 ? 'Service Unavailable' : 'Error');
-                busy.setBody('{"error":{"code":' + status + ',"message":"This model is currently experiencing high demand."}}');
+                busy.setBody('{"error":{"code":' + status + ',"message":"This model is currently experiencing high demand."'
+                    + (retryDelay == null ? '' : ',"details":[{"@type":"type.googleapis.com/google.rpc.RetryInfo","retryDelay":"' + retryDelay + '"}]')
+                    + '}}');
                 return busy;
             }
             String text = JSON.serialize(new Map<String, Object>{
@@ -204,6 +207,19 @@ private class DealIntelligenceJobTest {
         Test.stopTest();
 
         System.assertNotEquals(null, DealIntelligenceJob.queuedInTest);
+    }
+
+    @isTest
+    static void usedUpQuotaIsNotRetried() {
+        GeminiMock mock = new GeminiMock(429);
+        mock.retryDelay = '49995s';
+        Test.setMock(HttpCalloutMock.class, mock);
+
+        Test.startTest();
+        new DealIntelligenceJob.RealTime(retryMeeting()).execute(null);
+        Test.stopTest();
+
+        System.assertEquals(null, DealIntelligenceJob.queuedInTest, 'a daily quota is not worth retrying in minutes');
     }
 
     @isTest

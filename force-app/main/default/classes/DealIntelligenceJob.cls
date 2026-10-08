@@ -11,8 +11,11 @@
  * Gemini call, and Salesforce allows 120 seconds of callouts per transaction.
  *
  * When Gemini is busy (503) or rate-limited (429), the meeting is queued again a few
- * minutes later, up to MAX_ATTEMPTS calls in all. Apex can't wait inside a
- * transaction, so a delayed job is the only way to give Gemini time to recover.
+ * minutes later, up to MAX_ATTEMPTS calls in all, and nothing more is sent until then.
+ * Apex can't wait inside a transaction, so a delayed job is the only way to give
+ * Gemini time to recover. When Gemini says the quota is used up for longer than a
+ * short wait (the free tier's daily limit, say), nothing is retried: the meetings stay
+ * unticked for the next backfill run.
  */
 public without sharing class DealIntelligenceJob
         implements Database.Batchable<SObject>, Database.AllowsCallouts, Database.Stateful {
@@ -33,6 +36,7 @@ public without sharing class DealIntelligenceJob
 
     private DealIntelligenceService.Summary total = new DealIntelligenceService.Summary();
     private Integer retriesQueued = 0;
+    private Boolean quotaExhausted = false;
 
     public static Id runBackfill() {
         return Database.executeBatch(new DealIntelligenceJob(), PER_TRANSACTION);
@@ -85,13 +89,18 @@ public without sharing class DealIntelligenceJob
             }
 
             DealIntelligenceService.Summary summary = DealIntelligenceService.analyse(now);
+            if (summary.quotaExhausted) {
+                // Everything left would be refused too; the backfill picks them up later.
+                return;
+            }
 
             // A job may queue only one follow-up, so the rest and the retries share it.
-            // With nothing else waiting, the retries wait a little for Gemini to recover.
+            // After a busy answer the whole follow-up waits, so Gemini can recover.
             List<Id> next = new List<Id>(later);
+            next.addAll(summary.deferred);
             next.addAll(retryable(summary.busy, attempts));
             if (!next.isEmpty()) {
-                queue(new RealTime(next, attempts), later.isEmpty() ? RETRY_DELAY_MINUTES : 0);
+                queue(new RealTime(next, attempts), summary.busy.isEmpty() ? 0 : RETRY_DELAY_MINUTES);
             }
         }
     }
@@ -142,15 +151,28 @@ public without sharing class DealIntelligenceJob
 
     public void execute(Database.BatchableContext context, List<SObject> scope) {
         List<Id> ids = new List<Id>(new Map<Id, SObject>(scope).keySet());
+        if (quotaExhausted) {
+            // Gemini's quota ran out earlier in this run; calling now only fails again.
+            total.skipped += ids.size();
+            return;
+        }
         DealIntelligenceService.Summary part = DealIntelligenceService.analyse(ids);
+        if (part.quotaExhausted) {
+            quotaExhausted = true;
+            total.skipped += part.deferred.size();
+        }
         total.analysed += part.analysed;
         total.failed += part.failed;
         total.skipped += part.skipped;
         total.inputTokens += part.inputTokens;
         total.outputTokens += part.outputTokens;
 
+        if (quotaExhausted) {
+            return;
+        }
         Map<Id, Integer> attempts = new Map<Id, Integer>();
-        List<Id> retries = retryable(part.busy, attempts);
+        List<Id> retries = new List<Id>(part.deferred);
+        retries.addAll(retryable(part.busy, attempts));
         if (!retries.isEmpty()) {
             queue(new RealTime(retries, attempts), RETRY_DELAY_MINUTES);
             retriesQueued += retries.size();
@@ -166,6 +188,9 @@ public without sharing class DealIntelligenceJob
         ];
         String body = String.join(new List<String>{
             'AI Deal Intelligence backfill finished: ' + job.Status + '.',
+            quotaExhausted
+                ? 'STOPPED EARLY: Gemini quota used up (free tier: 20 calls per day per model). Run again after it resets.'
+                : '',
             '',
             'Analysed: ' + total.analysed,
             'Failed: ' + total.failed + '  (left unticked — run the backfill again to retry)',

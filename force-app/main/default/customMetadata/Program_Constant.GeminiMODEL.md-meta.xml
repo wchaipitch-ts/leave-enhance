@@ -4,7 +4,7 @@
     <protected>false</protected>
     <values>
         <field>Value__c</field>
-        <value xsi:type="xsd:string">gemini-3.8-flash</value>
+        <value xsi:type="xsd:string">gemini-3.5-flash-lite</value>
     </values>
     <values>
         <field>boolean__c</field>
