@@ -18,7 +18,7 @@ Test data: one test Account + Opportunity `AIDI Test Opp` (any stage). Use it fo
 
 - [ ] 2.1 Run only the new test classes:
   ```bash
-  sf apex run test --class-names MomFilterTest --class-names DealIntelligenceMergerTest --class-names DealIntelligenceServiceTest --class-names DealIntelligenceBackfillBatchTest --class-names MomAnalysisQueueableTest --code-coverage --result-format human --wait 20
+  sf apex run test --class-names DealIntelligenceRulesTest --class-names DealIntelligenceServiceTest --class-names DealIntelligenceJobTest --code-coverage --result-format human --wait 20
   ```
 - [ ] 2.2 All pass, and each new class has ≥ 75 % coverage. (Team baseline: the full org run has pre-existing failures, so don't use it as the gate.)
 
@@ -84,7 +84,7 @@ Use a fresh Opportunity. Create MOMs one after another and check the fields afte
 Do a small dry run first.
 
 - [ ] 6.1 Count the expected MOMs: Events in the last 365 days, linked to an Opportunity, matching Type (and Subject), `AI_Processed__c = false`, Description ≥ 100 characters. That count is the expected number of calls.
-- [ ] 6.2 Run `Database.executeBatch(new DealIntelligenceBackfillBatch(), 5);`
+- [ ] 6.2 Run `Database.executeBatch(new DealIntelligenceJob(), 5);`
 - [ ] 6.3 Setup → Apex Jobs: the job completes with 0 failed batches.
 - [ ] 6.4 Finish email: processed + skipped + failed = expected. Any failures are few and explained.
 - [ ] 6.5 Pick 3 Opportunities with several MOMs: Score, Reason and Risk match the **latest** MOM.

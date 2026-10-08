@@ -44,7 +44,7 @@ This branch is **only the Gemini integration** (backfill, real-time, filter, one
 ## Run the backfill
 
 ```apex
-Database.executeBatch(new DealIntelligenceBackfillBatch(), 5);
+Database.executeBatch(new DealIntelligenceJob(), 5);
 ```
 
 Safe to re-run — already analysed MOMs are skipped. Results and token usage are in `AI_Analysis_Log__c`.

@@ -27,43 +27,37 @@ Read with [requirements.md](requirements.md). FR-x and Q-x numbers refer to that
 
 ## 2. Architecture
 
+Kept to **three Apex classes** (plus their tests):
+
 ```
- EventTrigger (after insert) ──► MomFilter ──► MomAnalysisQueueable ─┐
-                                                                     ├─► DealIntelligenceService
- DealIntelligenceBackfillBatch ──► MomFilter ────────────────────────┘        │
-                                                                             ├─ DealIntelligencePrompt  (BA prompt + MOM text)
- (future) Meet transcript source ───────────────────────────────────────────►├─ GeminiClient            (1 callout → 1 JSON)
-                                                                             ├─ DealIntelligenceMerger  (Rules A / B / C)
-                                                                             └─ AI_Analysis_Log__c      (audit + tokens)
+ EventTrigger (after insert) ─┐
+                              ├─► DealIntelligenceJob ──► DealIntelligenceService ──► DealIntelligenceRules
+ Backfill (run once) ─────────┘   (Batchable + Queueable)  (prompt, Gemini call,       (filter + merge rules,
+                                                            save, log)                  no SOQL / DML)
 ```
 
-Everything after the filter takes a **`MomInput`** (`opportunityId`, `sourceId`, `meetingDate`, `text`). Event is just today's source (FR-F1).
+The service takes plain text plus the Opportunity Id. Event is just today's source, so a Meet transcript can be added later without changing the rules (FR-F1).
 
 ### 2.1 New metadata
 
 | Metadata | Purpose |
 |----------|---------|
 | Static resource `DealIntelligencePrompt` (text) | The BA prompt, Sections 1–4, without Section 5 (FR-9, D2). It is versioned in git, and the BA can update it without code changes. |
-| `Program_Constant__mdt` records | `GeminiMODEL` (Flash), `AI_MOM_Types`, `AI_MOM_Subjects` (semicolon lists, FR-10/11), `AI_MOM_Min_Length` = `100`. |
+| `Program_Constant__mdt` records | `GeminiMODEL` (Flash), `AI_MOM_Types`, `AI_MOM_Subjects` (semicolon lists, FR-10/11), `AI_MOM_Min_Length` = `100`. ✅ The three `AI_MOM_*` records are done. |
 | Named Credential + External Credential `Gemini` | **AI Studio** (D5). URL `https://generativelanguage.googleapis.com`, custom header `x-goog-api-key` = `{!$Credential.Gemini.ApiKey}`. The key is entered in Setup in each org, never in git. Moving to Vertex later only changes this credential and the URL path. |
 | `AI_Analysis_Log__c` object | `Opportunity__c`, `Event_Id__c`, `Model__c`, `Status__c` (Success / Failed / Parse Error / Partial), `Input_Tokens__c`, `Output_Tokens__c`, `Raw_Response__c` (Long Text 131k), `Error__c`, `Fields_Changed__c`. Also gives a score history for the future dashboard. |
 | Permission set `AI_Deal_Intelligence` | See §1. |
 
-Merge rules don't need their own config. They follow the field: #1–17 → A, #18–30 → B, #31–33 → C. That is a fixed list in `DealIntelligenceMerger`.
+Merge rules don't need their own config. They follow the field: #1–17 → A, #18–30 → B, #31–33 → C. That is a fixed list in `DealIntelligenceRules`.
 
 ### 2.2 Apex classes
 
 | Class | Responsibility |
 |-------|----------------|
-| `MomFilter` | `isQualifying(Event e)`: Type in list **and** Subject in list (D3), trimmed Description ≥ 100, `AI_Processed__c = false`, WhatId prefix `006`. Pure logic, easy to unit test. |
-| `MomInput` | Data class, `fromEvent(Event)`. |
-| `DealIntelligencePrompt` | Loads the static resource and replaces `{{INSERT_MINUTES_OF_MEETING_HERE}}` with the Description. |
-| `GeminiClient` | `GeminiResponse generate(String prompt)`. Body: `contents` + `generationConfig { responseMimeType: "application/json", temperature: 0.2 }`. Model from config, endpoint `callout:Gemini/v1beta/models/{model}:generateContent`, timeout 60 s. Returns the JSON text, token counts and HTTP status. **No DML** (all callouts run before any DML). |
-| `DealIntelligenceMerger` | `MergeResult merge(Opportunity current, Map<String,Object> aiJson)`: strips the `N_` key prefix (FR-8), then applies Rule A / B / C per field. **Rule B:** a "no data" value is written only if the field is blank; real data overwrites. Multi-picklist: **union** of the existing and new values (D4), with `No Data` dropped when any real value is present. Invalid picklist value → treated as no data. Text truncated to 255. Score parsed and clamped to 1–100; a missing/non-numeric Score or an empty Reason keeps the old value (D8). Returns the updated record plus the list of changes and warnings. **Pure — no SOQL/DML.** |
-| `DealIntelligenceService` | `analyse(List<MomInput>)`: (1) call Gemini for each input; (2) query the Opportunities once; (3) merge in order oldest → newest; (4) `Database.update(opps, false)`; (5) set `AI_Processed__c = true` **only** on Events whose result was saved; (6) insert logs. |
-| `DealIntelligenceBackfillBatch` | `Database.Batchable<SObject>, Database.AllowsCallouts, Database.Stateful`. Query: `Event WHERE ActivityDate = LAST_N_DAYS:365 AND What.Type = 'Opportunity' AND Type IN :types AND Subject IN :subjects AND AI_Processed__c = false ORDER BY WhatId, ActivityDateTime, CreatedDate`. The Description length check is done in Apex, because SOQL can't filter long text. **Scope 3–5** to stay under 120 s of callout time. `finish`: email a summary (processed / skipped / failed / tokens). |
-| `MomAnalysisQueueable` | `Queueable, Database.AllowsCallouts`. Takes Event Ids, processes a few per job, chains the rest. |
-| `EventTriggerHandler` (extend) | After insert only (FR-2): filter, then enqueue `MomAnalysisQueueable`. Our own update that sets `AI_Processed__c` is an *update*, so it can't re-trigger. |
+| `DealIntelligenceRules` ✅ | **Filter:** `isMom(Event)` / `qualifying(List<Event>)`: Type **and** Subject in the config lists (D3), trimmed Description ≥ 100, `AI_Processed__c = false`, related to an Opportunity. Missing config → nothing qualifies (it must never block a rep's save). `momTypes()` / `momSubjects()` for the backfill SOQL. **Merge:** `mergeAnswer(Opportunity, Map<String,Object>)` strips the `N_` key prefix (FR-8), then applies Rule A / B / C per field. Rule B: "no data" only fills a blank; real data overwrites; multi-picklists accumulate (D4); an invalid picklist value counts as no data; text is cut to the field length. Rule C: Score clamped to 1–100; a non-numeric Score or an empty Reason keeps the old value (D8). It applies changes to the record it's given and returns `changes` + `warnings`. **No SOQL / DML.** (`merge` is a reserved word in Apex, hence `mergeAnswer`.) |
+| `DealIntelligenceService` | `analyse(List<Event>)`: (1) build the prompt from the static resource and call Gemini for each Event (`responseMimeType: "application/json"`, model from config, `callout:Gemini`, timeout 60 s); (2) query the Opportunities once with `DealIntelligenceRules.fields()`; (3) `mergeAnswer` oldest → newest; (4) `Database.update(opps, false)`; (5) set `AI_Processed__c = true` **only** on Events whose result was saved; (6) insert logs. All callouts happen before any DML. |
+| `DealIntelligenceJob` | One class for both modes. **Backfill:** `Database.Batchable<SObject>, Database.AllowsCallouts, Database.Stateful`. Query: `Event WHERE ActivityDate = LAST_N_DAYS:365 AND What.Type = 'Opportunity' AND Type IN :types AND Subject IN :subjects AND AI_Processed__c = false ORDER BY WhatId, ActivityDateTime, CreatedDate`; the length check runs in Apex; **scope 3–5**; `finish` emails a summary. **Real-time:** `Queueable, Database.AllowsCallouts`. Takes Event Ids, processes a few, chains the rest. |
+| `EventTriggerHandler` (existing, extended) | After insert only (FR-2): `DealIntelligenceRules.qualifying`, then enqueue `DealIntelligenceJob`. Our own update that sets `AI_Processed__c` is an *update*, so it can't re-trigger. |
 
 Processing order: Batch Apex runs chunks one after another in query order. `ORDER BY WhatId, ActivityDateTime` therefore keeps each Opportunity's MOMs oldest → newest (FR-20). If one Opportunity's MOMs fall into two chunks, the second chunk re-reads the Opportunity and sees the first chunk's result.
 
@@ -96,12 +90,12 @@ Endpoint (AI Studio, D5): `https://generativelanguage.googleapis.com/v1beta/mode
 | 1 | Rename field; retrieve fields; permission set | 2 |
 | 2 | Credentials: Named/External Credential for AI Studio | 2 |
 | 3 | Static resource prompt, constants, `AI_Analysis_Log__c` | 2 |
-| 4 | `GeminiClient` + `MomInput` + `MomFilter` | 3 |
-| 5 | `DealIntelligenceMerger` (Rules A/B/C, multi-picklist, coercion) | 5 |
-| 6 | `DealIntelligenceService` + log | 3 |
+| 4 | ✅ `DealIntelligenceRules`: filter | 3 |
+| 5 | ✅ `DealIntelligenceRules`: merge (Rules A/B/C, multi-picklist, coercion) | 5 |
+| 6 | `DealIntelligenceService`: prompt, Gemini call, save, log | 3 |
 | 7 | Prompt check: run 5–10 real MOMs (Thai + English), confirm the JSON keys and values parse | 3 |
-| 8 | `DealIntelligenceBackfillBatch` + dry run | 3 |
-| 9 | Event trigger + `MomAnalysisQueueable` | 2 |
+| 8 | `DealIntelligenceJob` (backfill) + dry run | 3 |
+| 9 | Event trigger + `DealIntelligenceJob` (real-time) | 2 |
 | 10 | Unit tests (mocks), realistic test Events, run testing-steps.md, run backfill | 5 |
 | | **Total** | **30** |
 
@@ -118,7 +112,7 @@ Into the sandbox `dev5-ts` only (D7):
 5. Event trigger change
 6. Backfill from Anonymous Apex:
    ```apex
-   Database.executeBatch(new DealIntelligenceBackfillBatch(), 5);
+   Database.executeBatch(new DealIntelligenceJob(), 5);
    ```
 
 > Team baseline: the full sandbox test run has ~63 pre-existing failures. Deploy with `--test-level RunSpecifiedTests` and name the new test classes.
