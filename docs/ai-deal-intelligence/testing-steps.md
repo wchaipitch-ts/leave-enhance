@@ -1,15 +1,18 @@
 # AI Deal Intelligence — Testing Steps
 
-Run in our Salesforce org after deploy. Tick each box. Record failures with the Opportunity/Activity Id and the `AI_Analysis_Log__c` record.
+Run in the sandbox `dev5-ts`. Tick each box. For a failure, note the Opportunity Id, the Event Id and the `AI_Analysis_Log__c` record.
 
-Test data: create one test Account + Opportunity `AIDI Test Opp` (any stage). Use it for §3–§5 unless a step says otherwise.
+Test data: one test Account + Opportunity `AIDI Test Opp` (any stage). Use it for §3–§5 unless a step says otherwise. MOM texts must be **real-looking** (≥ 100 characters, budget/competitor/schedule details). The sandbox has none today (requirements.md §5).
 
 ---
 
 ## 1. Before testing
 
-- [ ] 1.1 All 33 Opportunity fields exist in the org and match the agreed table (prerequisite — built outside this branch).
-- [ ] 1.2 The user running the batch has edit access to all 33 fields.
+- [ ] 1.1 All 33 Opportunity fields exist with the API names in requirements.md §2.2, including the renamed `Proposed_Products__c` (D1).
+- [ ] 1.2 `Event.AI_Processed__c` exists, default false.
+- [ ] 1.3 The user running the batch has edit access to the 33 fields and `AI_Processed__c`.
+- [ ] 1.4 The Event Type values used by the filter exist (sandbox has only On-site / Visit and Web Meeting of the list — see requirements §3.4 note).
+- [ ] 1.5 Named Credential `Gemini` has the AI Studio API key set in this org.
 
 ## 2. Apex unit tests
 
@@ -17,79 +20,86 @@ Test data: create one test Account + Opportunity `AIDI Test Opp` (any stage). Us
   ```bash
   sf apex run test --class-names MomFilterTest --class-names DealIntelligenceMergerTest --class-names DealIntelligenceServiceTest --class-names DealIntelligenceBackfillBatchTest --class-names MomAnalysisQueueableTest --code-coverage --result-format human --wait 20
   ```
-- [ ] 2.2 All pass, each new class ≥ 75 % coverage (team baseline: the full org run has pre-existing failures — don't use it as the gate).
+- [ ] 2.2 All pass, and each new class has ≥ 75 % coverage. (Team baseline: the full org run has pre-existing failures, so don't use it as the gate.)
 
 Unit tests must cover at least:
 
 | Area | Case |
 |------|------|
-| Filter | Meeting + 100 chars → yes; Meeting + 99 chars → no; Email + 500 chars → no; Call → no; whitespace-padded 99 chars → no; WhatId = Account → no; already analysed → no |
-| Rule A | old true + AI false → true; old false + AI true → true; old false + AI null → false |
-| Rule B | old "X" + AI "No Data" / "Cannot Determine" / "" / null / "ไม่มีข้อมูล" → "X"; old "X" + AI "Y" → "Y"; old null + AI "Y" → "Y"; invalid picklist → unchanged |
-| Rule C | old score 80 + AI 40 → 40; reason and risk replaced every time |
-| Types | number as string `"1,500,000"`, date `"2026-12-31"`, boolean `"true"` coerced correctly; over-length text truncated |
-| Service | HTTP 500 → no Opportunity change, log = Failed, activity not stamped; invalid JSON → Parse Error; 2 MOMs same Opp → merged oldest → newest |
+| Filter | Web Meeting + 100 chars → yes; 99 chars → no; 99 chars padded with spaces → no; Type `Dinner / Event` → no; right Type but Subject not in list → no; right Subject but wrong Type → no (D3); WhatId = Account / ApplicationItem → no; `AI_Processed__c = true` → no |
+| Keys | `"1_Competitor_Topic_Mentioned__c"` → `Competitor_Topic_Mentioned__c`; `"20_Proposed_Products__c"` → `Proposed_Products__c` |
+| Rule A | old true + AI false → true; old false + AI true → true; old false + AI false → false |
+| Rule B — text | old blank + AI "No Data" → "No Data"; old "300k" + AI "No Data" → "300k"; old "No Data" + AI "300k" → "300k"; old "300k" + AI "500k" → "500k"; AI null → same as "No Data" |
+| Rule B — picklist | old blank + AI "Cannot Determine" → "Cannot Determine"; old "02. Early Stage" + AI "Cannot Determine" → unchanged; AI "Bogus" → treated as No Data, warning logged |
+| Rule B — multi-picklist | AI `["No Data"]` on blank → "No Data"; AI `["SAP","No Data"]` → "SAP"; old "SAP" + AI `["Odoo"]` → "SAP;Odoo"; old "SAP" + AI `["SAP"]` → "SAP" (no duplicate); old "No Data" + AI `["SAP"]` → "SAP"; AI `["No Data"]` on "SAP" → "SAP" |
+| Rule C | old score 80 + AI 40 → 40; AI 150 → 100; AI 0 → 1; AI `"high"` / null → stays 80 (D8); new Reason replaces old; AI Reason `""` / null → old Reason kept (D8); Risk always replaced |
+| Text | 300-char verbatim budget → cut to 255, warning logged |
+| Service | HTTP 500 → no Opp change, log Failed, `AI_Processed__c` still false; invalid JSON → Parse Error; 2 MOMs on the same Opp → merged oldest → newest; success → `AI_Processed__c = true` |
+| Prompt | `{{INSERT_MINUTES_OF_MEETING_HERE}}` replaced; Section 5 (Markdown table) not in the request |
 
-## 3. Trigger filter (real-time, manual)
+## 3. Filter (real-time, manual)
 
-For each row, log an activity on `AIDI Test Opp`, wait ~1 min, then check **Setup → Apex Jobs** and the AI log related list.
+For each row, create an Event on `AIDI Test Opp`, wait about 1 minute, then check **Setup → Apex Jobs**, the AI log, and `AI_Processed__c` on the Event.
 
-| # | Activity | Type | Description length | Expected |
-|---|----------|------|-------------------|----------|
-| 3.1 | Event | Meeting | 150 | ✅ analysed, Opp updated, log Success |
-| 3.2 | Event | Web Meeting | 150 | ✅ analysed |
-| 3.3 | Task | On-site / Visit | 150 | ✅ analysed |
-| 3.4 | Task | Email | 500 | ❌ no job, no log |
-| 3.5 | Task | Call | 500 | ❌ no job, no log |
-| 3.6 | Event | Meeting | 99 | ❌ no job |
-| 3.7 | Event | Meeting | 100 | ✅ analysed (boundary) |
-| 3.8 | Event | Meeting | 150, related to an **Account** not an Opp | ❌ no job |
-| 3.9 | Insert 10 qualifying MOMs at once (Data Loader / anon Apex) | | | ✅ all 10 analysed, no limit errors |
+| # | Type | Subject | Description | Expected |
+|---|------|---------|-------------|----------|
+| 3.1 | Web Meeting | Web Meeting - 1. Initial Meeting / Hearing | 150 chars | ✅ analysed, Opp updated, `AI_Processed__c` = true |
+| 3.2 | On-site / Visit | On-site / Visit - 3. Proposal / Quote Submission | 150 chars | ✅ analysed |
+| 3.3 | Dinner / Event | Dinner / Event - 1. Initial Meeting / Hearing | 500 chars | ❌ no job, no log |
+| 3.4 | Web Meeting | Web Meeting - 1. Initial Meeting / Hearing | 99 chars | ❌ no job |
+| 3.5 | Web Meeting | Web Meeting - 1. Initial Meeting / Hearing | exactly 100 chars | ✅ analysed (boundary) |
+| 3.6 | Web Meeting | Web Meeting - 1. Initial Meeting / Hearing | 150 chars, related to an **Account** | ❌ no job |
+| 3.7 | Edit 3.4 to 150 chars | | | ❌ no job (only create triggers, FR-2) |
+| 3.8 | Insert 10 qualifying Events at once (anonymous Apex) | | | ✅ all 10 analysed, no limit errors |
 
 ## 4. Merge rules (real-time, manual)
 
-Use a fresh Opportunity. Log MOMs one after another; check field values after each.
+Use a fresh Opportunity. Create MOMs one after another and check the fields after each one.
 
-1. **MOM 1** — mentions budget "3 million baht", competitor "Company X", decision maker identified, timeline Q1 next year.
-   - [ ] Budget, competitor, decision-maker flag, timeline filled. Score/Reason/Risk filled.
-2. **MOM 2** — talks only about a technical demo; no budget, no competitor, no decision maker.
-   - [ ] **Rule B:** budget, competitor, timeline **unchanged** from MOM 1.
-   - [ ] **Rule A:** decision-maker checkbox **still true**.
-   - [ ] **Rule C:** Score, Reason, Risk **changed** to reflect MOM 2.
-3. **MOM 3** — budget revised to "5 million baht", customer sounds hesitant.
-   - [ ] Budget now 5 million (specific new data overwrites).
-   - [ ] Score lower than after MOM 2; Risk mentions hesitation.
-4. [ ] Edit Score by hand, then log MOM 4 → Score overwritten (Rule C).
-5. [ ] Opportunity update did **not** create another AI job (no recursion).
-6. [ ] Each log has model name, input/output tokens, list of changed fields.
+1. **MOM 1**: budget "Implementation cost 3M THB", competitor SAP, CEO must approve, go-live "around October", next meeting date set.
+   - [ ] Budget flag, decision-maker flag and schedule flag are true. `Explicit_Initial_Budget__c` = the verbatim text. `Mentioned_Product_Competitors__c` = SAP. `Expected_Release_Date__c` filled.
+   - [ ] Fields with no information show **"No Data"** / **"Cannot Determine"**, not blank (Rule B: blank gets filled).
+   - [ ] Score, Reason and Risk are filled. Score is 1–100.
+2. **MOM 2**: only a technical demo. No budget, no competitor, no decision maker, no next meeting.
+   - [ ] **Rule B:** budget, competitor and release date are **unchanged** from MOM 1.
+   - [ ] **Rule A:** budget, decision-maker and schedule flags are **still true**.
+   - [ ] **Rule C:** Score, Reason and Risk **changed**. The score should drop (no next meeting = −20 in the BA logic).
+3. **MOM 3**: "running cost 50k per month", competitor Odoo, customer says "I'll check with my boss" with no deadline.
+   - [ ] `Explicit_Running_Budget__c` changes from "No Data" to the verbatim text. `Explicit_Initial_Budget__c` stays at 3M.
+   - [ ] Competitors = **"SAP;Odoo"** (accumulated, D4).
+   - [ ] Reason mentions the polite non-commitment (Kreng-jai).
+4. [ ] Edit Score by hand, then create MOM 4 → Score is overwritten (Rule C).
+5. [ ] Standard `StageName` is untouched. Only `Opportunity_Stage__c` changes.
+6. [ ] Updating the Opportunity / Event did **not** start another AI job.
+7. [ ] Each log has the model name, input/output tokens and the list of changed fields.
 
 ## 5. JSON output
 
-- [ ] 5.1 Open a Success log → `Raw_Response__c` is one JSON object with all 33 keys.
+- [ ] 5.1 A Success log's `Raw_Response__c` is one JSON object with 33 keys, and no Markdown table.
 - [ ] 5.2 Exactly **one** callout per MOM (one log per MOM).
-- [ ] 5.3 Request body (debug log) contains `"responseMimeType":"application/json"`.
+- [ ] 5.3 The request body (debug log) contains `"responseMimeType":"application/json"`.
 
 ## 6. Backfill batch
 
 Do a small dry run first.
 
-- [ ] 6.1 Count expected MOMs (Event + Task, last 365 days, MOM type, linked to Opp). Note the count of those ≥ 100 chars — this is the expected number of calls.
+- [ ] 6.1 Count the expected MOMs: Events in the last 365 days, linked to an Opportunity, matching Type (and Subject), `AI_Processed__c = false`, Description ≥ 100 characters. That count is the expected number of calls.
 - [ ] 6.2 Run `Database.executeBatch(new DealIntelligenceBackfillBatch(), 5);`
-- [ ] 6.3 Setup → Apex Jobs: job completes, 0 failed batches.
-- [ ] 6.4 Finish email: processed + skipped + failed = expected; failed is small and explained.
-- [ ] 6.5 Pick 3 Opportunities with several MOMs: Score/Reason/Risk match the **latest** MOM, not an older one.
-- [ ] 6.6 Activities older than 365 days were **not** analysed.
-- [ ] 6.7 Run the batch **again** → 0 new calls (idempotent; nothing double-processed).
-- [ ] 6.8 Clear `AI_Analyzed_At__c` on one failed activity, re-run → it now succeeds.
+- [ ] 6.3 Setup → Apex Jobs: the job completes with 0 failed batches.
+- [ ] 6.4 Finish email: processed + skipped + failed = expected. Any failures are few and explained.
+- [ ] 6.5 Pick 3 Opportunities with several MOMs: Score, Reason and Risk match the **latest** MOM.
+- [ ] 6.6 Events older than 365 days were **not** analysed.
+- [ ] 6.7 Run the batch **again** → 0 new calls (all processed Events have `AI_Processed__c = true`).
+- [ ] 6.8 A failed Event still has `AI_Processed__c = false`. Re-run → it succeeds.
 
 ## 7. Errors and safety
 
-- [ ] 7.1 Temporarily set a wrong model name → log Failed, Opportunity unchanged, no unhandled exception email.
-- [ ] 7.2 An Opportunity with a validation rule failure → other Opportunities in the same chunk still update.
+- [ ] 7.1 Temporarily set a wrong model name → log Failed, Opportunity unchanged, `AI_Processed__c` false, no unhandled exception email.
+- [ ] 7.2 An Opportunity that fails a validation rule doesn't stop the other Opportunities in the same chunk from updating.
 - [ ] 7.3 `grep -rn "AQ\.\|AIza" force-app` finds **no** API key in source.
 
 ## 8. Demo readiness
 
-- [ ] 8.1 Open 3 demo Opportunities: the 33 fields are filled where the MOMs had data, and no "No Data" text is stored in any field.
-- [ ] 8.2 Thai-language MOM: Reason and Risk make sense in Thai business context (manager reviews quality → decides on model upgrade).
+- [ ] 8.1 Open 3 demo Opportunities: real data is shown where the MOMs had it, and "No Data" elsewhere.
+- [ ] 8.2 Thai-language MOM: Reason and Risk make sense in a Thai business context. The manager reviews the quality and decides on a model upgrade.
 - [ ] 8.3 Total tokens / cost for the backfill recorded for the manager.
