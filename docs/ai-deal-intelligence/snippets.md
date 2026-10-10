@@ -8,7 +8,7 @@ In the sandbox: **gear icon → Developer Console → Debug → Open Execute Ano
 
 ### Reset the test records
 
-Clears the 33 AI fields on the test deals (`AIDI Test%`, `AIDI Stress%`, `Gemini MOM%`), unticks their meetings so they wait for the backfill (an update — it doesn't start the instant process), and deletes their log rows and the meetings logged by hand on AIDI Test 1 / 2. Same as `scripts/apex/ai-deal-intelligence-reset.apex`.
+Clears the 33 AI fields on the test deals (`AIDI Test%`, `AIDI Stress%`, `Gemini MOM%`, `Gemini Automate%`), unticks their meetings so they wait for the backfill (an update — it doesn't start the instant process), and deletes their log rows and the meetings logged by hand on AIDI Test 1 / 2. Same as `scripts/apex/ai-deal-intelligence-reset.apex`.
 
 Run it first with `DRY_RUN = true` (only shows what would change), then with `false`.
 
@@ -21,7 +21,7 @@ Set<String> HAND_LOGGED = new Set<String>{ 'AIDI Test 1 - Filter', 'AIDI Test 2 
 
 Savepoint sp = Database.setSavepoint();
 List<Opportunity> opps = [SELECT Id FROM Opportunity
-    WHERE Name LIKE 'AIDI Test%' OR Name LIKE 'AIDI Stress%' OR Name LIKE 'Gemini MOM%'];
+    WHERE Name LIKE 'AIDI Test%' OR Name LIKE 'AIDI Stress%' OR Name LIKE 'Gemini MOM%' OR Name LIKE 'Gemini Automate%'];
 Set<Id> oppIds = new Map<Id, Opportunity>(opps).keySet();
 
 Map<String, Schema.SObjectField> oppFields = Schema.SObjectType.Opportunity.fields.getMap();

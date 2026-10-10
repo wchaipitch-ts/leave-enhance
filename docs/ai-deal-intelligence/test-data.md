@@ -12,6 +12,7 @@ Created 8 Oct 2026. Use with [testing-steps.md](testing-steps.md).
 | AIDI Test 4 - Thai MOM (Chiang Mai Hospital) | `006fc0000069zfBAAQ` | Backfill — 1 Thai meeting |
 | AIDI Stress 001–025, AIDI Stress Edge - … (29 deals) | — | Stress test (§4) |
 | Gemini MOM, Gemini MOM 01–14 (BA's records) | — | 15 On-site / Visit meetings; covered by the reset script |
+| Gemini Automate 01, Gemini automate 002 / 003 (BA's records) | — | Logged by hand by the BA (instant process); covered by the reset script |
 
 ---
 
@@ -97,6 +98,6 @@ Created by `scripts/apex/ai-deal-intelligence-stress-data.apex`. Each deal's **D
 sf apex run --file scripts/apex/ai-deal-intelligence-reset.apex --target-org dev5-ts
 ```
 
-No checkout at hand? Paste the browser version from [snippets.md](snippets.md) into the Developer Console. Edit the switches at the top first: `DRY_RUN` (true = only print, roll back), `DELETE_LOGS`, `DELETE_HAND_LOGGED_MEETINGS`, `DELETE_STRESS_DEALS` (true = remove the stress deals completely). Scope: `AIDI Test%`, `AIDI Stress%`, `Gemini MOM%`.
+No checkout at hand? Paste the browser version from [snippets.md](snippets.md) into the Developer Console. Edit the switches at the top first: `DRY_RUN` (true = only print, roll back), `DELETE_LOGS`, `DELETE_HAND_LOGGED_MEETINGS`, `DELETE_STRESS_DEALS` (true = remove the stress deals completely). Scope: `AIDI Test%`, `AIDI Stress%`, `Gemini MOM%`, `Gemini Automate%` (the BA's hand-logged deals).
 
 To remove the AIDI Test deals for good, delete the four Opportunities; their meetings go with them, log rows stay with the Opportunity link blank.

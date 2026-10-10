@@ -2,7 +2,7 @@
 //
 // Scope: Opportunities named 'AIDI Test%' (made for testing-steps / test-data.md),
 // 'AIDI Stress%' (made by ai-deal-intelligence-stress-data.apex) and the BA's mock
-// records 'Gemini MOM%'.
+// records 'Gemini MOM%' and 'Gemini Automate%' (LIKE ignores case).
 //
 //   sf apex run --file scripts/apex/ai-deal-intelligence-reset.apex --target-org dev5-ts
 //
@@ -22,7 +22,7 @@ Savepoint sp = Database.setSavepoint();
 
 List<Opportunity> opps = [
     SELECT Id, Name FROM Opportunity
-    WHERE Name LIKE 'AIDI Test%' OR Name LIKE 'AIDI Stress%' OR Name LIKE 'Gemini MOM%'
+    WHERE Name LIKE 'AIDI Test%' OR Name LIKE 'AIDI Stress%' OR Name LIKE 'Gemini MOM%' OR Name LIKE 'Gemini Automate%'
 ];
 Set<Id> oppIds = new Map<Id, Opportunity>(opps).keySet();
 

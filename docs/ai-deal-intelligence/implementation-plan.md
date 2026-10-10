@@ -121,6 +121,8 @@ Processing order: chunks run one after another in `start`'s order — deal by de
 
 Change `Program_Constant__mdt.GeminiMODEL` — no code change; both logs record the model. To compare models on the same MOMs, run the reset script on a sample and re-run the backfill. Free-tier quotas are **per model**.
 
+> Google notice (Oct 2026): **`gemini-3.7-flash` is deprecated** and redirected to `gemini-3.8-flash` (same pricing). Don't set `GeminiMODEL` to 3.7; for Flash use `gemini-3.8-flash`. The end-to-end test in §6 ran on 3.7 before the change.
+
 ## 6. Test results (8 Oct 2026, sandbox)
 
 **End to end** (`gemini-3.7-flash`, one realistic English MOM): all 33 fields filled correctly; score 75 with the BA's arithmetic spelled out (50 + 15 budget/timeline + 10 customer homework); risks named the SAP integration, data migration and two competitors.
