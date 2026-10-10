@@ -148,7 +148,7 @@ What this means in practice:
 - **FR-22** Log every call: Opportunity, Event, model, status, token counts, error, raw response — in both `AI_Analysis_Log__c` and the team's `Gemini_Opty_Log__c` (D9, D10). One row per call, so a retried meeting has several rows; the last one is the outcome.
 - **FR-23** Updating the Opportunity or the Event must not re-trigger analysis.
 - **FR-24** No API key or credentials in Apex or in git.
-- **FR-25** When Gemini refuses a call, nothing more is sent in that run. **503 (busy):** try the meeting again 2 minutes later, up to 3 calls in all. **429 (rate limit / quota):** pause everything; one scheduled retry an hour later runs the backfill with the deals that were held back first (whole deals, oldest meeting first), then the rest still pending, and pauses again if Gemini still refuses (D12).
+- **FR-25** When Gemini refuses a call, nothing more is sent in that run. **503 (busy):** try the meeting again 2 minutes later, up to 3 calls in all. **429 (rate limit / quota):** pause everything; one scheduled retry runs the backfill with the deals that were held back first (whole deals, oldest meeting first), then the rest still pending, and pauses again if Gemini still refuses (D12). The wait follows Gemini's RetryInfo: ≤ 10 minutes asked (per-minute limit) → 2 minutes, or a minute more than asked; more, or not said (daily quota) → 1 hour (D13).
 - **FR-26** Two jobs working on the same deal at once must not lose each other's changes (the deal is locked while merging).
 - **FR-27** Nightly safety net: a backfill at 02:00 picks up whatever is still waiting (failures that are not retried automatically). Built; switched on by hand (`DealIntelligenceJob.scheduleNightly()`).
 
@@ -192,6 +192,7 @@ Event `Type` values in the org: Web Meeting, On-site / Visit, Dinner / Event, Di
 | D10 | Gemini Opty Log fields | Add Event Id, Model, Error Message, Input Token, Output Token | BA / team |
 | D11 | Model while testing | `gemini-3.5-flash-lite` (higher free quota); back to Flash for the demo, once billing is on | Team |
 | D12 | 429 handling | Retry after an hour; held-back deals first, then the rest still pending | Team |
+| D13 | 429 wait | Short wait when Gemini asks for one (per-minute limit: 2 min), the hour only for a long or unstated wait — an hour per ~15 meetings made a 1,000-meeting backfill take days on the free tier | Team |
 
 ## 8. Open items
 

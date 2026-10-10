@@ -40,7 +40,7 @@ What they cover:
 | Rule B | No Data fills a blank (Stage gets `Cannot Determine`); never replaces real data; real data replaces No Data and older data; picklist matched ignoring case, unknown values dropped with a warning; text cut to 255; multi-picklists accumulate, no duplicates, No Data dropped once a real value exists |
 | Rule C | latest score / reason / risks win; score bounded 1–100 and rounded; non-numeric or missing score keeps the old one; empty reason keeps the old one |
 | Service | one call per meeting in JSON mode with the BA prompt (no Section 5); success saves, ticks, writes both logs (Event Id, model, tokens); later meetings merge onto earlier ones; HTTP 500 → nothing changed, unticked; not JSON → Parse Error; short note → no call; **after a 503 the rest of the run is held back**; 429 reported as rate-limited |
-| Job | saving a MOM starts the background job; a short note doesn't; 3 per job; backfill takes the past year only; **503 → queued again in 2 min, gives up after 3 calls; 429 → no quick retry, one hourly retry scheduled (only once); held-back deals go first; backfill stops at the first 429; the hourly retry runs the backfill**; other errors not retried |
+| Job | saving a MOM starts the background job; a short note doesn't; 3 per job; backfill takes the past year only; **503 → queued again in 2 min, gives up after 3 calls; 429 → one rate-limit retry scheduled — 2 min for a short wait Gemini asks for, 1 h for a long or unstated one (only one waits; a sooner one replaces a later); held-back deals go first; backfill stops at the first 429; the retry runs the backfill**; other errors not retried |
 
 ## 3. Filter (instant process, manual)
 
@@ -102,7 +102,7 @@ For any analysed meeting:
 
 - [ ] 7.1 Set `GeminiMODEL` to a made-up name, log a meeting → both logs `Failed` / `Fail`, deal unchanged, Event unticked. Set it back.
 - [ ] 7.2 **503 (busy):** when it happens, the log says `HTTP 503`; about 2 minutes later a new `DealIntelligenceJob` appears in Apex Jobs and the meeting is analysed; after 3 calls in all it stops (next backfill picks it up).
-- [ ] 7.3 **429 (rate limit):** the log says `HTTP 429`; no more calls in that run; **Setup → Scheduled Jobs** shows one *AI Deal Intelligence - retry after Gemini rate limit*, about an hour ahead (never two). When it runs, the held-back deals are analysed first, then the rest; if Gemini still refuses, a new one appears an hour later.
+- [ ] 7.3 **429 (rate limit):** the log says `HTTP 429`; no more calls in that run; **Setup → Scheduled Jobs** shows one *AI Deal Intelligence - retry after Gemini rate limit* (never two): about 2 minutes ahead for a per-minute limit (the log says "Gemini asks to wait N s" with a short N), about an hour ahead for a used-up daily quota. When it runs, the held-back deals are analysed first, then the rest; if Gemini still refuses, a new one is scheduled the same way.
 - [ ] 7.4 A deal failing a validation rule doesn't stop other deals in the same chunk.
 - [ ] 7.4a Nightly: run `DealIntelligenceJob.scheduleNightly();` twice → Setup → Scheduled Jobs shows one *AI Deal Intelligence - nightly backfill*, next run 02:00. Leave a meeting waiting (e.g. reset one) → next morning it is analysed.
 - [ ] 7.5 `grep -rn "AQ\.\|AIza" force-app` finds **no** API key in tracked source (`GeminiCalloutService.cls` is untracked and still has one — see implementation-plan §0).
@@ -119,7 +119,7 @@ For any analysed meeting:
    ```bash
    sf apex run --file scripts/apex/ai-deal-intelligence-stress-data.apex --target-org dev5-ts
    ```
-2. `DealIntelligenceJob.runBackfill();` and wait for the batch, any retry jobs and any hourly retry to finish.
+2. `DealIntelligenceJob.runBackfill();` and wait for the batch, any retry jobs and any rate-limit retry to finish.
 3. Report:
    ```bash
    sf apex run --file scripts/apex/ai-deal-intelligence-stress-check.apex --target-org dev5-ts 2>&1 | grep CHECK

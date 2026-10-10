@@ -207,7 +207,9 @@ private class DealIntelligenceJobTest {
         Test.stopTest();
 
         System.assertEquals(null, DealIntelligenceJob.queuedInTest, 'no quick retry for a 429');
-        System.assert(DealIntelligenceJob.rateLimitRetryInTest, 'the hourly retry is scheduled');
+        System.assert(DealIntelligenceJob.rateLimitRetryInTest, 'the rate-limit retry is scheduled');
+        System.assertEquals(DealIntelligenceJob.RATE_LIMIT_WAIT_MINUTES, DealIntelligenceJob.rateLimitRetryMinutesInTest,
+            'Gemini gave no wait, so it is treated as a used-up quota: an hour');
         System.assertEquals(false, [SELECT AI_Processed__c FROM Event WHERE Id = :retryMeeting()[0] WITH SYSTEM_MODE].AI_Processed__c);
     }
 
@@ -215,8 +217,8 @@ private class DealIntelligenceJobTest {
     static void hourlyRetryIsScheduledOnlyOnce() {
         DealIntelligenceJob.scheduleForRealInTest = true;
         // No startTest/stopTest: the scheduled job must not actually run here.
-        DealIntelligenceJob.scheduleRateLimitRetry();
-        DealIntelligenceJob.scheduleRateLimitRetry();
+        DealIntelligenceJob.scheduleRateLimitRetry(DealIntelligenceJob.RATE_LIMIT_WAIT_MINUTES);
+        DealIntelligenceJob.scheduleRateLimitRetry(DealIntelligenceJob.RATE_LIMIT_WAIT_MINUTES);
 
         List<CronTrigger> retries = [
             SELECT NextFireTime FROM CronTrigger
@@ -226,6 +228,45 @@ private class DealIntelligenceJobTest {
         Long minutes = (retries[0].NextFireTime.getTime() - Datetime.now().getTime()) / 60000;
         System.assert(minutes >= DealIntelligenceJob.RATE_LIMIT_WAIT_MINUTES - 2 && minutes <= DealIntelligenceJob.RATE_LIMIT_WAIT_MINUTES,
             'fires in about an hour: ' + minutes + ' minutes');
+    }
+
+    @isTest
+    static void perMinuteLimitRetriesInMinutes() {
+        GeminiMock mock = new GeminiMock(429);
+        mock.retryDelay = '14s';
+        Test.setMock(HttpCalloutMock.class, mock);
+
+        Test.startTest();
+        new DealIntelligenceJob.RealTime(retryMeeting()).execute(null);
+        Test.stopTest();
+
+        System.assertEquals(DealIntelligenceJob.SHORT_WAIT_MINUTES, DealIntelligenceJob.rateLimitRetryMinutesInTest);
+    }
+
+    @isTest
+    static void waitFollowsWhatGeminiAsks() {
+        System.assertEquals(60, DealIntelligenceJob.waitMinutes(null), 'no wait given: assume a used-up quota');
+        System.assertEquals(2, DealIntelligenceJob.waitMinutes(14));
+        System.assertEquals(5, DealIntelligenceJob.waitMinutes(200), 'a minute more than the 4 minutes asked');
+        System.assertEquals(11, DealIntelligenceJob.waitMinutes(600));
+        System.assertEquals(60, DealIntelligenceJob.waitMinutes(601));
+        System.assertEquals(60, DealIntelligenceJob.waitMinutes(49995), 'daily quota: an hour');
+    }
+
+    @isTest
+    static void soonerRetryReplacesALaterOne() {
+        DealIntelligenceJob.scheduleForRealInTest = true;
+        DealIntelligenceJob.scheduleRateLimitRetry(60);
+        DealIntelligenceJob.scheduleRateLimitRetry(2);
+        DealIntelligenceJob.scheduleRateLimitRetry(60);
+
+        List<CronTrigger> retries = [
+            SELECT NextFireTime FROM CronTrigger
+            WHERE CronJobDetail.Name = :DealIntelligenceJob.RATE_LIMIT_RETRY_NAME
+        ];
+        System.assertEquals(1, retries.size());
+        Long minutes = (retries[0].NextFireTime.getTime() - Datetime.now().getTime()) / 60000;
+        System.assert(minutes <= 2, 'the 2-minute retry wins: ' + minutes);
     }
 
     @isTest

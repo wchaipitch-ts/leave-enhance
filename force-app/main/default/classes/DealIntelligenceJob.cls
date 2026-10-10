@@ -13,12 +13,13 @@
  * When Gemini refuses a call, nothing more is sent in that run, and:
  *   503 (busy for a moment)  the meetings are queued again RETRY_DELAY_MINUTES later,
  *                            up to MAX_ATTEMPTS calls each;
- *   429 (rate limit, quota)  everything waits for one scheduled retry an hour later
- *                            (this class, Schedulable). It runs the backfill with the
- *                            deals that hit the limit first, then everything else still
- *                            unticked, and pauses again for an hour if Gemini is still
- *                            refusing. A queued job can wait at most 10 minutes, hence
- *                            a scheduled job for the hour.
+ *   429 (rate limit, quota)  everything waits for one scheduled retry (this class,
+ *                            Schedulable): a couple of minutes later when Gemini asks
+ *                            for a short wait (a per-minute limit), an hour later when
+ *                            it asks for a long one or doesn't say (a used-up daily
+ *                            quota). It runs the backfill with the deals that hit the
+ *                            limit first, then everything else still unticked, and
+ *                            pauses again if Gemini is still refusing.
  *
  * Nightly safety net (inner class Nightly, Schedulable): the backfill every night at
  * 02:00, switched on once with DealIntelligenceJob.scheduleNightly(). It only sends
@@ -35,8 +36,11 @@ public without sharing class DealIntelligenceJob
     @TestVisible private static final Integer MAX_ATTEMPTS = 3;
     @TestVisible private static final Integer RETRY_DELAY_MINUTES = 2;
 
-    /** How long to leave Gemini alone after a 429. */
+    /** How long to leave Gemini alone after a 429: long by default (a used-up quota)... */
     @TestVisible private static final Integer RATE_LIMIT_WAIT_MINUTES = 60;
+    /** ...short when Gemini asks for at most SHORT_WAIT_MAX_SECONDS (a per-minute limit). */
+    @TestVisible private static final Integer SHORT_WAIT_MINUTES = 2;
+    @TestVisible private static final Integer SHORT_WAIT_MAX_SECONDS = 600;
     @TestVisible private static final String RATE_LIMIT_RETRY_NAME = 'AI Deal Intelligence - retry after Gemini rate limit';
 
     @TestVisible private static final String NIGHTLY_NAME = 'AI Deal Intelligence - nightly backfill';
@@ -50,6 +54,7 @@ public without sharing class DealIntelligenceJob
     @TestVisible private static RealTime queuedInTest;
     @TestVisible private static Integer queuedDelayInTest;
     @TestVisible private static Boolean rateLimitRetryInTest = false;
+    @TestVisible private static Integer rateLimitRetryMinutesInTest;
     /** Lets a test schedule the hourly retry for real, to check it. */
     @TestVisible private static Boolean scheduleForRealInTest = false;
 
@@ -57,6 +62,7 @@ public without sharing class DealIntelligenceJob
     private DealIntelligenceService.Summary total = new DealIntelligenceService.Summary();
     private Integer retriesQueued = 0;
     private Boolean rateLimited = false;
+    private Integer rateLimitWaitSeconds;
     private Integer leftForLater = 0;
 
     public DealIntelligenceJob() {}
@@ -117,8 +123,8 @@ public without sharing class DealIntelligenceJob
 
             DealIntelligenceService.Summary summary = DealIntelligenceService.analyse(now);
             if (summary.rateLimited) {
-                // The rest stays unticked; the hourly retry's backfill picks it all up.
-                scheduleRateLimitRetry();
+                // The rest stays unticked; the rate-limit retry's backfill picks it all up.
+                scheduleRateLimitRetry(waitMinutes(summary.rateLimitWaitSeconds));
                 return;
             }
 
@@ -156,34 +162,48 @@ public without sharing class DealIntelligenceJob
         System.enqueueJob(job, delayMinutes);
     }
 
-    // ---- Hourly retry after a rate limit --------------------------------------
+    // ---- Retry after a rate limit ---------------------------------------------
 
     /**
-     * Schedules one backfill run RATE_LIMIT_WAIT_MINUTES from now, unless one is
-     * already waiting: however many jobs hit the limit, Gemini gets one retry an hour.
+     * How long to wait after a 429, from the wait Gemini asked for: a short one (a
+     * per-minute limit) gets SHORT_WAIT_MINUTES, or a minute more than Gemini asked
+     * if that is longer; a long one or none at all (a used-up quota) gets the hour.
      */
-    public static void scheduleRateLimitRetry() {
+    @TestVisible private static Integer waitMinutes(Integer geminiAskedSeconds) {
+        if (geminiAskedSeconds == null || geminiAskedSeconds > SHORT_WAIT_MAX_SECONDS) {
+            return RATE_LIMIT_WAIT_MINUTES;
+        }
+        return Math.max(SHORT_WAIT_MINUTES, (geminiAskedSeconds + 59) / 60 + 1);
+    }
+
+    /**
+     * Schedules one backfill run the given minutes from now. However many jobs hit the
+     * limit, only one retry ever waits: a retry already due sooner is kept, and one due
+     * later is replaced by the sooner one.
+     */
+    public static void scheduleRateLimitRetry(Integer minutes) {
         if (Test.isRunningTest() && !scheduleForRealInTest) {
             rateLimitRetryInTest = true;
+            rateLimitRetryMinutesInTest = minutes;
             return;
         }
+        Datetime at = Datetime.now().addMinutes(minutes);
         for (CronTrigger t : [
             SELECT Id, NextFireTime FROM CronTrigger
             WHERE CronJobDetail.Name = :RATE_LIMIT_RETRY_NAME
             WITH SYSTEM_MODE
         ]) {
-            if (t.NextFireTime != null) {
+            if (t.NextFireTime != null && t.NextFireTime <= at) {
                 return;
             }
-            System.abortJob(t.Id); // a finished one still holds the name
+            System.abortJob(t.Id); // later than needed, or finished but still holding the name
         }
-        Datetime at = Datetime.now().addMinutes(RATE_LIMIT_WAIT_MINUTES);
         String cron = at.second() + ' ' + at.minute() + ' ' + at.hour() + ' '
             + at.day() + ' ' + at.month() + ' ? ' + at.year();
         System.schedule(RATE_LIMIT_RETRY_NAME, cron, new DealIntelligenceJob());
     }
 
-    /** The hourly retry: a backfill that puts the deals that hit the limit first. */
+    /** The rate-limit retry: a backfill that puts the deals that hit the limit first. */
     public void execute(SchedulableContext context) {
         if (context != null) {
             System.abortJob(context.getTriggerId()); // one-off: free the name for the next pause
@@ -271,7 +291,7 @@ public without sharing class DealIntelligenceJob
     public void execute(Database.BatchableContext context, List<SObject> scope) {
         List<Id> ids = new List<Id>(new Map<Id, SObject>(scope).keySet());
         if (rateLimited) {
-            // Gemini is refusing; the rest waits for the hourly retry.
+            // Gemini is refusing; the rest waits for the rate-limit retry.
             leftForLater += ids.size();
             return;
         }
@@ -284,6 +304,7 @@ public without sharing class DealIntelligenceJob
 
         if (part.rateLimited) {
             rateLimited = true;
+            rateLimitWaitSeconds = part.rateLimitWaitSeconds;
             leftForLater += part.deferred.size();
             return;
         }
@@ -298,9 +319,9 @@ public without sharing class DealIntelligenceJob
 
     public void finish(Database.BatchableContext context) {
         if (rateLimited) {
-            scheduleRateLimitRetry();
+            scheduleRateLimitRetry(waitMinutes(rateLimitWaitSeconds));
         }
-        // The hourly retries run quietly; only a backfill someone started emails them.
+        // Scheduled runs are quiet; only a backfill someone started sends an email.
         if (startedBySchedule) {
             return;
         }
@@ -314,7 +335,7 @@ public without sharing class DealIntelligenceJob
             'AI Deal Intelligence backfill finished: ' + job.Status + '.',
             rateLimited
                 ? 'PAUSED by Gemini rate limit (429): ' + leftForLater + ' meeting(s) wait. '
-                    + 'It continues automatically in ' + RATE_LIMIT_WAIT_MINUTES + ' minutes (Setup > Scheduled Jobs).'
+                    + 'It continues automatically in ' + waitMinutes(rateLimitWaitSeconds) + ' minutes (Setup > Scheduled Jobs).'
                 : '',
             '',
             'Analysed: ' + total.analysed,

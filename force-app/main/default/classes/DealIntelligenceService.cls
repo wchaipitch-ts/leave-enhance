@@ -24,9 +24,9 @@ public without sharing class DealIntelligenceService {
     /** Gemini is busy for a moment: worth another try in a couple of minutes. */
     @TestVisible private static final Integer BUSY = 503;
     /**
-     * We are over Gemini's rate limit or quota: everything waits for the hourly retry
-     * (see DealIntelligenceJob). Its log Details start with this, which is how the
-     * retry finds the meetings to put first.
+     * We are over Gemini's rate limit or quota: everything waits for the rate-limit
+     * retry (see DealIntelligenceJob). Its log Details start with this, which is how
+     * the retry finds the meetings to put first.
      */
     @TestVisible private static final Integer RATE_LIMITED = 429;
     public static final String RATE_LIMITED_DETAIL = 'HTTP 429';
@@ -48,8 +48,10 @@ public without sharing class DealIntelligenceService {
         public List<Id> busy = new List<Id>();
         /** Meetings not sent at all, because Gemini had already refused one in this run. */
         public List<Id> deferred = new List<Id>();
-        /** Gemini answered 429: stop calling until the hourly retry. */
+        /** Gemini answered 429: stop calling until the rate-limit retry. */
         public Boolean rateLimited = false;
+        /** The wait Gemini asked for with that 429 (RetryInfo), in seconds; null if it didn't say. */
+        public Integer rateLimitWaitSeconds;
     }
 
     /** One meeting's trip to Gemini and back. */
@@ -122,6 +124,7 @@ public without sharing class DealIntelligenceService {
             }
             if (c.rateLimited) {
                 summary.rateLimited = true;
+                summary.rateLimitWaitSeconds = c.retryAfterSeconds;
             }
             sent.add(c);
         }

@@ -62,7 +62,7 @@ Merge rules follow the field, no config: #1–17 → A, #18–30 → B, #31–33
 |-------|----------------|
 | `DealIntelligenceRules` | **Filter** `isMom(Event)` / `qualifying(List<Event>)`: Type **and** Subject in the config lists (D3, case and spaces ignored), trimmed Description ≥ 100, not ticked, on an Opportunity. Missing config → nothing qualifies (never blocks a save). `momTypes()` / `momSubjects()` for the backfill query. **Merge** `mergeAnswer(Opportunity, Map)` (`merge` is reserved in Apex): strips the `N_` key prefix; Rule A; Rule B ("No Data" only fills a blank, real data overwrites, multi-picklists accumulate, invalid picklist values dropped with a warning, text cut to field length); Rule C (Score clamped 1–100; non-numeric Score or empty Reason keeps the old value). Applies changes to the record it is given, returns `changes` + `warnings`. No SOQL / DML. |
 | `DealIntelligenceService` | `analyse(List<Id> eventIds)`: re-reads the Events (oldest first per deal) and re-checks the filter; calls Gemini per meeting — `responseMimeType: application/json`, no temperature (Google advises the default for Gemini 3), 60 s timeout, all callouts before any DML; **after the first refusal (503/429) the rest of the run is held back**; reads the deals **`FOR UPDATE`** (so two jobs on one deal can't lose each other's changes; still locked → handed back as busy); merges; saves with `Database.update(…, false)`; ticks only Events whose deal saved; writes both logs. Without sharing, system mode. Returns a `Summary` (counts, tokens, `busy`, `deferred`, `rateLimited`). |
-| `DealIntelligenceJob` | **Batchable** (`runBackfill()`, 3 per chunk): `start` returns the pending past-year MOMs ordered by deal and meeting date, with **deals held back by a 429 put first** (found through `Failed` logs of the last 7 days whose Details start `HTTP 429`). **Queueable** inner class `RealTime` (one class can't be both Queueable and Batchable): 3 per job, chains the rest; started by `enqueueFor` from the trigger, which never throws. **Schedulable**: the hourly retry. **Inner class `Nightly`** (Schedulable): the backfill at 02:00 (`0 0 2 * * ?`, in the switching-on user's time zone), switched on by `scheduleNightly()` (a second call changes nothing). Retry policy in §2.4. A backfill started by hand emails a summary; scheduled ones run quietly. |
+| `DealIntelligenceJob` | **Batchable** (`runBackfill()`, 3 per chunk): `start` returns the pending past-year MOMs ordered by deal and meeting date, with **deals held back by a 429 put first** (found through `Failed` logs of the last 7 days whose Details start `HTTP 429`). **Queueable** inner class `RealTime` (one class can't be both Queueable and Batchable): 3 per job, chains the rest; started by `enqueueFor` from the trigger, which never throws. **Schedulable**: the rate-limit retry (2 min or 1 h, §2.4). **Inner class `Nightly`** (Schedulable): the backfill at 02:00 (`0 0 2 * * ?`, in the switching-on user's time zone), switched on by `scheduleNightly()` (a second call changes nothing). Retry policy in §2.4. A backfill started by hand emails a summary; scheduled ones run quietly. |
 | `EventTriggerHandler` (extended) | After insert: `DealIntelligenceJob.enqueueFor(Trigger.new)`. Our own tick is an update, so it can't re-trigger. |
 
 Processing order: chunks run one after another in `start`'s order — deal by deal, oldest meeting first — so each deal ends on its latest meeting (FR-20), also when one deal's meetings span two chunks.
@@ -83,7 +83,7 @@ Processing order: chunks run one after another in `start`'s order — deal by de
 | Case | Behaviour |
 |------|-----------|
 | 503 (Gemini busy for a moment) | Log `Failed`; the rest of the run is held back; queued again 2 minutes later, up to 3 calls per meeting; after that it waits for the next backfill. |
-| 429 (rate limit or quota) | Log `Failed`; nothing more is sent; **one scheduled retry an hour later** (*AI Deal Intelligence - retry after Gemini rate limit*, Setup → Scheduled Jobs — a queued job can wait at most 10 minutes). It runs the backfill with the held-back deals first, then everything else still unticked, and pauses again if Gemini still refuses. Only one such retry is ever waiting. |
+| 429 (rate limit or quota) | Log `Failed`; nothing more is sent; **one scheduled retry** (*AI Deal Intelligence - retry after Gemini rate limit*, Setup → Scheduled Jobs). Wait from Gemini's RetryInfo: ≤ 10 min asked (per-minute limit) → **2 minutes** (or a minute more than asked); longer or not given (used-up daily quota) → **1 hour**. It runs the backfill with the held-back deals first, then everything else still unticked, and pauses again if Gemini still refuses. Only one retry ever waits; a sooner one replaces a later one. |
 | Other HTTP errors / timeout | Log `Failed`; deal untouched; meeting unticked → next backfill (the nightly one, once switched on). |
 | Invalid JSON | Log `Parse Error` with the raw answer; no update. |
 | One field bad (picklist / number) | That field skipped, log `Partial` with a warning. |
@@ -104,7 +104,7 @@ Processing order: chunks run one after another in `start`'s order — deal by de
 | 8 | `DealIntelligenceJob` backfill + dry run | ✅ |
 | 9 | Event trigger + real-time | ✅ |
 | 10 | Unit tests, test data, testing-steps, backfill | ✅ 53 tests; manual checklist for the team |
-| — | Added along the way: retries (503 / hourly 429), deal lock, Gemini Opty Log fields, test scripts | ✅ |
+| — | Added along the way: retries (503 / rate-limit 429 with 2-min or 1-h wait), deal lock, Gemini Opty Log fields, test scripts | ✅ |
 
 ## 4. Deploy order (any new org)
 
@@ -115,7 +115,7 @@ Processing order: chunks run one after another in `start`'s order — deal by de
 5. Apex classes + tests, then the Event trigger / handler change
 6. `DealIntelligenceJob.runBackfill();`
 
-> **Scheduled jobs block deploys:** `dev5-ts` has *Allow deployments of components when corresponding Apex jobs are pending or in progress* **off**, so while the nightly job (or a waiting hourly retry) is scheduled, deploying `DealIntelligenceJob` fails. Turn that setting on, or delete the scheduled jobs first (Setup → Scheduled Jobs) and run `scheduleNightly()` again after.
+> **Scheduled jobs block deploys:** `dev5-ts` has *Allow deployments of components when corresponding Apex jobs are pending or in progress* **off**, so while the nightly job (or a waiting rate-limit retry) is scheduled, deploying `DealIntelligenceJob` fails. Turn that setting on, or delete the scheduled jobs first (Setup → Scheduled Jobs) and run `scheduleNightly()` again after.
 >
 > Team baseline: the full sandbox test run has ~63 pre-existing failures. Deploy with `--test-level RunSpecifiedTests --tests DealIntelligenceRulesTest --tests DealIntelligenceServiceTest --tests DealIntelligenceJobTest --tests EventTriggerTest`.
 
@@ -140,7 +140,7 @@ Change `Program_Constant__mdt.GeminiMODEL` — no code change; both logs record 
 
 Run 2's other 4 deals: 2 had a meeting give up after 3 quick 429 retries (since replaced by the hourly retry, D12); 2 had Gemini put a product (Cloudee) in the SI list — dropped with a warning (model quality). Edge cases: an ~8,000-character note was fine; same-day meetings merged in time order; unknown products stored as "Others", never as invalid values; Thai polite deferral scored 5.
 
-Not yet re-run after the last two changes (deal lock, hourly 429 retry) — their unit tests pass.
+Not yet re-run after the last two changes (deal lock, 429 retry) — their unit tests pass.
 
 ## 7. Open items
 
