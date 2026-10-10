@@ -50,6 +50,8 @@ Two ways it runs — same filter, same Gemini call, same rules:
 
 When Gemini refuses a call: **503 (busy)** → tried again 2 minutes later, up to 3 times; **429 (rate limit / quota)** → everything pauses and one scheduled retry runs an hour later, doing the held-back deals first, then the rest.
 
+**Nightly safety net** (built, not switched on yet): the backfill at 02:00 every night picks up anything left waiting — failures that aren't retried, meetings that ran out of busy retries. Switch on once with `DealIntelligenceJob.scheduleNightly();` (it then shows in Setup → Scheduled Jobs as *AI Deal Intelligence - nightly backfill*). ⚠️ While it is scheduled, Salesforce refuses to deploy `DealIntelligenceJob` unless *Allow deployments of components when corresponding Apex jobs are pending or in progress* is on (Setup → Deployment Settings; off in `dev5-ts`) — otherwise delete the scheduled job before a deploy and switch it on again after.
+
 Field list, filter values, rules and prompt come from the BA sheet [Gemini Opp](https://docs.google.com/spreadsheets/d/17Pd_wTmj5Zwxr9l2YMQUynawdlLy66LKJwErmsUvz2E/edit).
 
 ## Configuration

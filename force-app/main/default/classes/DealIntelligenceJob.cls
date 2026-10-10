@@ -19,6 +19,11 @@
  *                            unticked, and pauses again for an hour if Gemini is still
  *                            refusing. A queued job can wait at most 10 minutes, hence
  *                            a scheduled job for the hour.
+ *
+ * Nightly safety net (inner class Nightly, Schedulable): the backfill every night at
+ * 02:00, switched on once with DealIntelligenceJob.scheduleNightly(). It only sends
+ * meetings still waiting — ones that failed for a reason that isn't retried, or ran
+ * out of busy retries — so most nights it makes no Gemini calls at all.
  */
 public without sharing class DealIntelligenceJob
         implements Database.Batchable<SObject>, Database.AllowsCallouts, Database.Stateful, Schedulable {
@@ -33,6 +38,10 @@ public without sharing class DealIntelligenceJob
     /** How long to leave Gemini alone after a 429. */
     @TestVisible private static final Integer RATE_LIMIT_WAIT_MINUTES = 60;
     @TestVisible private static final String RATE_LIMIT_RETRY_NAME = 'AI Deal Intelligence - retry after Gemini rate limit';
+
+    @TestVisible private static final String NIGHTLY_NAME = 'AI Deal Intelligence - nightly backfill';
+    /** 02:00 every day, in the time zone of the user who switches it on. */
+    @TestVisible private static final String NIGHTLY_CRON = '0 0 2 * * ?';
 
     /** Off in test setup, so inserting test meetings doesn't start real-time jobs. */
     @TestVisible private static Boolean realTimeOn = true;
@@ -180,6 +189,25 @@ public without sharing class DealIntelligenceJob
             System.abortJob(context.getTriggerId()); // one-off: free the name for the next pause
         }
         Database.executeBatch(new DealIntelligenceJob(true), PER_TRANSACTION);
+    }
+
+    // ---- Nightly safety net ---------------------------------------------------
+
+    /** Switches the nightly backfill on (once is enough; a second call changes nothing). */
+    public static Id scheduleNightly() {
+        for (CronTrigger t : [
+            SELECT Id FROM CronTrigger WHERE CronJobDetail.Name = :NIGHTLY_NAME WITH SYSTEM_MODE
+        ]) {
+            return t.Id;
+        }
+        return System.schedule(NIGHTLY_NAME, NIGHTLY_CRON, new Nightly());
+    }
+
+    public class Nightly implements Schedulable {
+        public void execute(SchedulableContext context) {
+            // Quiet like the hourly retry: no email, the logs hold the outcome.
+            Database.executeBatch(new DealIntelligenceJob(true), PER_TRANSACTION);
+        }
     }
 
     // ---- Backfill -----------------------------------------------------------

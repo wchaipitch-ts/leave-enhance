@@ -150,6 +150,7 @@ What this means in practice:
 - **FR-24** No API key or credentials in Apex or in git.
 - **FR-25** When Gemini refuses a call, nothing more is sent in that run. **503 (busy):** try the meeting again 2 minutes later, up to 3 calls in all. **429 (rate limit / quota):** pause everything; one scheduled retry an hour later runs the backfill with the deals that were held back first (whole deals, oldest meeting first), then the rest still pending, and pauses again if Gemini still refuses (D12).
 - **FR-26** Two jobs working on the same deal at once must not lose each other's changes (the deal is locked while merging).
+- **FR-27** Nightly safety net: a backfill at 02:00 picks up whatever is still waiting (failures that are not retried automatically). Built; switched on by hand (`DealIntelligenceJob.scheduleNightly()`).
 
 ## 4. Non-functional
 

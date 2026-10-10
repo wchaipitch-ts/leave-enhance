@@ -273,6 +273,32 @@ private class DealIntelligenceJobTest {
     }
 
     @isTest
+    static void nightlyBackfillIsScheduledOnlyOnce() {
+        // No startTest/stopTest: the scheduled job must not actually run here.
+        Id first = DealIntelligenceJob.scheduleNightly();
+        Id second = DealIntelligenceJob.scheduleNightly();
+
+        System.assertEquals(first, second, 'switching it on twice changes nothing');
+        CronTrigger nightly = [
+            SELECT CronExpression, NextFireTime FROM CronTrigger
+            WHERE CronJobDetail.Name = :DealIntelligenceJob.NIGHTLY_NAME
+        ];
+        System.assertEquals(DealIntelligenceJob.NIGHTLY_CRON, nightly.CronExpression);
+        System.assertEquals(2, nightly.NextFireTime.hour(), 'runs at 02:00');
+    }
+
+    @isTest
+    static void nightlyBackfillPicksUpWhatIsWaiting() {
+        Test.setMock(HttpCalloutMock.class, new GeminiMock());
+
+        Test.startTest();
+        new DealIntelligenceJob.Nightly().execute(null);
+        Test.stopTest();
+
+        System.assertEquals(true, [SELECT AI_Processed__c FROM Event WHERE Id = :retryMeeting()[0] WITH SYSTEM_MODE].AI_Processed__c);
+    }
+
+    @isTest
     static void givesUpAfterTheLastAttempt() {
         Test.setMock(HttpCalloutMock.class, new GeminiMock(503));
         List<Id> ids = retryMeeting();
